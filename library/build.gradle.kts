@@ -13,7 +13,7 @@ version = "1.0.0"
 kotlin {
     jvm()
     androidLibrary {
-        namespace = "org.jetbrains.kotlinx.multiplatform.library.template"
+        namespace = "com.hipay.library.poc"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
 
@@ -58,7 +58,7 @@ mavenPublishing {
         name = "My library"
         description = "A library."
         inceptionYear = "2024"
-        url = "https://github.com/kotlin/multiplatform-library-template/"
+        url = "https://github.com/hipay/hipay-library-poc/"
         licenses {
             license {
                 name = "XXX"
