@@ -3,6 +3,10 @@ package com.hipay.core.gateway.model
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 
 /**
  * Transaction returned by the Gateway (FR5) — REAL camelCase contract
@@ -33,8 +37,28 @@ public class Transaction(
     public val state: TransactionState get() = TransactionState.fromWire(stateRaw)
 
     public companion object {
+        // The Gateway sends "" where an absent sub-object would be expected
+        // (e.g. `"threeDSecure": ""` on a 3DS-challenge order, captured live
+        // 2026-06-13) and legacy mappers show `reason` can be either a string
+        // or a {code, message} object — sanitize those shapes before decoding.
         internal fun fromJson(body: String): Transaction =
-            gatewayJson.decodeFromString(serializer(), body)
+            fromJsonObject(gatewayJson.parseToJsonElement(body).jsonObject)
+
+        internal fun fromJsonObject(root: JsonObject): Transaction {
+            val cleaned = JsonObject(
+                root.mapValues { (key, value) ->
+                    when {
+                        key in OBJECT_FIELDS && value !is JsonObject -> JsonNull
+                        key == "reason" && value is JsonObject ->
+                            value["message"] as? JsonPrimitive ?: JsonNull
+                        else -> value
+                    }
+                }
+            )
+            return gatewayJson.decodeFromJsonElement(serializer(), cleaned)
+        }
+
+        private val OBJECT_FIELDS = setOf("threeDSecure", "order", "paymentMethod")
     }
 }
 
