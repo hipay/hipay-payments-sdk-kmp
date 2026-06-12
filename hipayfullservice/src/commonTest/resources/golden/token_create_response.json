@@ -1,0 +1,16 @@
+{
+  "token": "f0e1d2c3b4a5968778695a4b3c2d1e0ff0e1d2c3b4a5968778695a4b3c2d1e0f",
+  "request_id": "0",
+  "card_id": "00000000-0000-4000-8000-000000000001",
+  "multi_use": 0,
+  "brand": "VISA",
+  "pan": "411111xxxxxx1111",
+  "card_holder": "Test",
+  "card_expiry_month": "12",
+  "card_expiry_year": "2026",
+  "issuer": "CONOTOXIA SP. Z O.O",
+  "country": "PL",
+  "card_type": "DEBIT",
+  "card_category": "CLASSIC",
+  "forbidden_issuer_country": false
+}
