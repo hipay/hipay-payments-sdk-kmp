@@ -11,3 +11,6 @@ xcuserdata
 .kotlin
 #So we don't accidentally commit our private keys
 *.gpg
+# KMP build artifact consumed by the SPM package (rebuilt via scripts/build-xcframework.sh)
+swift/HiPayFullservice.xcframework/
+swift/.build/
