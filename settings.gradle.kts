@@ -13,5 +13,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "hipay-library-poc"
-include(":library")
+rootProject.name = "hipay-fullservice-kmp"
+include(":hipayfullservice")

@@ -4,16 +4,16 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.android.kotlin.multiplatform.library)
+    alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.vanniktech.mavenPublish)
 }
 
-group = "io.github.kotlin"
+group = "com.hipay.fullservice"
 version = "1.0.0"
 
 kotlin {
-    jvm()
     androidLibrary {
-        namespace = "com.hipay.library.poc"
+        namespace = "com.hipay.fullservice"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
 
@@ -31,18 +31,30 @@ kotlin {
             }
         }
     }
-    iosX64()
     iosArm64()
     iosSimulatorArm64()
-    linuxX64()
 
     sourceSets {
         commonMain.dependencies {
-            //put your multiplatform dependencies here
+            implementation(libs.ktor.client.core)
+            implementation(libs.ktor.client.content.negotiation)
+            implementation(libs.ktor.serialization.kotlinx.json)
+            implementation(libs.kotlinx.serialization.json)
+            implementation(libs.kotlinx.coroutines.core)
         }
 
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation(libs.ktor.client.mock)
+            implementation(libs.kotlinx.coroutines.test)
+        }
+
+        androidMain.dependencies {
+            implementation(libs.ktor.client.okhttp)
+        }
+
+        iosMain.dependencies {
+            implementation(libs.ktor.client.darwin)
         }
     }
 }
@@ -52,13 +64,13 @@ mavenPublishing {
 
     signAllPublications()
 
-    coordinates(group.toString(), "library", version.toString())
+    coordinates(group.toString(), "fullservice-kmp", version.toString())
 
     pom {
-        name = "My library"
-        description = "A library."
-        inceptionYear = "2024"
-        url = "https://github.com/hipay/hipay-library-poc/"
+        name = "HiPay Fullservice KMP SDK"
+        description = "HiPay Fullservice payment SDK for Kotlin Multiplatform (card payment)."
+        inceptionYear = "2026"
+        url = "https://github.com/hipay/hipay-fullservice-kmp/"
         licenses {
             license {
                 name = "XXX"
