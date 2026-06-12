@@ -1,19 +1,50 @@
-[![official project](http://jb.gg/badges/official.svg)](https://github.com/JetBrains#jetbrains-on-github)
+# HiPay Fullservice KMP SDK
 
-# Multiplatform library template
+Kotlin Multiplatform SDK for HiPay Fullservice card payments — successor to the
+legacy native iOS/Android Fullservice SDKs. Single Kotlin codebase
+(`:hipayfullservice`, coordinates `com.hipay.fullservice:fullservice-kmp`),
+consumed on iOS through a local Swift package.
 
-## What is it?
+## Layout
 
-This repository contains a simple library project, intended to demonstrate a [Kotlin Multiplatform](https://kotlinlang.org/docs/multiplatform.html) library that is deployable to [Maven Central](https://central.sonatype.com/).
+- `hipayfullservice/` — the KMP library
+  - `com.hipay.core` — configuration, HTTP/auth, Gateway (orders,
+    transactions), 3DS callback parsing
+  - `com.hipay.card` — card validation, network rules, Secure Vault
+    tokenization (PCI boundary: card data never leaves this module)
+- `swift/` — local SPM package (`HiPayCore` / `HiPayCard` products): the
+  hand-written Swift facade that IS the public iOS API, backed by the
+  `HiPayFullservice` XCFramework (git-ignored build artifact)
+- `scripts/build-xcframework.sh` — rebuilds the XCFramework and refreshes the
+  package (see its header for the edit-Kotlin → run-demo loop)
+- Demo app: separate repo `../HiPay-SDK-ios-Demo`
 
-The library has only one function: generate the [Fibonacci sequence](https://en.wikipedia.org/wiki/Fibonacci_sequence) starting from platform-provided numbers. Also, it has a test for each platform just to be sure that tests run.
+## Build & test
 
-Note that no other actions or tools usually required for the library development are set up, such as [tracking of backwards compatibility](https://kotlinlang.org/docs/jvm-api-guidelines-backward-compatibility.html#tools-designed-to-enforce-backward-compatibility), explicit API mode, licensing, contribution guideline, code of conduct and others. You can find a guide for best practices for designing Kotlin libraries [here](https://kotlinlang.org/docs/api-guidelines-introduction.html).
+```sh
+./gradlew build                      # KMP library + Android AAR + all tests
+./scripts/build-xcframework.sh       # iOS binary for the SPM package
+```
 
-## Guide
+Targets: `android`, `iosArm64`, `iosSimulatorArm64` (Apple Silicon only — no
+x86_64 slice, architecture decision D6).
 
-Please find the detailed guide [here](https://www.jetbrains.com/help/kotlin-multiplatform-dev/multiplatform-publish-libraries.html).
+The test suite runs on both platforms (`iosSimulatorArm64Test`,
+`testAndroidHostTest`) and includes an anti-logging gate over the card module
+(`scripts/check-no-logging.sh`, wired into `check`). Tests gated on real stage
+credentials skip silently when `.hipay_stage_env` is absent.
 
-# Other resources
-* [Publishing via the Central Portal](https://central.sonatype.org/publish-ea/publish-ea-guide/)
-* [Gradle Maven Publish Plugin \- Publishing to Maven Central](https://vanniktech.github.io/gradle-maven-publish-plugin/central/)
+## Security model (v1)
+
+- The library **never computes HS signatures** — the secret passphrase must
+  stay on the merchant backend.
+- Card data (PAN/CVC) is confined to the card module, never logged, and
+  cleared after tokenization; `HiPayException` messages are SDK-synthesized
+  (no backend text echo).
+
+## Publication
+
+Not published yet. Before the first release: fix POM license/developers/scm
+placeholders, adopt a real versioning scheme, and gate
+`.github/workflows/publish.yml` (see the deferred-work register in the
+planning workspace).

@@ -36,6 +36,9 @@ kotlin {
     listOf(iosArm64(), iosSimulatorArm64()).forEach { iosTarget ->
         iosTarget.binaries.framework {
             baseName = "HiPayFullservice"
+            // The default bundle ID is derived from the module name and is a
+            // known App Store validation/collision source for shipped SDKs.
+            binaryOption("bundleId", "com.hipay.fullservice")
             isStatic = true
             xcf.add(this)
         }
