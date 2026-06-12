@@ -66,6 +66,15 @@ kotlin {
     }
 }
 
+// PCI anti-logging gate (story 2.4): fails the build on any logging primitive
+// under com.hipay.card or swift/Sources/HiPayCard.
+val checkCardNoLogging = tasks.register<Exec>("checkCardNoLogging") {
+    group = "verification"
+    description = "Asserts zero logging on the card path (PCI)"
+    commandLine("bash", rootDir.resolve("scripts/check-no-logging.sh").absolutePath)
+}
+tasks.named("check") { dependsOn(checkCardNoLogging) }
+
 mavenPublishing {
     publishToMavenCentral()
 

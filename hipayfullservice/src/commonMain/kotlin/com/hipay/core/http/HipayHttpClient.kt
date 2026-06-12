@@ -9,6 +9,7 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.request.HttpSendPipeline
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
@@ -34,6 +35,14 @@ internal class HipayHttpClient(
 ) {
     private val http = HttpClient(engine) {
         expectSuccess = false
+    }.apply {
+        // The HiPay stage WAF answers 403 to any request carrying the
+        // Accept-Charset header that Ktor's HttpPlainText plugin adds by
+        // default (verified live 2026-06-12: same request 201 without it,
+        // 403 with it; the legacy SDK never sends it). Strip it.
+        sendPipeline.intercept(HttpSendPipeline.Before) {
+            context.headers.remove(HttpHeaders.AcceptCharset)
+        }
     }
 
     // Single construction point for the Authorization header: story 3.2 adds

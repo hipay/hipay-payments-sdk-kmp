@@ -13,19 +13,19 @@ import kotlin.test.assertTrue
 class GoldenParityTest {
 
     /**
-     * AC #4 — token/create request parity. The field map is built exactly the
-     * way CardTokenizer will build it (story 2.4 rewires the real serializer
-     * into this assertion).
+     * token/create request parity against the REAL field builder used by
+     * CardTokenizer (story 2.4) — any key/format drift in the serializer
+     * breaks here against the committed golden file.
      */
     @Test
     fun tokenCreateRequestMatchesGolden() {
-        val fields = linkedMapOf(
-            "card_number" to "4111111111111111",
-            "card_expiry_month" to "12",
-            "card_expiry_year" to "2026",
-            "card_holder" to "Test",
-            "cvc" to "123",
-            "multi_use" to "0",
+        val fields = com.hipay.card.tokenRequestFields(
+            cardNumber = "4111111111111111",
+            expiryMonth = "12",
+            expiryYear = "2026",
+            holder = "Test",
+            cvc = "123",
+            multiUse = false,
         )
         val actual = JsonObject(fields.mapValues { JsonPrimitive(it.value) })
         assertJsonParity(GOLDEN_TOKEN_CREATE_REQUEST, actual)
