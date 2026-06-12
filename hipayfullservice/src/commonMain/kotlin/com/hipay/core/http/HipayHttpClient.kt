@@ -9,6 +9,7 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.HttpSendPipeline
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
@@ -30,11 +31,19 @@ import kotlin.io.encoding.ExperimentalEncodingApi
  * must never be loggable (NFR2, PCI).
  */
 internal class HipayHttpClient(
-    config: HiPayConfig,
+    private val config: HiPayConfig,
     engine: HttpClientEngine = defaultHttpClientEngine(),
 ) {
     private val http = HttpClient(engine) {
         expectSuccess = false
+        // Payment processing is slow by nature: a stage order takes ~12s
+        // (measured 2026-06-12) and OkHttp's default 10s read timeout kills
+        // it. 60s matches the NSURLSession default the legacy SDK relied on.
+        install(HttpTimeout) {
+            requestTimeoutMillis = 60_000
+            connectTimeoutMillis = 15_000
+            socketTimeoutMillis = 60_000
+        }
     }.apply {
         // The HiPay stage WAF answers 403 to any request carrying the
         // Accept-Charset header that Ktor's HttpPlainText plugin adds by
@@ -45,20 +54,24 @@ internal class HipayHttpClient(
         }
     }
 
-    // Single construction point for the Authorization header: story 3.2 adds
-    // the alternative "HS base64(username:signature)" scheme here when a
-    // Gateway signature is provided (legacy HPFHTTPClient.m:110-131).
+    // Single construction point for the Authorization header. When a Gateway
+    // signature is provided (computed by the merchant backend — NEVER by this
+    // library), the legacy "HS" scheme replaces Basic auth
+    // (HPFHTTPClient.m:110-131; validated live on stage 2026-06-12).
     @OptIn(ExperimentalEncodingApi::class)
-    private val authorizationHeader: String =
+    private fun authorizationHeader(signature: String?): String = if (signature != null) {
+        "HS " + Base64.encode("${config.username}:$signature".encodeToByteArray())
+    } else {
         "Basic " + Base64.encode("${config.username}:${config.password}".encodeToByteArray())
-
-    suspend fun get(url: String): String = execute {
-        http.get(url) { hipayHeaders() }
     }
 
-    suspend fun postForm(url: String, fields: Map<String, String>): String = execute {
+    suspend fun get(url: String, signature: String? = null): String = execute {
+        http.get(url) { hipayHeaders(signature) }
+    }
+
+    suspend fun postForm(url: String, fields: Map<String, String>, signature: String? = null): String = execute {
         http.post(url) {
-            hipayHeaders()
+            hipayHeaders(signature)
             setBody(
                 TextContent(
                     text = encodeFormBody(fields),
@@ -68,8 +81,8 @@ internal class HipayHttpClient(
         }
     }
 
-    private fun HttpRequestBuilder.hipayHeaders() {
-        header(HttpHeaders.Authorization, authorizationHeader)
+    private fun HttpRequestBuilder.hipayHeaders(signature: String?) {
+        header(HttpHeaders.Authorization, authorizationHeader(signature))
         header(HttpHeaders.Accept, "application/json")
     }
 
