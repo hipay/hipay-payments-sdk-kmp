@@ -43,16 +43,19 @@ public object CardNetworks {
         }
     }
 
+    /** Digit count at which a network's PAN is complete. Variable-length
+     *  networks (Maestro/unknown) only "complete" at the 19-digit max. */
+    public fun completionLength(network: CardNetwork): Int = when (network) {
+        CardNetwork.AMEX -> 15
+        CardNetwork.VISA, CardNetwork.MASTERCARD, CardNetwork.CB -> 16
+        CardNetwork.BCMC -> 17
+        CardNetwork.MAESTRO, CardNetwork.UNKNOWN -> 19
+    }
+
     /** Length at which the number field is considered complete (auto-advance). */
     public fun isNumberComplete(number: String): Boolean {
         val digits = number.filter { it in '0'..'9' }
-        return when (detect(digits)) {
-            CardNetwork.AMEX -> digits.length == 15
-            CardNetwork.VISA, CardNetwork.MASTERCARD, CardNetwork.CB -> digits.length == 16
-            CardNetwork.BCMC -> digits.length == 17
-            // variable-length networks: complete only at the 19-digit max
-            CardNetwork.MAESTRO, CardNetwork.UNKNOWN -> digits.length == 19
-        }
+        return digits.length == completionLength(detect(digits))
     }
 
     /**

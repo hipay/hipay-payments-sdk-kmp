@@ -23,6 +23,15 @@ class AllowedNetworksTest {
     }
 
     @Test
+    fun unresolvedNetworkIsAuthorized() {
+        // A not-yet-resolved network must not be flagged NOT_AUTHORIZED while
+        // the merchant restricts the set (D2 review fix).
+        val allowed = listOf(CardNetwork.VISA, CardNetwork.MASTERCARD)
+        assertEquals(true, AllowedNetworks.isAuthorized(CardNetwork.UNKNOWN, allowed))
+        assertEquals(ValidationReason.VALID, AllowedNetworks.reason(CardNetwork.UNKNOWN, allowed))
+    }
+
+    @Test
     fun networkOutsideAllowedIsNotAuthorized() {
         val allowed = listOf(CardNetwork.VISA, CardNetwork.MASTERCARD)
         assertEquals(false, AllowedNetworks.isAuthorized(CardNetwork.AMEX, allowed))

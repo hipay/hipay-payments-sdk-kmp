@@ -9,6 +9,14 @@ package com.hipay.card.validation
  * [CardNetworks] matrix (completion length / CVC length). Inputs are the
  * extracted DIGIT strings the UI already produces (number digits, MM, YYYY,
  * CVC digits). Value-free — no input is echoed anywhere. Zero logging (PCI).
+ *
+ * CONTRACT — pass the RESOLVED network. [cvcReason] and [AllowedNetworks]
+ * classify against the [CardNetwork] the caller supplies. Pass the
+ * backend-resolved network when available, else the locally detected one;
+ * while the network is still [CardNetwork.UNKNOWN] (mid-typing, or a locally
+ * undetectable co-brand like CB) these functions deliberately return [VALID]
+ * rather than flag — so the UI never shows a premature error before the
+ * network is known. The same contract holds for the Android (Compose) UI.
  */
 public object CardFieldValidation {
 
@@ -17,7 +25,11 @@ public object CardFieldValidation {
         number.isEmpty() -> ValidationReason.VALID
         number.any { it !in '0'..'9' } || number.length > 19 -> ValidationReason.INVALID_NUMBER
         CardValidators.isCardNumberValid(number) -> ValidationReason.VALID
-        CardNetworks.isNumberComplete(number) -> ValidationReason.INVALID_NUMBER // complete length, fails Luhn
+        // At or beyond the network's completion length but fails Luhn → invalid
+        // (covers over-length-for-network, e.g. a 19-digit Amex); a still-short
+        // digits prefix is merely incomplete.
+        number.length >= CardNetworks.completionLength(CardNetworks.detect(number)) ->
+            ValidationReason.INVALID_NUMBER
         else -> ValidationReason.INCOMPLETE_NUMBER
     }
 
@@ -32,6 +44,9 @@ public object CardFieldValidation {
 
     /** Not required or empty → VALID. Else checks length/format against the network's CVC length. */
     public fun cvcReason(cvc: String, network: CardNetwork): ValidationReason {
+        // Network not yet resolved → do not flag (see object CONTRACT); the
+        // expected CVC length is unknown until the network is known.
+        if (network == CardNetwork.UNKNOWN) return ValidationReason.VALID
         if (!CardNetworks.isCvcRequired(network) || cvc.isEmpty()) return ValidationReason.VALID
         val expected = CardNetworks.cvcLength(network)
         return when {

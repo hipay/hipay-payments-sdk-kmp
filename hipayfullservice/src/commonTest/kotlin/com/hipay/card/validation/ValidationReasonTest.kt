@@ -36,6 +36,15 @@ class ValidationReasonTest {
         assertEquals(ValidationReason.INVALID_NUMBER, CardFieldValidation.cardNumberReason("50500000000000000000")) // 20 digits
     }
 
+    @Test
+    fun overNetworkCompletionLengthFailingLuhnIsInvalid() {
+        // Amex completes at 15; a 19-digit Amex-prefixed Luhn-failing number is
+        // past completion → INVALID, not INCOMPLETE (D1 review fix).
+        assertEquals(ValidationReason.INVALID_NUMBER, CardFieldValidation.cardNumberReason("3" + "4".repeat(18)))
+        // A failing Maestro below its 19-digit completion is still INCOMPLETE.
+        assertEquals(ValidationReason.INCOMPLETE_NUMBER, CardFieldValidation.cardNumberReason("5" + "0".repeat(15)))
+    }
+
     // --- Expiry ---
 
     @Test
@@ -68,6 +77,14 @@ class ValidationReasonTest {
         assertEquals(ValidationReason.VALID, CardFieldValidation.cvcReason("", CardNetwork.VISA))
         assertEquals(ValidationReason.VALID, CardFieldValidation.cvcReason("12", CardNetwork.MAESTRO)) // not required
         assertEquals(ValidationReason.VALID, CardFieldValidation.cvcReason("", CardNetwork.BCMC))
+    }
+
+    @Test
+    fun cvcForUnresolvedNetworkIsValid() {
+        // Network not yet resolved (mid-typing / CB) → never flag, even with a
+        // length that would be wrong for some network (D2 review fix).
+        assertEquals(ValidationReason.VALID, CardFieldValidation.cvcReason("1234", CardNetwork.UNKNOWN))
+        assertEquals(ValidationReason.VALID, CardFieldValidation.cvcReason("12", CardNetwork.UNKNOWN))
     }
 
     @Test
