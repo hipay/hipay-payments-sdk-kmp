@@ -175,4 +175,57 @@ class HipayHttpClientTest {
         assertFalse(ex.message!!.contains("dXNlcjpwYXNz"))
         assertTrue(ex.message!!.contains("400"))
     }
+
+    // --- Review patches (story 2.1) ---
+
+    // PCI: a 3xx must NOT be auto-followed — the auth header / form body would
+    // otherwise be re-sent to the redirect target (no second request issued).
+    @Test
+    fun redirectsAreNotFollowed() = runTest {
+        val engine = MockEngine {
+            respond(
+                "",
+                HttpStatusCode.Found,
+                headersOf(HttpHeaders.Location, "https://evil.example/steal"),
+            )
+        }
+        val client = HipayHttpClient(config, engine)
+        runCatching { client.get(config.environment.gatewayV1Url + "transaction/x") }
+        assertEquals(1, engine.requestHistory.size)
+    }
+
+    // Real stage error (1000001 Insufficient Privilege) sent as a JSON NUMBER:
+    // parsed exactly, no Double round-trip truncation.
+    @Test
+    fun largeIntegerApiCodeParsedWithoutPrecisionLoss() = runTest {
+        val engine = MockEngine {
+            respond(
+                """{"code":1000001,"message":"Insufficient Privilege"}""",
+                HttpStatusCode.Forbidden,
+                headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val ex = assertFailsWith<HiPayException> {
+            HipayHttpClient(config, engine).get(config.environment.gatewayV1Url + "transaction/x")
+        }
+        assertEquals(HiPayErrorCode.API, ex.code)
+        assertEquals(1000001, ex.apiCode)
+    }
+
+    // A non-integer code is not a structured API error -> CLIENT (no silent
+    // truncation of "409.9" to 409 as the previous Double parse did).
+    @Test
+    fun nonIntegerApiCodeFallsBackToClient() = runTest {
+        val engine = MockEngine {
+            respond(
+                """{"code":"409.9","message":"x"}""",
+                HttpStatusCode.BadRequest,
+                headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val ex = assertFailsWith<HiPayException> {
+            HipayHttpClient(config, engine).get(config.environment.gatewayV1Url + "transaction/x")
+        }
+        assertEquals(HiPayErrorCode.CLIENT, ex.code)
+    }
 }

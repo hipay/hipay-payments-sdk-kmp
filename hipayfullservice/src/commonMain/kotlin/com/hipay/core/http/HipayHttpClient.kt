@@ -36,6 +36,11 @@ internal class HipayHttpClient(
 ) {
     private val http = HttpClient(engine) {
         expectSuccess = false
+        // Never auto-follow redirects: a 3xx on a card-carrying POST would
+        // otherwise re-send the Authorization header and form body to the
+        // redirect target (PCI / NFR2). HiPay signals 3DS via a 200 body
+        // (state=forwarding + forwardUrl), never an HTTP redirect.
+        followRedirects = false
         // Payment processing is slow by nature: a stage order takes ~12s
         // (measured 2026-06-12) and OkHttp's default 10s read timeout kills
         // it. 60s matches the NSURLSession default the legacy SDK relied on.
@@ -86,21 +91,23 @@ internal class HipayHttpClient(
         header(HttpHeaders.Accept, "application/json")
     }
 
-    private suspend fun execute(block: suspend () -> HttpResponse): String {
-        val response = try {
-            block()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: HiPayException) {
-            throw e
-        } catch (e: Throwable) {
-            throw mapNetworkFailure(e)
-        }
+    private suspend fun execute(block: suspend () -> HttpResponse): String = try {
+        val response = block()
+        // bodyAsText() reaches the network too (streamed read): keep it inside
+        // the guarded block so a charset-decode error or a mid-read connection
+        // drop maps to NETWORK instead of escaping as a raw Ktor/IO exception.
         val body = response.bodyAsText()
         if (response.status.value >= 400) {
             throw mapErrorResponse(response.status.value, body)
         }
-        return body
+        body
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: HiPayException) {
+        // mapErrorResponse verdict — already synthesized, never remap to NETWORK.
+        throw e
+    } catch (e: Throwable) {
+        throw mapNetworkFailure(e)
     }
 }
 

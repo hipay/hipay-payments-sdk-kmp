@@ -55,7 +55,11 @@ private val lenientJson = Json { ignoreUnknownKeys = true }
 
 private fun parseApiError(body: String): ApiError? = try {
     val obj = lenientJson.parseToJsonElement(body).jsonObject
-    val code = obj["code"]?.jsonPrimitive?.content?.toDoubleOrNull()?.toInt()
+    // HiPay codes are integers; the wire sends them as a number or a string.
+    // `.content` yields the raw text for both, and toIntOrNull keeps it exact
+    // (no Double round-trip: no truncation of "409.9", no precision loss
+    // past 2^53). A non-integer code is not a structured API error -> CLIENT.
+    val code = obj["code"]?.jsonPrimitive?.content?.toIntOrNull()
     val message = obj["message"]?.jsonPrimitive?.content
     if (code != null && !message.isNullOrEmpty()) {
         ApiError(code, message, obj["description"]?.jsonPrimitive?.content)
