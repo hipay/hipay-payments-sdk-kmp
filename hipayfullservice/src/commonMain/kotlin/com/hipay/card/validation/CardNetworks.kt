@@ -30,7 +30,7 @@ public enum class CardNetwork {
 public object CardNetworks {
 
     public fun detect(number: String): CardNetwork {
-        val digits = number.filter { it.isDigit() }
+        val digits = number.filter { it in '0'..'9' }
         return when {
             digits.isEmpty() -> CardNetwork.UNKNOWN
             digits.startsWith("34") || digits.startsWith("37") -> CardNetwork.AMEX
@@ -45,7 +45,7 @@ public object CardNetworks {
 
     /** Length at which the number field is considered complete (auto-advance). */
     public fun isNumberComplete(number: String): Boolean {
-        val digits = number.filter { it.isDigit() }
+        val digits = number.filter { it in '0'..'9' }
         return when (detect(digits)) {
             CardNetwork.AMEX -> digits.length == 15
             CardNetwork.VISA, CardNetwork.MASTERCARD, CardNetwork.CB -> digits.length == 16
@@ -65,7 +65,7 @@ public object CardNetworks {
 
     /** Display formatting: Amex 4-6-5, everything else groups of 4. */
     public fun format(number: String): String {
-        val digits = number.filter { it.isDigit() }
+        val digits = number.filter { it in '0'..'9' }
         if (digits.isEmpty()) return ""
         val groups = when (detect(digits)) {
             CardNetwork.AMEX -> listOf(4, 6, 5)

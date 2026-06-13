@@ -100,4 +100,13 @@ class CardNetworksTest {
         assertEquals("4111 1111", CardNetworks.format("4111 1111"))
         assertEquals("", CardNetworks.format(""))
     }
+
+    // Review fix: a non-ASCII Unicode digit must NOT count as a card digit
+    // (consistent with CardValidators). Arabic-Indic "٤" is not "4".
+    @Test
+    fun unicodeDigitsAreNotTreatedAsCardDigits() {
+        assertEquals(CardNetwork.UNKNOWN, CardNetworks.detect("٤")) // not VISA
+        assertEquals("", CardNetworks.format("٤١١١"))               // dropped, not grouped
+        assertFalse(CardNetworks.isNumberComplete("٤".repeat(16)))
+    }
 }
