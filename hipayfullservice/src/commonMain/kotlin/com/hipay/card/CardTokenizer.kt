@@ -78,6 +78,12 @@ public class CardTokenizer internal constructor(
      * a lightweight resolution, not the final tokenization.
      *
      * Drives the network icons / co-brand selection in the entry component.
+     *
+     * CONTRACT (story 5.1): a resolution failure surfaces as a [HiPayException]
+     * with the typed [HiPayErrorCode] (NETWORK/SERVER/CLIENT/API). Both the iOS
+     * and Android components must degrade IDENTICALLY on failure — keep the
+     * locally BIN-detected network/icon, do not block entry (no co-brand
+     * refinement until a later successful resolution).
      */
     @Throws(HiPayException::class, CancellationException::class)
     public suspend fun resolveCardInfo(
