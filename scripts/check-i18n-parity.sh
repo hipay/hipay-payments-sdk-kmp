@@ -9,6 +9,8 @@
 # Reports KEY NAMES only (consistent with the value-free convention).
 
 set -euo pipefail
+# Deterministic byte-collation for sort/comm (review P2).
+export LC_ALL=C
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 ENUM_FILE="$ROOT/hipayfullservice/src/commonMain/kotlin/com/hipay/card/validation/CardEntryStringKey.kt"
@@ -57,6 +59,15 @@ check_strings() {
   if [ -n "$extra" ]; then
     echo "i18n PARITY ERROR [$loc] — unknown keys (not in CardEntryStringKey):"
     printf '  %s\n' $extra
+    FAIL=1
+  fi
+  # Values must be non-empty (AC2, review P1): catch  "KEY" = "";
+  local empty
+  empty=$(grep -oE '^[[:space:]]*"[^"]+"[[:space:]]*=[[:space:]]*""[[:space:]]*;' "$file" \
+    | grep -oE '^[[:space:]]*"[^"]+"' | grep -oE '"[^"]+"' | tr -d '"' | sort -u || true)
+  if [ -n "$empty" ]; then
+    echo "i18n PARITY ERROR [$loc] — empty values for keys:"
+    printf '  %s\n' $empty
     FAIL=1
   fi
 }
