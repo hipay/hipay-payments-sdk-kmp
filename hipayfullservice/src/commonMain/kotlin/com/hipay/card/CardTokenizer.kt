@@ -47,8 +47,10 @@ public class CardTokenizer internal constructor(
             url = config.environment.secureVaultV2Url + "token/create",
             fields = tokenRequestFields(cardNumber, expiryMonth, expiryYear, holder, cvc, multiUse),
         )
-        return try {
+        val token = try {
             vaultJson.decodeFromString(CardToken.serializer(), body)
+        } catch (e: CancellationException) {
+            throw e // never swallow cooperative cancellation
         } catch (e: Exception) {
             // The body may echo request fields — never attach it (or the
             // parsing exception, which embeds the input) to the error (PCI).
@@ -57,6 +59,15 @@ public class CardTokenizer internal constructor(
                 message = "Unusable Secure Vault response (token/create)",
             )
         }
+        if (token.token.isEmpty()) {
+            // A 2xx with no usable token is a backend contract violation —
+            // never hand the caller an empty token.
+            throw HiPayException(
+                code = HiPayErrorCode.SERVER,
+                message = "Secure Vault returned an empty token (token/create)",
+            )
+        }
+        return token
     }
 }
 

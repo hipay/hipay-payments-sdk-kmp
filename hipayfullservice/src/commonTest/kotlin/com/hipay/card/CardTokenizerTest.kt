@@ -124,6 +124,22 @@ class CardTokenizerTest {
         }
         // backend text intentionally available in the dedicated property only
         assertTrue(ex.apiMessage!!.contains("Luhn failed"))
+        // ...but PAN-like runs are redacted from it too (defense in depth)
+        assertFalse(ex.apiMessage!!.contains(pan))
+        assertFalse(ex.apiDescription!!.contains(pan))
+    }
+
+    // A 2xx with an empty token is a backend contract violation, not a token.
+    @Test
+    fun emptyTokenInSuccessBodyMapsToServer() = runTest {
+        val engine = MockEngine {
+            respond("""{"token":""}""", HttpStatusCode.Created, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        val ex = assertFailsWith<HiPayException> {
+            CardTokenizer(config, engine)
+                .generateToken("4111111111111111", "12", "2030", "Test", "123", multiUse = false)
+        }
+        assertEquals(HiPayErrorCode.SERVER, ex.code)
     }
 
     // --- Validation short-circuit: no network call (AC from 2.3 wiring) ---

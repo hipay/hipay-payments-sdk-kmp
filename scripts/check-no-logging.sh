@@ -12,7 +12,9 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
-PATTERN='println|print\(|NSLog|os_log|OSLog|Logger|install\(Logging'
+# Covers Kotlin (println/print(/Log.x), Swift (NSLog/os_log/OSLog/print(/
+# debugPrint/dump(), the os.Logger type, and the Ktor Logging plugin.
+PATTERN='println|print\(|debugPrint|dump\(|NSLog|os_log|OSLog|Logger|\bLog\.[dewiv]\b|install\(Logging'
 FAIL=0
 
 scan() {

@@ -25,8 +25,12 @@ internal fun mapErrorResponse(status: Int, body: String): HiPayException {
                 message = "HiPay API error (code ${api.code}, HTTP $status)",
                 httpStatus = status,
                 apiCode = api.code,
-                apiMessage = api.message,
-                apiDescription = api.description,
+                // Defense in depth: backend error text is exposed verbatim
+                // through these properties (a host may surface the decline
+                // reason). Redact PAN-like digit runs so a backend that ever
+                // echoes a card number cannot leak it here (PCI, NFR2).
+                apiMessage = redactPanLike(api.message),
+                apiDescription = redactPanLike(api.description),
             )
         }
         return HiPayException(
@@ -50,6 +54,15 @@ internal fun mapNetworkFailure(cause: Throwable): HiPayException =
     )
 
 private class ApiError(val code: Int, val message: String, val description: String?)
+
+// Replaces any run of 13-19 digits (optionally grouped by single spaces or
+// dashes) with a marker — the PAN length range, narrow enough to leave order
+// references, amounts and short codes untouched. Defense in depth only: HiPay
+// does not echo card numbers, but the SDK must not relay one if it ever did.
+private val PAN_LIKE = Regex("""\d(?:[ -]?\d){12,18}""")
+
+private fun redactPanLike(text: String?): String? =
+    text?.replace(PAN_LIKE, "[REDACTED]")
 
 private val lenientJson = Json { ignoreUnknownKeys = true }
 

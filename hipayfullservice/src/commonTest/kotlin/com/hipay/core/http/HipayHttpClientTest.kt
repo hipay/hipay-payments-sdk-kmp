@@ -228,4 +228,41 @@ class HipayHttpClientTest {
         }
         assertEquals(HiPayErrorCode.CLIENT, ex.code)
     }
+
+    // The stage WAF 403s on the Accept-Charset header Ktor adds by default;
+    // the sendPipeline interceptor strips it. Lock that the outgoing request
+    // never carries it (a Ktor upgrade must not silently regress to 403).
+    @Test
+    fun outgoingRequestsCarryNoAcceptCharsetHeader() = runTest {
+        val engine = MockEngine { request ->
+            assertNull(request.headers[HttpHeaders.AcceptCharset])
+            respond("{}", HttpStatusCode.OK)
+        }
+        val client = HipayHttpClient(config, engine)
+        client.get(config.environment.gatewayV1Url + "transaction/x")
+        client.postForm(config.environment.secureVaultV2Url + "token/create", mapOf("a" to "b"))
+    }
+
+    // Defense in depth: a backend that echoes a PAN into its error text must
+    // not leak it through apiMessage/apiDescription (PCI, NFR2).
+    @Test
+    fun apiErrorRedactsPanLikeRunsFromBackendText() = runTest {
+        val engine = MockEngine {
+            respond(
+                """{"code":"409","message":"Refused for 4111111111111111",""" +
+                    """"description":"pan 4111 1111 1111 1111 cvc 123"}""",
+                HttpStatusCode.BadRequest,
+                headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val ex = assertFailsWith<HiPayException> {
+            HipayHttpClient(config, engine).get(config.environment.gatewayV1Url + "transaction/x")
+        }
+        assertEquals(HiPayErrorCode.API, ex.code)
+        assertFalse(ex.apiMessage!!.contains("4111"))
+        assertFalse(ex.apiDescription!!.contains("4111"))
+        assertTrue(ex.apiMessage!!.contains("[REDACTED]"))
+        // short codes (cvc) and the human-readable reason survive
+        assertTrue(ex.apiDescription!!.contains("cvc 123"))
+    }
 }

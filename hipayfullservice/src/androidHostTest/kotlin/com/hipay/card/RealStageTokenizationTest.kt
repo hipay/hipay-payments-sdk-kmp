@@ -31,7 +31,7 @@ class RealStageTokenizationTest {
             )
         }
         assertTrue(token.token.isNotEmpty())
-        assertTrue(token.pan!!.startsWith("411111"))
+        assertTrue(token.pan?.startsWith("411111") == true)
     }
 
     /** Parses `export KEY=value` lines; walks up from the working dir. */
