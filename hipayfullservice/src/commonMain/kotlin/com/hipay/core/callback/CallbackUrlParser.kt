@@ -17,35 +17,41 @@ public object CallbackUrlParser {
     private const val EXPECTED_HOST = "hipay-fullservice"
 
     // @Throws: without it a Kotlin exception crashes through the ObjC boundary.
+    // The WHOLE body is guarded — a non-HiPayException escaping any Ktor
+    // accessor (segments/parameters) would also crash the host, so anything
+    // unexpected is converted to a value-free HiPayException too.
     @Throws(HiPayException::class)
     public fun parse(url: String): CallbackResult {
-        val parsed = try {
-            Url(url)
+        try {
+            val parsed = Url(url)
+            if (parsed.host != EXPECTED_HOST) {
+                throw malformed("host is not $EXPECTED_HOST")
+            }
+            // decoded, non-empty path segments: gateway / orders / {orderId} / {status}
+            val segments = parsed.segments
+            if (segments.size != 4 || segments[0] != "gateway" || segments[1] != "orders") {
+                throw malformed("path is not gateway/orders/{orderId}/{status}")
+            }
+            val status = when (segments[3]) {
+                "accept" -> CallbackStatus.ACCEPT
+                "decline" -> CallbackStatus.DECLINE
+                "pending" -> CallbackStatus.PENDING
+                "exception" -> CallbackStatus.EXCEPTION
+                "cancel" -> CallbackStatus.CANCEL
+                else -> throw malformed("unknown status segment")
+            }
+            val queryParams = buildMap {
+                parsed.parameters.forEach { key, values ->
+                    values.firstOrNull()?.let { put(key, it) }
+                }
+            }
+            return CallbackResult(orderId = segments[2], status = status, queryParams = queryParams)
+        } catch (e: HiPayException) {
+            throw e // keep the precise rejection reason
         } catch (_: Exception) {
+            // Never let an unexpected throwable cross the boundary, never echo the URL.
             throw malformed("not a parseable URL")
         }
-        if (parsed.host != EXPECTED_HOST) {
-            throw malformed("host is not $EXPECTED_HOST")
-        }
-        // decoded, non-empty path segments: gateway / orders / {orderId} / {status}
-        val segments = parsed.segments
-        if (segments.size != 4 || segments[0] != "gateway" || segments[1] != "orders") {
-            throw malformed("path is not gateway/orders/{orderId}/{status}")
-        }
-        val status = when (segments[3]) {
-            "accept" -> CallbackStatus.ACCEPT
-            "decline" -> CallbackStatus.DECLINE
-            "pending" -> CallbackStatus.PENDING
-            "exception" -> CallbackStatus.EXCEPTION
-            "cancel" -> CallbackStatus.CANCEL
-            else -> throw malformed("unknown status segment")
-        }
-        val queryParams = buildMap {
-            parsed.parameters.forEach { key, values ->
-                values.firstOrNull()?.let { put(key, it) }
-            }
-        }
-        return CallbackResult(orderId = segments[2], status = status, queryParams = queryParams)
     }
 
     // Value-free message (never echoes URL content — it may carry order data).
