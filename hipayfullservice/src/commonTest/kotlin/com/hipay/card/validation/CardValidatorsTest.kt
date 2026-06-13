@@ -158,4 +158,27 @@ class CardValidatorsTest {
         ensureValidForTokenization("4111111111111111", "12", "2030", "Test", "")
         ensureValidForTokenization("5496198584584769", "01", "2031", "A".repeat(60), "1234")
     }
+
+    // --- Review fix: Unicode digits ---
+    // Char.isDigit() accepts the Unicode Nd category but toInt() parses ASCII
+    // only — Unicode-digit inputs must yield a clean false / VALIDATION, never
+    // a raw NumberFormatException crash.
+
+    @Test
+    fun rejectsUnicodeDigitsWithoutCrashing() {
+        assertFalse(CardValidators.isExpiryMonthValid("١٢")) // Arabic-Indic 12
+        assertFalse(CardValidators.isExpiryYearValid("٢٠٣٠")) // 2030
+        assertFalse(CardValidators.isCvcValid("１２３")) // fullwidth 123
+        assertFalse(CardValidators.isExpiryDateValid("١٢", "٢٠٣٠"))
+        assertFalse(CardValidators.isCardNumberValid("٤".repeat(16))) // Arabic-Indic 4 x16
+    }
+
+    @Test
+    fun gateRejectsUnicodeDigitMonthAsValidationNotCrash() {
+        val ex = assertFailsWith<HiPayException> {
+            ensureValidForTokenization("4111111111111111", "١٢", "2030", "Test", "123")
+        }
+        assertEquals(HiPayErrorCode.VALIDATION, ex.code)
+        assertTrue(ex.message!!.contains("card_expiry_month"))
+    }
 }

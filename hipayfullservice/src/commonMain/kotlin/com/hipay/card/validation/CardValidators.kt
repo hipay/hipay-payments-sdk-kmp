@@ -16,15 +16,15 @@ public object CardValidators {
 
     /** 12-19 digits, digits only, passing the Luhn check. */
     public fun isCardNumberValid(number: String): Boolean =
-        number.length in 12..19 && number.all { it.isDigit() } && passesLuhn(number)
+        number.length in 12..19 && number.isAsciiDigits() && passesLuhn(number)
 
     /** Exactly "MM", 01-12. */
     public fun isExpiryMonthValid(month: String): Boolean =
-        month.length == 2 && month.all { it.isDigit() } && month.toInt() in 1..12
+        month.length == 2 && month.isAsciiDigits() && month.toInt() in 1..12
 
     /** Exactly "YYYY". */
     public fun isExpiryYearValid(year: String): Boolean =
-        year.length == 4 && year.all { it.isDigit() }
+        year.length == 4 && year.isAsciiDigits()
 
     /** Valid formats AND not in the past (current month is still valid). */
     public fun isExpiryDateValid(month: String, year: String): Boolean {
@@ -39,7 +39,13 @@ public object CardValidators {
 
     /** Empty (allowed by the vault contract) or 3-4 digits. */
     public fun isCvcValid(cvc: String): Boolean =
-        cvc.isEmpty() || (cvc.length in 3..4 && cvc.all { it.isDigit() })
+        cvc.isEmpty() || (cvc.length in 3..4 && cvc.isAsciiDigits())
+
+    // ASCII digits only: Char.isDigit() accepts the whole Unicode Nd category
+    // (Arabic-Indic ٠-٩, fullwidth, etc.), but String.toInt() parses ASCII
+    // only — using isDigit() lets a Unicode-digit month/year pass the format
+    // guard and then crash in toInt(). Pin the alphabet to '0'..'9'.
+    private fun String.isAsciiDigits(): Boolean = all { it in '0'..'9' }
 
     private fun passesLuhn(digits: String): Boolean {
         var sum = 0
