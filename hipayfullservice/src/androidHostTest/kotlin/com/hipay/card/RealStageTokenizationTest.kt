@@ -5,6 +5,7 @@ import com.hipay.core.HiPayConfig
 import kotlinx.coroutines.runBlocking
 import java.io.File
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
@@ -32,6 +33,32 @@ class RealStageTokenizationTest {
         }
         assertTrue(token.token.isNotEmpty())
         assertTrue(token.pan?.startsWith("411111") == true)
+    }
+
+    /**
+     * Real-stage card-network resolution: a Maestro card co-badged BCMC
+     * (`6703…449`, verified live 2026-06-13) resolves to brand MAESTRO +
+     * domestic_network bcmc → BCMC selected first (co-brand default).
+     */
+    @Test
+    fun realStageCardInfoResolvesBcmcCoBrand() {
+        val credentials = loadStageCredentials() ?: return
+        val (username, password) = credentials
+        val config = HiPayConfig(username, password, Environment.STAGE)
+
+        val info = runBlocking {
+            CardTokenizer(config).resolveCardInfo(
+                cardNumber = "6703444444444449",
+                expiryMonth = "12",
+                expiryYear = "2027",
+            )
+        }
+        assertEquals("MAESTRO", info.brand)
+        assertEquals("bcmc", info.domesticNetwork)
+        assertEquals(
+            listOf(com.hipay.card.validation.CardNetwork.BCMC, com.hipay.card.validation.CardNetwork.MAESTRO),
+            info.resolvedNetworks(),
+        )
     }
 
     /** Parses `export KEY=value` lines; walks up from the working dir. */

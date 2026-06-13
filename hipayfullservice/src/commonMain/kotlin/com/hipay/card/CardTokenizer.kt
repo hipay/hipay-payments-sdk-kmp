@@ -1,5 +1,6 @@
 package com.hipay.card
 
+import com.hipay.card.model.CardInfo
 import com.hipay.card.model.CardToken
 import com.hipay.card.validation.ensureValidForTokenization
 import com.hipay.core.HiPayConfig
@@ -68,6 +69,40 @@ public class CardTokenizer internal constructor(
             )
         }
         return token
+    }
+
+    /**
+     * Resolves the card's network(s) from the Secure Vault (POST `token`) once
+     * the entered number is complete — the authoritative source for the brand
+     * and any domestic co-brand (CB / BCMC). No CVC/holder is sent; the call is
+     * a lightweight resolution, not the final tokenization.
+     *
+     * Drives the network icons / co-brand selection in the entry component.
+     */
+    @Throws(HiPayException::class, CancellationException::class)
+    public suspend fun resolveCardInfo(
+        cardNumber: String,
+        expiryMonth: String,
+        expiryYear: String,
+    ): CardInfo {
+        val body = http.postForm(
+            url = config.environment.secureVaultV2Url + "token",
+            fields = linkedMapOf(
+                "card_number" to cardNumber,
+                "card_expiry_month" to expiryMonth,
+                "card_expiry_year" to expiryYear,
+            ),
+        )
+        return try {
+            vaultJson.decodeFromString(CardInfo.serializer(), body)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            throw HiPayException(
+                code = HiPayErrorCode.SERVER,
+                message = "Unusable Secure Vault response (token lookup)",
+            )
+        }
     }
 }
 

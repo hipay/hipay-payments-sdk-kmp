@@ -55,6 +55,21 @@ public object CardNetworks {
         }
     }
 
+    /**
+     * Maps a HiPay API brand / domestic-network string (e.g. "VISA",
+     * "mastercard", "cb", "bcmc", "american-express") to a [CardNetwork].
+     * Returns null for an unknown or null value. Case-insensitive.
+     */
+    public fun fromApiBrand(brand: String?): CardNetwork? = when (brand?.lowercase()) {
+        "visa" -> CardNetwork.VISA
+        "mastercard" -> CardNetwork.MASTERCARD
+        "american-express", "amex" -> CardNetwork.AMEX
+        "maestro" -> CardNetwork.MAESTRO
+        "cb", "carte-bancaire", "carte bancaire" -> CardNetwork.CB
+        "bcmc", "bancontact" -> CardNetwork.BCMC
+        else -> null
+    }
+
     /** CVC length: 4 for Amex, 3 for the other networks. */
     public fun cvcLength(network: CardNetwork): Int =
         if (network == CardNetwork.AMEX) 4 else 3
