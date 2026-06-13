@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+#
+# i18n key-parity gate (story 5.2): every CardEntryStringKey constant (the
+# commonMain key authority from story 5.1) must have a value in each locale
+# catalog. Today: iOS Localizable.strings for en/fr/it. Story 7.3 adds the
+# Android strings.xml source (see the marked extension point below).
+#
+# Wired into the Gradle `check` task — a missing or unknown key fails the build.
+# Reports KEY NAMES only (consistent with the value-free convention).
+
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+ENUM_FILE="$ROOT/hipayfullservice/src/commonMain/kotlin/com/hipay/card/validation/CardEntryStringKey.kt"
+IOS_RES="$ROOT/swift/Sources/HiPayCard/Resources"
+LOCALES=(en fr it)
+
+FAIL=0
+
+# Canonical key set = the enum constants, scoped to the enum body ONLY
+# (so the messageKey() mapping below it is not mis-parsed).
+keys=$(awk '
+  /enum class CardEntryStringKey/ { inblock = 1; next }
+  inblock && /^\}/ { inblock = 0 }
+  inblock {
+    line = $0
+    sub(/\/\/.*/, "", line)        # strip line comment
+    gsub(/[ \t,]/, "", line)       # strip spaces / tabs / commas
+    if (line ~ /^[A-Z][A-Z0-9_]*$/) print line
+  }
+' "$ENUM_FILE" | sort -u)
+
+if [ -z "$keys" ]; then
+  echo "i18n PARITY ERROR — no keys parsed from $ENUM_FILE"
+  exit 1
+fi
+key_count=$(printf '%s\n' "$keys" | wc -l | tr -d ' ')
+
+# Each locale catalog must contain EXACTLY the enum key set.
+check_strings() {
+  local loc="$1" file="$2"
+  if [ ! -f "$file" ]; then
+    echo "i18n PARITY ERROR [$loc] — missing catalog: $file"
+    FAIL=1
+    return
+  fi
+  local cat_keys missing extra
+  cat_keys=$(grep -oE '^[[:space:]]*"[^"]+"[[:space:]]*=' "$file" \
+    | grep -oE '"[^"]+"' | tr -d '"' | sort -u || true)
+  missing=$(comm -23 <(printf '%s\n' "$keys") <(printf '%s\n' "$cat_keys"))
+  extra=$(comm -13 <(printf '%s\n' "$keys") <(printf '%s\n' "$cat_keys"))
+  if [ -n "$missing" ]; then
+    echo "i18n PARITY ERROR [$loc] — missing keys:"
+    printf '  %s\n' $missing
+    FAIL=1
+  fi
+  if [ -n "$extra" ]; then
+    echo "i18n PARITY ERROR [$loc] — unknown keys (not in CardEntryStringKey):"
+    printf '  %s\n' $extra
+    FAIL=1
+  fi
+}
+
+for loc in "${LOCALES[@]}"; do
+  check_strings "$loc" "$IOS_RES/$loc.lproj/Localizable.strings"
+done
+
+# --- Android extension point (story 7.3) ---------------------------------
+# When the Android catalogs land, parse each values[-xx]/strings.xml the same
+# way (key = the <string name="KEY">) and run the same comm against $keys.
+# Intentionally NOT enforced until those files exist.
+# -------------------------------------------------------------------------
+
+if [ "$FAIL" -ne 0 ]; then
+  exit 1
+fi
+echo "OK: i18n key parity (${key_count} keys × ${#LOCALES[@]} locales)"

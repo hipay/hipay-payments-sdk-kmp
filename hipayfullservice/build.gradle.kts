@@ -78,6 +78,15 @@ val checkCardNoLogging = tasks.register<Exec>("checkCardNoLogging") {
 }
 tasks.named("check") { dependsOn(checkCardNoLogging) }
 
+// i18n key-parity gate (story 5.2): every CardEntryStringKey constant must have
+// a value in each locale catalog (iOS FR/EN/IT; Android added in 7.3).
+val checkI18nParity = tasks.register<Exec>("checkI18nParity") {
+    group = "verification"
+    description = "Asserts every CardEntryStringKey has a value in all locale catalogs"
+    commandLine("bash", rootDir.resolve("scripts/check-i18n-parity.sh").absolutePath)
+}
+tasks.named("check") { dependsOn(checkI18nParity) }
+
 mavenPublishing {
     publishToMavenCentral()
 
