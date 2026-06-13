@@ -1,5 +1,6 @@
 package com.hipay.core.gateway.model
 
+import com.hipay.core.redactPanLike
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -49,8 +50,14 @@ public class Transaction(
                 root.mapValues { (key, value) ->
                     when {
                         key in OBJECT_FIELDS && value !is JsonObject -> JsonNull
+                        // `reason` may be a string or a {code, message} object;
+                        // keep description text, PAN-redacted (PCI, NFR2 — the
+                        // value is server-controlled and publicly exposed).
                         key == "reason" && value is JsonObject ->
-                            value["message"] as? JsonPrimitive ?: JsonNull
+                            (value["message"] as? JsonPrimitive)
+                                ?.let { JsonPrimitive(redactPanLike(it.content)) } ?: JsonNull
+                        key == "reason" && value is JsonPrimitive && value.isString ->
+                            JsonPrimitive(redactPanLike(value.content))
                         else -> value
                     }
                 }

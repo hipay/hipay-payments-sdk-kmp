@@ -86,4 +86,29 @@ class TransactionMappingTest {
         assertEquals("Refused by bank", tx.reason)
         assertEquals(null, tx.order)
     }
+
+    // Review fix: a backend that echoes a PAN into `reason` (string or object
+    // message) must not leak it through the public Transaction.reason (PCI).
+    @Test
+    fun reasonHasPanLikeRunsRedacted() {
+        val fromString = Transaction.fromJson(
+            """{"state":"declined","reason":"refused for 4111111111111111"}"""
+        )
+        assertEquals(false, fromString.reason!!.contains("4111"))
+        assertEquals(true, fromString.reason!!.contains("[REDACTED]"))
+
+        val fromObject = Transaction.fromJson(
+            """{"state":"declined","reason":{"code":"40","message":"pan 4111 1111 1111 1111 declined"}}"""
+        )
+        assertEquals(false, fromObject.reason!!.contains("4111"))
+    }
+
+    // Review fix: state matching is case-insensitive — a casing drift must not
+    // map a successful payment to ERROR.
+    @Test
+    fun stateMatchingIsCaseInsensitive() {
+        assertEquals(TransactionState.COMPLETED, TransactionState.fromWire("Completed"))
+        assertEquals(TransactionState.COMPLETED, TransactionState.fromWire("COMPLETED"))
+        assertEquals(TransactionState.FORWARDING, TransactionState.fromWire(" forwarding "))
+    }
 }

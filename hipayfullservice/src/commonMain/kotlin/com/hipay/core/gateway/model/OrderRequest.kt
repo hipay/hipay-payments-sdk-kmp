@@ -36,16 +36,18 @@ public class OrderRequest(
     public val eci: Int = 7,
     public val authenticationIndicator: Int = 0,
 ) {
-    init {
+    // Amount is validated in toFields() (called inside the @Throws suspend
+    // requestNewOrder), NOT in init: a Kotlin constructor that throws is not a
+    // catchable error across the Kotlin/Native boundary — it would crash the
+    // Swift host (same reason CallbackUrlParser.parse is @Throws). Validating
+    // at field-build time surfaces a catchable HiPayException(VALIDATION).
+    internal fun toFields(): Map<String, String> {
         if (!amount.matches(AMOUNT_FORMAT)) {
             throw HiPayException(
                 code = HiPayErrorCode.VALIDATION,
                 message = "amount: must be a 2-decimal string (e.g. \"10.00\")",
             )
         }
-    }
-
-    internal fun toFields(): Map<String, String> {
         val fields = linkedMapOf(
             "orderid" to orderId,
             "payment_product" to paymentProduct,

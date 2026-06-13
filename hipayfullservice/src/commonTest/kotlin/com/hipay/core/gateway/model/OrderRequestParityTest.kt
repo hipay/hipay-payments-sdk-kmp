@@ -51,10 +51,15 @@ class OrderRequestParityTest {
 
     @Test
     fun amountMustBeTwoDecimalString() {
-        val ex = assertFailsWith<HiPayException> { cardOrder().copyWithAmount("1.0") }
+        // Validation fires at toFields() time (NOT the constructor: a throwing
+        // K/N constructor would crash the Swift host instead of surfacing a
+        // catchable error). Constructing with a bad amount must NOT throw.
+        val bad = cardOrder().copyWithAmount("1.0") // no throw here
+        val ex = assertFailsWith<HiPayException> { bad.toFields() }
         assertEquals(HiPayErrorCode.VALIDATION, ex.code)
-        assertFailsWith<HiPayException> { cardOrder().copyWithAmount("1") }
-        assertFailsWith<HiPayException> { cardOrder().copyWithAmount("1,00") }
+        assertFailsWith<HiPayException> { cardOrder().copyWithAmount("1").toFields() }
+        assertFailsWith<HiPayException> { cardOrder().copyWithAmount("1,00").toFields() }
+        assertFailsWith<HiPayException> { cardOrder().copyWithAmount("10.00abc").toFields() }
     }
 
     @Test
