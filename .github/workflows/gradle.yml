@@ -22,12 +22,9 @@ jobs:
     strategy:
       matrix:
         include:
+          # Active targets only (D6): jvm/iosX64/linuxX64 were removed in story 1.1.
           - target: iosSimulatorArm64Test
             os: macos-latest
-          - target: jvmTest
-            os: ubuntu-latest
-          - target: linuxX64Test
-            os: ubuntu-latest
           - target: testAndroidHostTest
             os: ubuntu-latest
     runs-on: ${{ matrix.os }}
