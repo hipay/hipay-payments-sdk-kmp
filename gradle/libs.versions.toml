@@ -12,7 +12,8 @@ androidx-compose-bom = "2025.06.01"
 androidx-test-ext-junit = "1.3.0"
 # Espresso/runner pinned forward: Compose ui-test pulls espresso 3.5.0 / runner 1.5.0,
 # which crash on recent APIs (InputManager.getInstance removed). The 3.7/1.7 generation
-# supports API 34..37 (the emulator here is API 37).
+# covers API 34+. Note: Compose ui-test 1.8.3 does not attach the composition on API 37 —
+# run the Android UI tests on an API <= 35 emulator (see story 7.1 / Epic 8 CI image pin).
 androidx-test-runner = "1.7.0"
 androidx-espresso = "3.7.0"
 
