@@ -2,18 +2,17 @@ package com.hipay.card
 
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.hipay.card.ui.CardEntryHarnessTags
-import com.hipay.card.ui.PlaceholderCardEntry
+import com.hipay.core.Environment
+import com.hipay.core.HiPayConfig
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Story 7.1 — the Android Compose UI-test harness enabler (mirror of iOS story 5.3).
- *
- * Proves the harness can, against a hosted composable: (a) set content, (b) drive input,
- * (c) read semantics (label + a state), and (d) assert the relative field order — the
- * foundation stories 7.2–7.4 build their a11y/error assertions on. Network-free.
+ * Story 7.2 — instrumented behavior tests for the real Compose card component,
+ * built on the story 7.1 harness. NETWORK-FREE: only incomplete (non-Luhn) BIN
+ * prefixes are typed, so `resolveCardInfo`/tokenization never fire. The full
+ * card + 3DS flow is a stage/manual check (story 7.5).
  */
 @RunWith(AndroidJUnit4::class)
 class CardEntryHarnessSmokeTest {
@@ -21,35 +20,50 @@ class CardEntryHarnessSmokeTest {
     @get:Rule
     val composeRule = createComposeRule()
 
+    private fun controller() =
+        HiPayCardEntryController(HiPayConfig("test-user", "test-pass", Environment.STAGE))
+
     @Test
-    fun harnessDrivesAndReadsTheCardComponent() {
+    fun rendersFormatsAndDetectsVisa() {
         val robot = CardEntryRobot(composeRule)
+        robot.setContent { HiPayCardEntry(controller()) }
 
-        // (a) set content
-        robot.setContent { PlaceholderCardEntry() }
-
-        // (a) all four fields present
         robot.assertPresent(
-            CardEntryHarnessTags.HOLDER,
-            CardEntryHarnessTags.NUMBER,
-            CardEntryHarnessTags.EXPIRY,
-            CardEntryHarnessTags.CVC,
+            HiPayCardEntryTags.HOLDER,
+            HiPayCardEntryTags.NUMBER,
+            HiPayCardEntryTags.EXPIRY,
+            HiPayCardEntryTags.CVC,
         )
 
-        // (b) drive input and read it back (BIN-detectable but incomplete prefix; no network anyway)
-        robot.type(CardEntryHarnessTags.NUMBER, "411111")
-        robot.assertText(CardEntryHarnessTags.NUMBER, "411111")
+        // Incomplete Visa prefix → local detection only (no network).
+        robot.type(HiPayCardEntryTags.NUMBER, "411111")
+        robot.assertText(HiPayCardEntryTags.NUMBER, "4111 11") // CardNetworks.format groups of 4
 
-        // (c) read a label (contentDescription) and a state (stateDescription)
-        robot.assertContentDescription(CardEntryHarnessTags.HOLDER, "Card holder")
-        robot.assertState(CardEntryHarnessTags.CVC, "disabled")
+        // The Visa chip renders and is the default selection.
+        robot.assertPresent(HiPayCardEntryTags.network("visa"))
+        robot.assertSelected(HiPayCardEntryTags.network("visa"), selected = true)
 
-        // (d) assert relative field order holder -> number -> expiry -> cvc
-        robot.assertFieldOrder(
-            CardEntryHarnessTags.HOLDER,
-            CardEntryHarnessTags.NUMBER,
-            CardEntryHarnessTags.EXPIRY,
-            CardEntryHarnessTags.CVC,
+        // Visa requires a CVC → the field is enabled.
+        robot.assertEnabled(HiPayCardEntryTags.CVC, enabled = true)
+
+        // Relative order: holder above number above expiry; number above cvc
+        // (expiry & cvc share a row, so they are not ordered against each other).
+        robot.assertVerticalOrder(
+            HiPayCardEntryTags.HOLDER,
+            HiPayCardEntryTags.NUMBER,
+            HiPayCardEntryTags.EXPIRY,
         )
+        robot.assertVerticalOrder(HiPayCardEntryTags.NUMBER, HiPayCardEntryTags.CVC)
+    }
+
+    @Test
+    fun maestroDisablesCvc() {
+        val robot = CardEntryRobot(composeRule)
+        robot.setContent { HiPayCardEntry(controller()) }
+
+        // Incomplete Maestro prefix (starts with 50) → CVC not required → field disabled.
+        robot.type(HiPayCardEntryTags.NUMBER, "5018")
+        robot.assertPresent(HiPayCardEntryTags.network("maestro"))
+        robot.assertEnabled(HiPayCardEntryTags.CVC, enabled = false)
     }
 }
