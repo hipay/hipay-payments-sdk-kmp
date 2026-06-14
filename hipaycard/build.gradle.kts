@@ -10,6 +10,11 @@ plugins {
     alias(libs.plugins.compose.compiler)
 }
 
+// Coordinates so a consumer (the Android demo, via composite build) can resolve this
+// module as "com.hipay.fullservice:hipaycard" (story 7.5).
+group = "com.hipay.fullservice"
+version = "1.0.0"
+
 android {
     // com.hipay.card keeps this module on the PCI anti-logging path (scripts/check-no-logging.sh).
     namespace = "com.hipay.card"
@@ -38,7 +43,9 @@ kotlin {
 
 dependencies {
     // The headless KMP core (shared validation/i18n contract). Consumed unchanged (D14).
-    implementation(project(":hipayfullservice"))
+    // `api` so consumers of :hipaycard (the demo) also get the core API (GatewayClient,
+    // CallbackUrlParser, HiPayConfig, OrderRequest…) transitively.
+    api(project(":hipayfullservice"))
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
