@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Minimal library manifest; the package/namespace comes from build.gradle.kts. -->
+<manifest />
