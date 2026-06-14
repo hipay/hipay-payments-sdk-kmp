@@ -96,6 +96,25 @@ class OrderRequestParityTest {
     }
 
     @Test
+    fun absentCustomerAndShippingEmitNoKeys() {
+        // Story 6.1: customer/shipping are optional — omitted → not sent.
+        val fields = cardOrder(customer = null, shipping = null).toFields()
+        assertFalse("firstname" in fields)
+        assertFalse("email" in fields)
+        assertFalse(fields.keys.any { it.startsWith("shipto_") })
+    }
+
+    @Test
+    fun shippingOnlyOmitsCustomerFlatKeys() {
+        // A shipping-only order must not leak flat customer keys.
+        val ship = CustomerInfo(firstName = "Jane", city = "Lyon", country = "FR")
+        val fields = cardOrder(customer = null, shipping = ship).toFields()
+        assertEquals("Jane", fields["shipto_firstname"])
+        assertEquals("FR", fields["shipto_country"])
+        assertFalse("firstname" in fields) // no flat customer keys
+    }
+
+    @Test
     fun customDataSerializesAsJsonObjectString() {
         val fields = cardOrder(customData = mapOf("basket" to "B42")).toFields()
         assertEquals("""{"basket":"B42"}""", fields["custom_data"])
