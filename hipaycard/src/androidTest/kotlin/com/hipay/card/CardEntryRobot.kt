@@ -9,6 +9,7 @@ import androidx.compose.ui.test.isNotSelected
 import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.junit4.ComposeContentTestRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 
@@ -50,6 +51,15 @@ class CardEntryRobot(private val rule: ComposeContentTestRule) {
         rule.onNodeWithTag(tag).performClick()
         rule.waitForIdle()
     }
+
+    /** Move focus to [tag] (focusing it blurs whatever was focused before). */
+    fun focus(tag: String) = tap(tag)
+
+    fun assertTagExists(tag: String) = rule.onNodeWithTag(tag).assertExists()
+    fun assertTagAbsent(tag: String) = rule.onNodeWithTag(tag).assertDoesNotExist()
+
+    fun assertTextShown(text: String) = rule.onNodeWithText(text).assertExists()
+    fun assertTextAbsent(text: String) = rule.onNodeWithText(text).assertDoesNotExist()
 
     /**
      * Assert the relative vertical order of the given tags (each strictly above the

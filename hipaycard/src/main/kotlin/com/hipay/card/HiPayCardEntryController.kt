@@ -5,8 +5,10 @@ package com.hipay.card
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.hipay.card.validation.CardEntryStringKey
 import com.hipay.card.validation.CardFieldValidation
 import com.hipay.card.validation.CardNetwork
+import com.hipay.card.validation.messageKey
 import com.hipay.card.validation.CardNetworks
 import com.hipay.card.validation.CardValidators
 import com.hipay.card.validation.ValidationReason
@@ -110,6 +112,28 @@ public class HiPayCardEntryController(
             !isCvcComplete -> Field.CVC
             else -> null
         }
+
+    // ---- Inline error message KEYS (story 7.4) — the Composable localizes via cardString.
+    // Shown only after the field has blurred (or revealErrors()); value-free (PCI). ----
+    public val holderErrorKey: CardEntryStringKey?
+        get() = if (holderBlurred) CardFieldValidation.holderReason(holder).messageKey() else null
+
+    public val expiryErrorKey: CardEntryStringKey?
+        get() = if (expiryBlurred) CardFieldValidation.expiryReason(expiryMonth, expiryYear).messageKey() else null
+
+    public val cvcErrorKey: CardEntryStringKey?
+        get() = if (cvcBlurred) CardFieldValidation.cvcReason(cvc, network).messageKey() else null
+
+    private val numberErrorKey: CardEntryStringKey?
+        get() = if (numberBlurred) CardFieldValidation.cardNumberReason(panDigits).messageKey() else null
+
+    private val networkErrorKey: CardEntryStringKey?
+        get() = if (numberBlurred && network != CardNetwork.UNKNOWN && !isNetworkAuthorized)
+            AllowedNetworks.reason(network, allowedKmp).messageKey() else null
+
+    /** Number-field slot error: network-not-authorized takes precedence over the number's own error (D1). */
+    public val numberSlotErrorKey: CardEntryStringKey?
+        get() = networkErrorKey ?: numberErrorKey
 
     // ---- Field handlers (called from the Composable onValueChange) ----
     public fun onHolderChange(input: String) {
