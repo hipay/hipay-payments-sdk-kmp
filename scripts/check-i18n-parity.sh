@@ -15,7 +15,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 ENUM_FILE="$ROOT/hipayfullservice/src/commonMain/kotlin/com/hipay/card/validation/CardEntryStringKey.kt"
 IOS_RES="$ROOT/swift/Sources/HiPayCard/Resources"
+ANDROID_RES="$ROOT/hipaycard/src/main/res"
 LOCALES=(en fr it)
+platforms="iOS"
 
 FAIL=0
 
@@ -72,17 +74,57 @@ check_strings() {
   fi
 }
 
+# Each Android catalog (values[-xx]/strings.xml) must contain EXACTLY the enum key set.
+# Keys are <string name="KEY">; an empty value is <string name="KEY"></string> or .../>.
+android_dir_for() { case "$1" in en) echo "values";; *) echo "values-$1";; esac; }
+
+check_android() {
+  local loc="$1" file="$2"
+  if [ ! -f "$file" ]; then
+    echo "i18n PARITY ERROR [android:$loc] — missing catalog: $file"
+    FAIL=1
+    return
+  fi
+  local cat_keys missing extra empty
+  cat_keys=$(grep -oE '<string[[:space:]]+name="[^"]+"' "$file" \
+    | sed -E 's/.*name="([^"]+)".*/\1/' | sort -u || true)
+  missing=$(comm -23 <(printf '%s\n' "$keys") <(printf '%s\n' "$cat_keys"))
+  extra=$(comm -13 <(printf '%s\n' "$keys") <(printf '%s\n' "$cat_keys"))
+  if [ -n "$missing" ]; then
+    echo "i18n PARITY ERROR [android:$loc] — missing keys:"
+    printf '  %s\n' $missing
+    FAIL=1
+  fi
+  if [ -n "$extra" ]; then
+    echo "i18n PARITY ERROR [android:$loc] — unknown keys (not in CardEntryStringKey):"
+    printf '  %s\n' $extra
+    FAIL=1
+  fi
+  empty=$(grep -oE '<string[[:space:]]+name="[^"]+"[[:space:]]*(></string>|/>)' "$file" \
+    | sed -E 's/.*name="([^"]+)".*/\1/' | sort -u || true)
+  if [ -n "$empty" ]; then
+    echo "i18n PARITY ERROR [android:$loc] — empty values for keys:"
+    printf '  %s\n' $empty
+    FAIL=1
+  fi
+}
+
 for loc in "${LOCALES[@]}"; do
   check_strings "$loc" "$IOS_RES/$loc.lproj/Localizable.strings"
 done
 
-# --- Android extension point (story 7.3) ---------------------------------
-# When the Android catalogs land, parse each values[-xx]/strings.xml the same
-# way (key = the <string name="KEY">) and run the same comm against $keys.
-# Intentionally NOT enforced until those files exist.
+# --- Android catalogs (story 7.3) ----------------------------------------
+# Enforced once the Android catalogs exist; parses values[-xx]/strings.xml the
+# same way and runs the identical comm against the enum $keys.
+if [ -d "$ANDROID_RES" ]; then
+  for loc in "${LOCALES[@]}"; do
+    check_android "$loc" "$ANDROID_RES/$(android_dir_for "$loc")/strings.xml"
+  done
+  platforms="iOS+Android"
+fi
 # -------------------------------------------------------------------------
 
 if [ "$FAIL" -ne 0 ]; then
   exit 1
 fi
-echo "OK: i18n key parity (${key_count} keys × ${#LOCALES[@]} locales)"
+echo "OK: i18n key parity (${key_count} keys × ${#LOCALES[@]} locales × ${platforms})"

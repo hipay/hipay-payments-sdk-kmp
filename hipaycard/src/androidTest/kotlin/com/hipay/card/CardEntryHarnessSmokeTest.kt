@@ -1,6 +1,7 @@
 package com.hipay.card
 
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.hipay.core.Environment
 import com.hipay.core.HiPayConfig
@@ -34,6 +35,9 @@ class CardEntryHarnessSmokeTest {
             HiPayCardEntryTags.EXPIRY,
             HiPayCardEntryTags.CVC,
         )
+
+        // Strings resolve from strings.xml (default EN locale on the emulator).
+        composeRule.onNodeWithText("Cardholder name").assertExists()
 
         // Incomplete Visa prefix → local detection only (no network).
         robot.type(HiPayCardEntryTags.NUMBER, "411111")
