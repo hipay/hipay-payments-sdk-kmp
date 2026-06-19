@@ -224,6 +224,10 @@ public class HiPayCardEntryController(
             else -> offered.firstOrNull()
         }
         if (selectedNetwork !in offered) userSelectedNetwork = false
+        // The effective network (selected co-brand) may differ from the locally detected one
+        // and change the CVC policy (e.g. backend resolves CB/BCMC → no CVC). Re-cap / clear a
+        // now-stale CVC against the effective network (code-review 7.2, AC#4 parity with iOS).
+        cvc = if (isCvcRequired) cvc.take(cvcMaxLength) else ""
     }
 
     /**
@@ -275,7 +279,10 @@ public class HiPayCardEntryController(
             authenticationIndicator = authenticationIndicator,
         )
         val transaction = gateway.requestNewOrder(order, signature)
-        // Clear sensitive/derived state (PAN/CVC already gone from the vault's view).
+        // Clear sensitive/derived state after a successful order (code-review 7.2): PAN, CVC,
+        // the cardholder name (PII), networks, and the blur flags so a reused controller does
+        // not show stale errors against now-empty fields.
+        holder = ""
         cardNumber = ""
         cvc = ""
         networks = emptyList()
@@ -283,6 +290,10 @@ public class HiPayCardEntryController(
         lastResolvedDigits = null
         userSelectedNetwork = false
         lastDetected = CardNetwork.UNKNOWN
+        holderBlurred = false
+        numberBlurred = false
+        expiryBlurred = false
+        cvcBlurred = false
         return transaction
     }
 

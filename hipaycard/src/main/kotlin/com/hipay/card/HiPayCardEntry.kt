@@ -77,6 +77,13 @@ public object HiPayCardEntryTags {
  * val controller = HiPayCardEntryController(config, allowedNetworks)
  * composeView.setContent { HiPayCardEntry(controller) }
  * ```
+ *
+ * Lifecycle: if you let the controller own its coroutine scope (the default — no `scope`
+ * passed), dispose it when the component leaves composition to avoid leaking it:
+ * ```
+ * DisposableEffect(controller) { onDispose { controller.dispose() } }
+ * ```
+ * (No-op if you supplied your own `scope`.)
  */
 @Composable
 public fun HiPayCardEntry(
