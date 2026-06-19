@@ -90,7 +90,12 @@ tasks.named("check") { dependsOn(checkI18nParity) }
 mavenPublishing {
     publishToMavenCentral()
 
-    signAllPublications()
+    // Sign only on the gated release path (story 8.1): the CI release job provides
+    // `ORG_GRADLE_PROJECT_signingInMemoryKey`; a keyless local `publishToMavenLocal`
+    // (dev / POM validation) must NOT require signing.
+    if (project.hasProperty("signingInMemoryKey")) {
+        signAllPublications()
+    }
 
     coordinates(group.toString(), "fullservice-kmp", version.toString())
 
@@ -98,25 +103,28 @@ mavenPublishing {
         name = "HiPay Fullservice KMP SDK"
         description = "HiPay Fullservice payment SDK for Kotlin Multiplatform (card payment)."
         inceptionYear = "2026"
-        url = "https://github.com/hipay/hipay-fullservice-kmp/"
+        // Interim URL — the final repo depends on the repos-architecture decision (deferred).
+        url = "https://github.com/hipay/hipay-fullservice-kmp"
         licenses {
             license {
-                name = "XXX"
-                url = "YYY"
-                distribution = "ZZZ"
+                // TODO(legal, story 8.1): HiPay legal must confirm the published license
+                // (proprietary vs OSS). Placeholder kept explicit (not "XXX") until then.
+                name = "TODO(legal): license to be confirmed by HiPay"
+                url = "https://hipay.com"
+                distribution = "repo"
             }
         }
         developers {
             developer {
-                id = "XXX"
-                name = "YYY"
-                url = "ZZZ"
+                id = "hipay"
+                name = "HiPay"
+                url = "https://github.com/hipay"
             }
         }
         scm {
-            url = "XXX"
-            connection = "YYY"
-            developerConnection = "ZZZ"
+            url = "https://github.com/hipay/hipay-fullservice-kmp"
+            connection = "scm:git:https://github.com/hipay/hipay-fullservice-kmp.git"
+            developerConnection = "scm:git:ssh://git@github.com/hipay/hipay-fullservice-kmp.git"
         }
     }
 }

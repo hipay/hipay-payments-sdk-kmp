@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.compose.compiler)
+    alias(libs.plugins.vanniktech.mavenPublish)
 }
 
 // Coordinates so a consumer (the Android demo, via composite build) can resolve this
@@ -62,4 +63,42 @@ dependencies {
     androidTestImplementation(libs.androidx.espresso.core)
     // Provides the empty ComponentActivity host for createComposeRule().
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+}
+
+// Publication (story 8.1): the Android card module ships to Maven as
+// com.hipay.fullservice:hipaycard; its POM declares the core dependency (via `api`).
+// POM kept in sync with :hipayfullservice (license is a documented TODO(legal)).
+mavenPublishing {
+    publishToMavenCentral()
+    // Sign only on the gated release path (keyless publishToMavenLocal must work).
+    if (project.hasProperty("signingInMemoryKey")) {
+        signAllPublications()
+    }
+    coordinates(group.toString(), "hipaycard", version.toString())
+    pom {
+        name = "HiPay Fullservice — Android card UI"
+        description = "Jetpack Compose card-entry component for the HiPay Fullservice SDK."
+        inceptionYear = "2026"
+        url = "https://github.com/hipay/hipay-fullservice-kmp"
+        licenses {
+            license {
+                // TODO(legal, story 8.1): HiPay legal must confirm the published license.
+                name = "TODO(legal): license to be confirmed by HiPay"
+                url = "https://hipay.com"
+                distribution = "repo"
+            }
+        }
+        developers {
+            developer {
+                id = "hipay"
+                name = "HiPay"
+                url = "https://github.com/hipay"
+            }
+        }
+        scm {
+            url = "https://github.com/hipay/hipay-fullservice-kmp"
+            connection = "scm:git:https://github.com/hipay/hipay-fullservice-kmp.git"
+            developerConnection = "scm:git:ssh://git@github.com/hipay/hipay-fullservice-kmp.git"
+        }
+    }
 }
