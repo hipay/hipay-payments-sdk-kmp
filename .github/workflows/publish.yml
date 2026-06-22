@@ -9,6 +9,8 @@ on:
   workflow_dispatch:
     inputs:
       ref:
+        # Story 8.2 single-version policy: this tag == gradle.properties version,
+        # and is reused as the SPM asset tag so both channels publish one number.
         description: "Release tag to publish (an explicitly created, reviewed release tag)"
         required: true
         type: string
@@ -18,6 +20,9 @@ jobs:
     runs-on: macOS-latest
     # Protected environment → approval gate before secrets are available.
     environment: maven-central
+    # The iOS leg uploads the XCFramework to the GitHub Release for the tag.
+    permissions:
+      contents: write
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -28,6 +33,7 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: 21
+      # --- Maven Central leg (Android AAR + KMP klibs) — story 8.1 -------------
       - name: Publish to MavenCentral
         run: ./gradlew publishToMavenCentral --no-configuration-cache
         env:
@@ -36,3 +42,18 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_KEY_ID }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_KEY_CONTENTS }}
+      # --- SPM leg (iOS) — story 9.1 ------------------------------------------
+      # Same gated job → runs only after the environment approval. Builds the
+      # XCFramework zip + SwiftPM checksum and attaches the zip to the Release
+      # for the dispatched tag. REPO_SLUG defaults to this repo so the generated
+      # remote Package.swift carries a real asset URL (final distribution-repo
+      # topology is settled in architecture-repos.md).
+      - name: Build SPM remote-release artifacts (XCFramework zip + checksum)
+        run: REPO_SLUG="${{ github.repository }}" TAG="${{ inputs.ref }}" ./scripts/build-release.sh
+      - name: Attach XCFramework to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ inputs.ref }}" \
+            build-output-local/spm/HiPayFullservice.xcframework.zip \
+            --clobber
