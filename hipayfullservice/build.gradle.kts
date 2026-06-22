@@ -10,7 +10,7 @@ plugins {
 }
 
 group = "com.hipay.fullservice"
-version = "1.0.0"
+// version: single source from gradle.properties — inherited as project.version.
 
 kotlin {
     androidLibrary {

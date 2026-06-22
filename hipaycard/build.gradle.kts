@@ -12,9 +12,9 @@ plugins {
 }
 
 // Coordinates so a consumer (the Android demo, via composite build) can resolve this
-// module as "com.hipay.fullservice:hipaycard" (story 7.5).
+// module as "com.hipay.fullservice:hipaycard"
 group = "com.hipay.fullservice"
-version = "1.0.0"
+// version: single source from gradle.properties — inherited as project.version.
 
 android {
     // com.hipay.card keeps this module on the PCI anti-logging path (scripts/check-no-logging.sh).
