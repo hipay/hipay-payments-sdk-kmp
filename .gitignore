@@ -14,4 +14,6 @@ xcuserdata
 # KMP build artifact consumed by the SPM package (rebuilt via scripts/build-xcframework.sh)
 swift/HiPayFullservice.xcframework/
 swift/.build/
+# Generated SPM remote-release artifacts (story 9.1): zip + checksum + remote Package.swift
+build-output-local/
 .hipay_stage_env
