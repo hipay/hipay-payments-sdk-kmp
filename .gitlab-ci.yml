@@ -1,0 +1,65 @@
+# Release pipeline — decision R6 (architecture-repos.md, 2026-06-22).
+#
+# SECRET CUSTODY: all publishing secrets live HERE, in GitLab (internal perimeter),
+# NEVER on public GitHub. GitLab signs + publishes to Maven Central, builds the iOS
+# XCFramework, and PUSHES the GitHub Release + asset via the GitHub API using a
+# GitLab-stored, narrowly-scoped token. GitHub holds NO publishing secrets — it only
+# hosts the public mirror + the Releases.
+#
+# Gate (equivalent of the old GitHub workflow_dispatch + protected environment):
+#   - runs ONLY on a SemVer release tag,
+#   - `when: manual` → a maintainer starts it explicitly (no auto-publish),
+#   - secrets are PROTECTED CI/CD variables (exposed only on protected tags),
+#   - the `maven-central` environment is a GitLab Protected Environment with required
+#     approvers (Settings → CI/CD → Protected environments).
+#
+# Required PROTECTED + MASKED CI/CD variables (Settings → CI/CD → Variables):
+#   ORG_GRADLE_PROJECT_mavenCentralUsername   Sonatype Central Portal token (user)
+#   ORG_GRADLE_PROJECT_mavenCentralPassword   Sonatype Central Portal token (secret)
+#   ORG_GRADLE_PROJECT_signingInMemoryKeyId   GPG release SUBKEY id (not the master)
+#   ORG_GRADLE_PROJECT_signingInMemoryKeyPassword
+#   ORG_GRADLE_PROJECT_signingInMemoryKey     armored GPG private (release subkey)
+#   GITHUB_RELEASE_TOKEN  fine-grained PAT, contents:write on the PUBLIC mirror repo ONLY
+#   GITHUB_REPO           owner/repo of the public GitHub mirror (e.g. hipay/hipay-...)
+#
+# Runner: macOS (XCFramework + `swift package compute-checksum`) with `gh` + JDK 21
+# available. Tag the runner `macos` (adjust to your fleet).
+
+stages:
+  - release
+
+publish-release:
+  stage: release
+  tags: [macos]
+  rules:
+    # Release tags only (SemVer); pre-release/RC tags (x.y.z-rc.N) do NOT publish.
+    - if: '$CI_COMMIT_TAG =~ /^[0-9]+\.[0-9]+\.[0-9]+$/'
+      when: manual
+  environment:
+    name: maven-central          # GitLab Protected Environment → required approvers
+  variables:
+    GIT_DEPTH: "0"
+  script:
+    # Ordering (same invariant as the reviewed pipeline): Maven Central is IRREVERSIBLE,
+    # so it is LAST. Everything reversible (iOS build, validation, GitHub Release+assets)
+    # runs first — a failure before the Maven step leaves no half-published release.
+
+    # 1. Build the failure-prone, reversible iOS artifacts first.
+    - REPO_SLUG="$GITHUB_REPO" TAG="$CI_COMMIT_TAG" ./scripts/build-release.sh
+    - swift package --package-path build-output-local/spm dump-package > /dev/null
+
+    # 2. Push the GitHub Release + assets via the GitHub API. The token lives in GitLab;
+    #    GitHub stores nothing. No --clobber: a re-run on a published tag fails on purpose
+    #    (a re-release uses a NEW version — the Maven side is immutable).
+    - |
+      export GH_TOKEN="$GITHUB_RELEASE_TOKEN"
+      gh release view "$CI_COMMIT_TAG" --repo "$GITHUB_REPO" >/dev/null 2>&1 \
+        || gh release create "$CI_COMMIT_TAG" --repo "$GITHUB_REPO" --verify-tag \
+             --title "$CI_COMMIT_TAG" --notes "Release $CI_COMMIT_TAG"
+      gh release upload "$CI_COMMIT_TAG" --repo "$GITHUB_REPO" \
+        build-output-local/spm/HiPayFullservice.xcframework.zip \
+        build-output-local/spm/Package.swift \
+        build-output-local/spm/checksum.txt
+
+    # 3. Maven Central LAST (irreversible) — signed with the GPG release subkey.
+    - ./gradlew publishToMavenCentral --no-configuration-cache

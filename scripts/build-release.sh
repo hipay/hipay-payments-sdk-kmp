@@ -40,7 +40,8 @@ command -v ditto >/dev/null 2>&1 || {
 }
 
 # --- Version (single source: gradle.properties, story 8.2) -------------------
-VERSION="$(sed -n 's/^version=//p' "$ROOT/gradle.properties" | head -1)"
+# Tolerate optional whitespace around '=' (valid in Java .properties).
+VERSION="$(sed -n 's/^version[[:space:]]*=[[:space:]]*//p' "$ROOT/gradle.properties" | head -1)"
 [ -n "$VERSION" ] || { echo "ERROR: could not read 'version=' from gradle.properties" >&2; exit 1; }
 TAG="${TAG:-$VERSION}"
 
@@ -73,8 +74,11 @@ echo "$CHECKSUM" > "$OUT/checksum.txt"
 echo "==> Generating remote Package.swift…"
 TEMPLATE="$ROOT/swift/Package.remote.swift.template"
 [ -f "$TEMPLATE" ] || { echo "ERROR: missing $TEMPLATE" >&2; exit 1; }
-# Substitute placeholders. URL may contain '/', so use a delimiter that won't clash.
-sed -e "s|{{URL}}|${URL}|g" \
+# Substitute placeholders. Delimiter '|' avoids the slashes in URLs; escape '&'
+# (means "the matched text" in a sed replacement) so an exotic REPO_SLUG can't
+# corrupt the output. CHECKSUM is hex, so it needs no escaping.
+URL_ESC="${URL//&/\\&}"
+sed -e "s|{{URL}}|${URL_ESC}|g" \
     -e "s|{{CHECKSUM}}|${CHECKSUM}|g" \
     "$TEMPLATE" > "$OUT/Package.swift"
 
