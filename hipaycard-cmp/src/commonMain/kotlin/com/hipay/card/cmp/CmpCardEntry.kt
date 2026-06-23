@@ -12,11 +12,14 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -72,6 +75,8 @@ internal fun CmpCardEntry(
 
         // The CVV info text is toggled by the "ⓘ" and rendered full width below the row (11.2).
         var showCvvInfo by remember { mutableStateOf(false) }
+        // Reset the help when CVC stops being required so it never re-shows unprompted on return (review 11.2).
+        LaunchedEffect(controller.isCvcRequired) { if (!controller.isCvcRequired) showCvvInfo = false }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             // Expiry
             Column(modifier = Modifier.weight(1f)) {
@@ -96,7 +101,13 @@ internal fun CmpCardEntry(
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     trailingIcon = if (controller.isCvcRequired) ({
-                        Text("ⓘ", modifier = Modifier.clickable { showCvvInfo = !showCvvInfo })
+                        val cvvHelp = cmpString(CardEntryStringKey.CVV_TOOLTIP)
+                        Text(
+                            "ⓘ",
+                            modifier = Modifier
+                                .semantics { contentDescription = cvvHelp }
+                                .clickable { showCvvInfo = !showCvvInfo },
+                        )
                     }) else null,
                     modifier = Modifier.fillMaxWidth(),
                 )

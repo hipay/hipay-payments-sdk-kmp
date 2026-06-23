@@ -19,6 +19,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -157,6 +158,8 @@ private fun CardEntryContent(
 
         // The CVV info text is toggled by the "ⓘ" and rendered full width below the row (11.2).
         var showCvvInfo by remember { mutableStateOf(false) }
+        // Reset the help when CVC stops being required so it never re-shows unprompted on return (review 11.2).
+        LaunchedEffect(controller.isCvcRequired) { if (!controller.isCvcRequired) showCvvInfo = false }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             // Expiry
             FieldGroup(setsAccessibilityOrder, 2f, Modifier.weight(1f)) {
