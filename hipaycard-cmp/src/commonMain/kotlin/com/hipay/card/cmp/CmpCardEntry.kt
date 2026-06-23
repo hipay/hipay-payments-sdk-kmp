@@ -12,6 +12,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -66,6 +70,8 @@ internal fun CmpCardEntry(
         // Network-not-authorized takes precedence over the number's own error (D1).
         ErrorText(controller.numberSlotErrorKey)
 
+        // The CVV info text is toggled by the "ⓘ" and rendered full width below the row (11.2).
+        var showCvvInfo by remember { mutableStateOf(false) }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             // Expiry
             Column(modifier = Modifier.weight(1f)) {
@@ -78,9 +84,8 @@ internal fun CmpCardEntry(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                ErrorText(controller.expiryErrorKey)
             }
-            // CVC — shown-disabled when the network does not require it (e.g. Maestro).
+            // CVC — shown-disabled when not required; "ⓘ" toggles the full-width info text (11.2).
             Column(modifier = Modifier.weight(1f)) {
                 OutlinedTextField(
                     value = controller.cvc,
@@ -90,10 +95,23 @@ internal fun CmpCardEntry(
                     placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_CVV)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    trailingIcon = if (controller.isCvcRequired) ({
+                        Text("ⓘ", modifier = Modifier.clickable { showCvvInfo = !showCvvInfo })
+                    }) else null,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                ErrorText(controller.cvcErrorKey)
             }
+        }
+        // Expiry/CVC errors full width below the row (11.2), between the fields and the info.
+        ErrorText(controller.expiryErrorKey)
+        ErrorText(controller.cvcErrorKey)
+        // CVV help as a full-width inline text (no popup, 11.2), toggled by "ⓘ".
+        if (controller.isCvcRequired && showCvvInfo) {
+            Text(
+                text = cmpString(CardEntryStringKey.CVV_TOOLTIP),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }

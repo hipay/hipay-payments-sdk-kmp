@@ -13,11 +13,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -42,8 +40,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
 import com.hipay.card.HiPayCardEntryController.Field
 import com.hipay.card.validation.CardEntryStringKey
 import java.util.Locale
@@ -159,6 +155,8 @@ private fun CardEntryContent(
             ErrorSlot(controller.numberSlotErrorKey, HiPayCardEntryTags.error("number"))
         }
 
+        // The CVV info text is toggled by the "ⓘ" and rendered full width below the row (11.2).
+        var showCvvInfo by remember { mutableStateOf(false) }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             // Expiry
             FieldGroup(setsAccessibilityOrder, 2f, Modifier.weight(1f)) {
@@ -172,10 +170,9 @@ private fun CardEntryContent(
                     modifier = Modifier.fillMaxWidth().testTag(HiPayCardEntryTags.EXPIRY)
                         .blurring(controller, Field.EXPIRY),
                 )
-                ErrorSlot(controller.expiryErrorKey, HiPayCardEntryTags.error("expiry"))
             }
 
-            // CVC (+ info tooltip when required)
+            // CVC (+ tap-to-toggle "ⓘ" when required)
             FieldGroup(setsAccessibilityOrder, 3f, Modifier.weight(1f)) {
                 val cvcLabel =
                     if (controller.isCvcRequired) cardString(CardEntryStringKey.LABEL_CVV)
@@ -189,13 +186,17 @@ private fun CardEntryContent(
                     enabled = controller.isCvcRequired,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     // Info affordance only when the CVC is required (no overlay on a disabled field).
-                    trailingIcon = if (controller.isCvcRequired) ({ CvvInfo() }) else null,
+                    trailingIcon = if (controller.isCvcRequired) ({ CvvInfoIcon { showCvvInfo = !showCvvInfo } }) else null,
                     modifier = Modifier.fillMaxWidth().testTag(HiPayCardEntryTags.CVC)
                         .blurring(controller, Field.CVC),
                 )
-                ErrorSlot(controller.cvcErrorKey, HiPayCardEntryTags.error("cvc"))
             }
         }
+        // Expiry/CVC errors are FULL WIDTH below the row (11.2), between the fields and the info.
+        ErrorSlot(controller.expiryErrorKey, HiPayCardEntryTags.error("expiry"))
+        ErrorSlot(controller.cvcErrorKey, HiPayCardEntryTags.error("cvc"))
+        // CVV help as full-width inline text (no popup, 11.2), toggled by the "ⓘ".
+        if (controller.isCvcRequired && showCvvInfo) CvvInfoText()
     }
 }
 
@@ -249,40 +250,32 @@ private fun ErrorSlot(key: CardEntryStringKey?, tag: String) {
     }
 }
 
-/** CVV info affordance + tap-to-reveal tooltip (story 7.4 / iOS 5.6). */
+/** CVV info "ⓘ" affordance — toggles the full-width inline help text (story 11.2; no popup). */
 @Composable
-private fun CvvInfo() {
-    var show by remember { mutableStateOf(false) }
+private fun CvvInfoIcon(onToggle: () -> Unit) {
     val tooltip = cardString(CardEntryStringKey.CVV_TOOLTIP)
-    Box {
-        Text(
-            text = "ⓘ", // circled "i"
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier
-                .clickable { show = !show }
-                .testTag(HiPayCardEntryTags.CVC_INFO)
-                .semantics { contentDescription = tooltip },
-        )
-        if (show) {
-            Popup(
-                alignment = Alignment.TopEnd,
-                onDismissRequest = { show = false },
-                properties = PopupProperties(focusable = false),
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.inverseSurface,
-                    contentColor = MaterialTheme.colorScheme.inverseOnSurface,
-                ) {
-                    Text(
-                        text = tooltip,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 2,
-                        modifier = Modifier.widthIn(max = 280.dp).padding(8.dp).testTag(HiPayCardEntryTags.CVC_TOOLTIP),
-                    )
-                }
-            }
-        }
-    }
+    Text(
+        text = "ⓘ", // circled "i"
+        style = MaterialTheme.typography.titleMedium,
+        modifier = Modifier
+            .clickable { onToggle() }
+            .testTag(HiPayCardEntryTags.CVC_INFO)
+            .semantics { contentDescription = tooltip },
+    )
+}
+
+/** CVV help as a full-width inline text under the expiry/CVV row (story 11.2), announced when shown. */
+@Composable
+private fun CvvInfoText() {
+    Text(
+        text = cardString(CardEntryStringKey.CVV_TOOLTIP),
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 4.dp)
+            .testTag(HiPayCardEntryTags.CVC_TOOLTIP)
+            .semantics { liveRegion = LiveRegionMode.Polite },
+    )
 }
 
 /** Tappable network/co-brand chips. Each is one focusable a11y node: "<brand>, selected". */
