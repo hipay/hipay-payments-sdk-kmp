@@ -115,8 +115,9 @@ public class CmpCardController(
     }
 
     public fun onNumberChange(input: String) {
-        val digits = input.filter { it in '0'..'9' }.take(19)
-        cardNumber = CardNetworks.format(digits)
+        // Store RAW digits (story 11.1) — the field's VisualTransformation renders the spaces,
+        // so the caret never breaks on a grouping space.
+        cardNumber = input.filter { it in '0'..'9' }.take(19)
         recomputeNetworks()
     }
 

@@ -58,6 +58,8 @@ internal fun CmpCardEntry(
             placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_NUMBER)) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            // Raw digits as value; spaces rendered by the transformation → caret stays correct (11.1).
+            visualTransformation = CardNumberVisualTransformation(controller.network),
             modifier = Modifier.fillMaxWidth(),
         )
         NetworkChips(controller)

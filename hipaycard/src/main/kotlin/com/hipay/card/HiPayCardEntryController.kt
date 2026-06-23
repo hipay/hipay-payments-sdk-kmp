@@ -59,7 +59,7 @@ public class HiPayCardEntryController(
 
     // ---- Editable state (Compose snapshot state; mutated only via the on*Change handlers) ----
     public var holder: String by mutableStateOf(""); private set
-    public var cardNumber: String by mutableStateOf(""); private set   // display-formatted
+    public var cardNumber: String by mutableStateOf(""); private set   // RAW digits (11.1); spacing is a VisualTransformation
     public var expiry: String by mutableStateOf(""); private set       // "MM/YY"
     public var cvc: String by mutableStateOf(""); private set
 
@@ -141,8 +141,9 @@ public class HiPayCardEntryController(
     }
 
     public fun onNumberChange(input: String) {
-        val digits = input.filter { it in '0'..'9' }.take(19)
-        cardNumber = CardNetworks.format(digits)
+        // Store RAW digits (story 11.1) — HiPayCardEntry renders the spaces via a
+        // VisualTransformation, so the caret never breaks on a grouping space.
+        cardNumber = input.filter { it in '0'..'9' }.take(19)
         recomputeNetworks()
     }
 

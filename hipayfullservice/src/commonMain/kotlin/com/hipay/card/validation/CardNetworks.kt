@@ -82,22 +82,56 @@ public object CardNetworks {
         network != CardNetwork.MAESTRO && network != CardNetwork.BCMC
 
     /** Display formatting: Amex 4-6-5, everything else groups of 4. */
-    public fun format(number: String): String {
+    public fun format(number: String): String =
+        formatWithOffsets(number, detect(number.filter { it in '0'..'9' })).text
+
+    /**
+     * Formatting + caret offset maps (story 11.1) — the single source of truth for the
+     * card-number `VisualTransformation` on every platform. The raw digits are the value; the
+     * spaces are display-only and [originalToTransformed]/[transformedToOriginal] keep the caret
+     * correct. Grouping: Amex 4-6-5, otherwise 4×4 (mirrors [format]).
+     */
+    public fun formatWithOffsets(number: String, network: CardNetwork): FormattedNumber {
         val digits = number.filter { it in '0'..'9' }
-        if (digits.isEmpty()) return ""
-        val groups = when (detect(digits)) {
-            CardNetwork.AMEX -> listOf(4, 6, 5)
-            else -> listOf(4, 4, 4, 4, 3)
+        val bounds = groupBoundaries(network)
+        val out = StringBuilder()
+        val o2t = IntArray(digits.length + 1)
+        var t = 0
+        for (i in digits.indices) {
+            if (i in bounds) { out.append(' '); t++ }
+            o2t[i] = t
+            out.append(digits[i]); t++
         }
-        val builder = StringBuilder()
-        var index = 0
-        for (size in groups) {
-            if (index >= digits.length) break
-            if (builder.isNotEmpty()) builder.append(' ')
-            val end = minOf(index + size, digits.length)
-            builder.append(digits, index, end)
-            index = end
+        o2t[digits.length] = t
+
+        val formatted = out.toString()
+        val t2o = IntArray(formatted.length + 1)
+        var oi = 0
+        for (j in formatted.indices) {
+            t2o[j] = oi
+            if (formatted[j] != ' ') oi++
         }
-        return builder.toString()
+        t2o[formatted.length] = oi
+        return FormattedNumber(formatted, o2t, t2o)
+    }
+
+    /** Digit indices that get a preceding separator space (cumulative group sizes). */
+    private fun groupBoundaries(network: CardNetwork): Set<Int> {
+        val sizes = if (network == CardNetwork.AMEX) listOf(4, 6, 5) else listOf(4, 4, 4, 4, 3)
+        val b = mutableSetOf<Int>()
+        var acc = 0
+        for (s in sizes) { acc += s; b.add(acc) }
+        return b
     }
 }
+
+/**
+ * Formatted card number + caret offset maps (story 11.1). `originalToTransformed[i]` is the
+ * transformed (display) offset for raw offset `i`; `transformedToOriginal[j]` is the inverse.
+ * Consumed by the per-platform `VisualTransformation` wrappers (Android + Compose-Multiplatform).
+ */
+public class FormattedNumber(
+    public val text: String,
+    public val originalToTransformed: IntArray,
+    public val transformedToOriginal: IntArray,
+)

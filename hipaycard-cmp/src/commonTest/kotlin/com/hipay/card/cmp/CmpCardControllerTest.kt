@@ -38,10 +38,10 @@ class CmpCardControllerTest {
     }
 
     @Test
-    fun numberIsFormattedAndNetworkDetected() {
+    fun numberIsRawDigitsAndNetworkDetected() {
         val c = controller()
-        c.onNumberChange("4111111111111111")
-        assertEquals("4111 1111 1111 1111", c.cardNumber)
+        c.onNumberChange("4111 1111 1111 1111") // even if spaces are pasted
+        assertEquals("4111111111111111", c.cardNumber) // value is RAW digits (11.1)
         assertEquals(CardNetwork.VISA, c.network)
     }
 

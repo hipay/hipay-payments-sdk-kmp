@@ -150,6 +150,8 @@ private fun CardEntryContent(
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 trailingIcon = { NetworkChips(controller) },
+                // Raw digits as value; spaces rendered by the transformation → caret stays correct (11.1).
+                visualTransformation = CardNumberVisualTransformation(controller.network),
                 modifier = Modifier.fillMaxWidth().testTag(HiPayCardEntryTags.NUMBER)
                     .blurring(controller, Field.NUMBER),
             )
