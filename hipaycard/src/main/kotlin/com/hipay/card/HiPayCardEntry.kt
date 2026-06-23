@@ -98,8 +98,11 @@ public fun HiPayCardEntry(
         return
     }
     val base = LocalContext.current
-    val localized = remember(localeOverride, base) {
-        val cfg = Configuration(base.resources.configuration).apply { setLocale(Locale.forLanguageTag(localeOverride)) }
+    // Read the Configuration via LocalConfiguration (not base.resources.configuration):
+    // it recomposes when the device Configuration changes (lint LocalContextConfigurationRead).
+    val baseConfig = LocalConfiguration.current
+    val localized = remember(localeOverride, base, baseConfig) {
+        val cfg = Configuration(baseConfig).apply { setLocale(Locale.forLanguageTag(localeOverride)) }
         base.createConfigurationContext(cfg)
     }
     CompositionLocalProvider(

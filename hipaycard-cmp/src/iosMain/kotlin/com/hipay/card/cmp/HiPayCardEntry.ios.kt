@@ -1,29 +1,28 @@
 package com.hipay.card.cmp
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import com.hipay.card.validation.CardNetwork
 import com.hipay.core.HiPayConfig
 import com.hipay.core.gateway.model.CustomerInfo
 import com.hipay.core.gateway.model.Transaction
 
 /**
- * iOS actual — PLACEHOLDER (story 10.1). The real Compose-Multiplatform rendering of
- * the card UI on iOS (design (i), Skia) lands in story 10.2. This compiles for the iOS
- * targets so the module builds and publishes, but is non-functional on iOS.
+ * iOS actual (story 10.2, slice A) — renders the shared Compose-Multiplatform card UI (Skia),
+ * driven by the commonMain [CmpCardController]. Design (i): iOS cannot wrap the Swift
+ * `HiPayCard`, so the card is rendered in Compose-MP. (The native SwiftUI `HiPayCard` stays
+ * for native iOS merchants.)
  *
- * Native iOS merchants use the SwiftUI `HiPayCard` (unchanged); this module is for CMP
- * merchants whose iOS support arrives in 10.2.
+ * Slice A: working entry + tokenize/pay over the headless core; EN strings; basic UI.
+ * i18n FR/EN/IT + full a11y/tooltip = slice B. PAN/token never leave the controller (PCI/NFR2).
  */
 actual class HiPayCardController actual constructor(
-    @Suppress("UNUSED_PARAMETER") config: HiPayConfig,
-    @Suppress("UNUSED_PARAMETER") allowedNetworks: List<CardNetwork>,
+    config: HiPayConfig,
+    allowedNetworks: List<CardNetwork>,
 ) {
-    actual val canPay: Boolean = false
+    internal val impl = CmpCardController(config, allowedNetworks)
+
+    actual val canPay: Boolean get() = impl.canPay
 
     actual suspend fun pay(
         orderId: String,
@@ -36,11 +35,20 @@ actual class HiPayCardController actual constructor(
         signature: String?,
         customer: CustomerInfo?,
         shipping: CustomerInfo?,
-        // Catchable on purpose (IllegalStateException, not NotImplementedError/Error):
-        // a CMP host shipping Android-first must fail gracefully on iOS, not hard-crash.
-    ): Transaction = throw IllegalStateException("HiPay card UI is not yet available on iOS (story 10.2)")
+    ): Transaction = impl.pay(
+        orderId = orderId,
+        amount = amount,
+        currency = currency,
+        description = description,
+        language = language,
+        redirectScheme = redirectScheme,
+        authenticationIndicator = authenticationIndicator,
+        signature = signature,
+        customer = customer,
+        shipping = shipping,
+    )
 
-    actual fun dispose() {}
+    actual fun dispose() = impl.dispose()
 }
 
 @Composable
@@ -50,7 +58,10 @@ actual fun HiPayCardEntry(
     setsAccessibilityOrder: Boolean,
     localeOverride: String?,
 ) {
-    Box(modifier = modifier.padding(16.dp)) {
-        Text("HiPay card entry — iOS rendering arrives in story 10.2")
-    }
+    CmpCardEntry(
+        controller = controller.impl,
+        modifier = modifier,
+        setsAccessibilityOrder = setsAccessibilityOrder,
+        localeOverride = localeOverride,
+    )
 }

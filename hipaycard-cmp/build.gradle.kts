@@ -43,6 +43,9 @@ kotlin {
             // exposes the core too.
             api(project(":hipaycard"))
         }
+        commonTest.dependencies {
+            implementation(libs.kotlin.test)
+        }
     }
 }
 
