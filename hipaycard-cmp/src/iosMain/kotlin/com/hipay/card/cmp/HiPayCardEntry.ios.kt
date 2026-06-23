@@ -36,7 +36,9 @@ actual class HiPayCardController actual constructor(
         signature: String?,
         customer: CustomerInfo?,
         shipping: CustomerInfo?,
-    ): Transaction = throw NotImplementedError("iOS card UI: story 10.2")
+        // Catchable on purpose (IllegalStateException, not NotImplementedError/Error):
+        // a CMP host shipping Android-first must fail gracefully on iOS, not hard-crash.
+    ): Transaction = throw IllegalStateException("HiPay card UI is not yet available on iOS (story 10.2)")
 
     actual fun dispose() {}
 }

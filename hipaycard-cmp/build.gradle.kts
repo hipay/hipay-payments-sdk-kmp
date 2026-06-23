@@ -28,8 +28,10 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             // Core types for the public commonMain contract (HiPayConfig, CardNetwork,
-            // Transaction, CustomerInfo). Consumed unchanged (D14).
-            implementation(project(":hipayfullservice"))
+            // Transaction, CustomerInfo). `api` because these types appear in the public
+            // expect API → a common/iOS consumer needs the core on its compile classpath
+            // (Android also gets it via api(:hipaycard), but common/iOS have no such path).
+            api(project(":hipayfullservice"))
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.material3)
