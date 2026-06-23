@@ -79,6 +79,8 @@ mavenPublishing {
         name = "HiPay Fullservice — Android card UI"
         description = "Jetpack Compose card-entry component for the HiPay Fullservice SDK."
         inceptionYear = "2026"
+        // TODO(repo): final repository URL not yet decided — see architecture-repos.md
+        // (§9, deferred: final repo names + GitLab/GitHub topology). Interim value.
         url = "https://github.com/hipay/hipay-fullservice-kmp"
         licenses {
             license {
@@ -96,6 +98,7 @@ mavenPublishing {
             }
         }
         scm {
+            // TODO(repo): interim — final SCM URL pending architecture-repos.md (§9).
             url = "https://github.com/hipay/hipay-fullservice-kmp"
             connection = "scm:git:https://github.com/hipay/hipay-fullservice-kmp.git"
             developerConnection = "scm:git:ssh://git@github.com/hipay/hipay-fullservice-kmp.git"

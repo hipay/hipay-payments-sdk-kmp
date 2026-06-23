@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 rootProject.name = "hipay-fullservice-kmp"
 include(":hipayfullservice")
 include(":hipaycard")
+include(":hipaycard-cmp")

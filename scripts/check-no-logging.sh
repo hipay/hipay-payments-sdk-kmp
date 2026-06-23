@@ -7,6 +7,7 @@
 # Scanned:
 #   - hipayfullservice/src/*/kotlin/com/hipay/card/**   (all source sets)
 #   - hipaycard/src/*/kotlin/com/hipay/card/**          (Android Compose card module, story 7.1)
+#   - hipaycard-cmp/src/*/kotlin/com/hipay/card/**      (Compose-MP card module, story 10.1)
 #   - swift/Sources/HiPayCard/**
 #   - install(Logging anywhere in core/http (the vault path goes through it)
 
@@ -33,7 +34,8 @@ scan() {
 }
 
 for src_set in "$ROOT"/hipayfullservice/src/*/kotlin/com/hipay/card \
-               "$ROOT"/hipaycard/src/*/kotlin/com/hipay/card; do
+               "$ROOT"/hipaycard/src/*/kotlin/com/hipay/card \
+               "$ROOT"/hipaycard-cmp/src/*/kotlin/com/hipay/card; do
   scan "$src_set"
 done
 scan "$ROOT/swift/Sources/HiPayCard"
