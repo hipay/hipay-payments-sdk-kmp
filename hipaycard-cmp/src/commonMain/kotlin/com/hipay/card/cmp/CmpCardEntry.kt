@@ -1,12 +1,16 @@
 // PCI (NFR2): com.hipay.card path — never log card data here.
 package com.hipay.card.cmp
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -17,15 +21,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hipay.card.validation.CardEntryStringKey
 import com.hipay.card.validation.CardNetwork
+import org.jetbrains.compose.resources.painterResource
 
 /**
  * Shared Compose-Multiplatform card-entry UI (story 10.2, slice A) — rendered on iOS via the
@@ -146,15 +153,39 @@ private fun FieldLabel(text: String) {
 
 @Composable
 private fun NetworkChips(controller: CmpCardController) {
-    if (controller.networks.size <= 1) return // single/none → no co-brand choice to offer
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        controller.networks.forEach { net: CardNetwork ->
-            val selected = net == controller.selectedNetwork
-            Text(
-                text = net.name,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                modifier = Modifier.clickable { controller.selectNetwork(net) },
+    // Show a brand icon whenever a network is offered — including a single one (11.4); a dimmed
+    // neutral card when none. Mirrors the Android `:hipaycard` NetworkChips (icons, 48dp tap,
+    // selected full / others 0.35, merged semantics).
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        val nets: List<CardNetwork> = controller.networks
+        if (nets.isEmpty()) {
+            Image(
+                painter = painterResource(neutralCardIcon),
+                contentDescription = null, // decorative
+                modifier = Modifier.size(width = 32.dp, height = 20.dp).alpha(0.35f),
             )
+        } else {
+            nets.forEach { net ->
+                val isSel = net == controller.selectedNetwork
+                Box(
+                    modifier = Modifier
+                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                        .clickable { controller.selectNetwork(net) }
+                        // One merged node so screen readers announce "<brand>, selected".
+                        .semantics(mergeDescendants = true) {
+                            contentDescription = net.displayName()
+                            selected = isSel
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Image(
+                        painter = painterResource(net.iconResource()),
+                        contentDescription = null, // described by the parent node
+                        modifier = Modifier.size(width = 32.dp, height = 20.dp)
+                            .alpha(if (isSel) 1f else 0.35f),
+                    )
+                }
+            }
         }
     }
 }
