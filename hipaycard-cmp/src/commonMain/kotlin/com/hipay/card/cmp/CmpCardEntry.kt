@@ -22,6 +22,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hipay.card.validation.CardEntryStringKey
 import com.hipay.card.validation.CardNetwork
@@ -50,7 +51,7 @@ internal fun CmpCardEntry(
         OutlinedTextField(
             value = controller.holder,
             onValueChange = controller::onHolderChange,
-            label = { Text(cmpString(CardEntryStringKey.LABEL_HOLDER)) },
+            label = { FieldLabel(cmpString(CardEntryStringKey.LABEL_HOLDER)) },
             placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_HOLDER)) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
@@ -61,7 +62,7 @@ internal fun CmpCardEntry(
         OutlinedTextField(
             value = controller.cardNumber,
             onValueChange = controller::onNumberChange,
-            label = { Text(cmpString(CardEntryStringKey.LABEL_NUMBER)) },
+            label = { FieldLabel(cmpString(CardEntryStringKey.LABEL_NUMBER)) },
             placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_NUMBER)) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -83,7 +84,7 @@ internal fun CmpCardEntry(
                 OutlinedTextField(
                     value = controller.expiry,
                     onValueChange = controller::onExpiryChange,
-                    label = { Text(cmpString(CardEntryStringKey.LABEL_EXPIRY)) },
+                    label = { FieldLabel(cmpString(CardEntryStringKey.LABEL_EXPIRY)) },
                     placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_EXPIRY)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -96,7 +97,7 @@ internal fun CmpCardEntry(
                     value = controller.cvc,
                     onValueChange = controller::onCvcChange,
                     enabled = controller.isCvcRequired,
-                    label = { Text(cmpString(CardEntryStringKey.LABEL_CVV)) },
+                    label = { FieldLabel(cmpString(CardEntryStringKey.LABEL_CVV)) },
                     placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_CVV)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -125,6 +126,22 @@ internal fun CmpCardEntry(
             )
         }
     }
+}
+
+/**
+ * Field label forced onto a single line at the smaller (floating) type size (story 11.3) — keeps
+ * longer localized CVC labels from wrapping to two lines and inflating the field height. Mirrors
+ * the Android `:hipaycard` `FieldLabel`.
+ */
+@Composable
+private fun FieldLabel(text: String) {
+    Text(
+        text = text,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Visible,
+        style = MaterialTheme.typography.bodySmall,
+    )
 }
 
 @Composable

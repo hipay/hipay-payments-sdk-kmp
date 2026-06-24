@@ -40,6 +40,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hipay.card.HiPayCardEntryController.Field
 import com.hipay.card.validation.CardEntryStringKey
@@ -128,7 +129,7 @@ private fun CardEntryContent(
             OutlinedTextField(
                 value = controller.holder,
                 onValueChange = controller::onHolderChange,
-                label = { Text(cardString(CardEntryStringKey.LABEL_HOLDER)) },
+                label = { FieldLabel(cardString(CardEntryStringKey.LABEL_HOLDER)) },
                 placeholder = { Text(cardString(CardEntryStringKey.PLACEHOLDER_HOLDER)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().testTag(HiPayCardEntryTags.HOLDER)
@@ -142,7 +143,7 @@ private fun CardEntryContent(
             OutlinedTextField(
                 value = controller.cardNumber,
                 onValueChange = controller::onNumberChange,
-                label = { Text(cardString(CardEntryStringKey.LABEL_NUMBER)) },
+                label = { FieldLabel(cardString(CardEntryStringKey.LABEL_NUMBER)) },
                 placeholder = { Text(cardString(CardEntryStringKey.PLACEHOLDER_NUMBER)) },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -166,7 +167,7 @@ private fun CardEntryContent(
                 OutlinedTextField(
                     value = controller.expiry,
                     onValueChange = controller::onExpiryChange,
-                    label = { Text(cardString(CardEntryStringKey.LABEL_EXPIRY)) },
+                    label = { FieldLabel(cardString(CardEntryStringKey.LABEL_EXPIRY)) },
                     placeholder = { Text(cardString(CardEntryStringKey.PLACEHOLDER_EXPIRY)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -177,13 +178,13 @@ private fun CardEntryContent(
 
             // CVC (+ tap-to-toggle "ⓘ" when required)
             FieldGroup(setsAccessibilityOrder, 3f, Modifier.weight(1f)) {
-                val cvcLabel =
-                    if (controller.isCvcRequired) cardString(CardEntryStringKey.LABEL_CVV)
-                    else "${cardString(CardEntryStringKey.LABEL_CVV)} (${cardString(CardEntryStringKey.CVV_OPTIONAL)})"
+                // CVC is required (enabled) or not-applicable (disabled) — never a true "optional"
+                // enterable state — so the label stays the short "Security code" with no suffix
+                // (story 11.3 review): keeps it one line and avoids the half-width overflow.
                 OutlinedTextField(
                     value = controller.cvc,
                     onValueChange = controller::onCvcChange,
-                    label = { Text(cvcLabel) },
+                    label = { FieldLabel(cardString(CardEntryStringKey.LABEL_CVV)) },
                     placeholder = { Text(cardString(CardEntryStringKey.PLACEHOLDER_CVV)) },
                     singleLine = true,
                     enabled = controller.isCvcRequired,
@@ -201,6 +202,23 @@ private fun CardEntryContent(
         // CVV help as full-width inline text (no popup, 11.2), toggled by the "ⓘ".
         if (controller.isCvcRequired && showCvvInfo) CvvInfoText()
     }
+}
+
+/**
+ * Field label forced onto a single line at the smaller (floating) type size (story 11.3).
+ * Keeping the resting label at the floating size — plus `maxLines = 1` / no soft-wrap — stops the
+ * longer localized labels ("Code de sécurité (facultatif)", "Codice di sicurezza") from wrapping to
+ * two lines, which previously inflated the CVC field height and broke row symmetry with Expiry.
+ */
+@Composable
+private fun FieldLabel(text: String) {
+    Text(
+        text = text,
+        maxLines = 1,
+        softWrap = false,
+        overflow = TextOverflow.Visible,
+        style = MaterialTheme.typography.bodySmall,
+    )
 }
 
 /** A field + its error slot, carrying the relative traversal index so the error follows its field. */
