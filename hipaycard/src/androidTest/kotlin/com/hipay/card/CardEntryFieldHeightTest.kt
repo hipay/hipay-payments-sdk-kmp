@@ -42,9 +42,10 @@ class CardEntryFieldHeightTest {
     }
 
     @Test
-    fun cvcMatchesExpiryHeight_whenCvcDisabled() {
+    fun cvcMatchesExpiryHeight_monoMaestro() {
         composeRule.setContent { HiPayCardEntry(controller()) }
-        // Incomplete Maestro prefix → CVC not required → field disabled; label stays "Security code".
+        // Incomplete Maestro prefix → mono Maestro → CVC required + enabled (story 11.5); the
+        // label stays "Security code" and the field keeps the standard height (the 11.3 invariant).
         composeRule.onNodeWithTag(HiPayCardEntryTags.NUMBER).performTextInput("5018")
         composeRule.waitForIdle()
         assertEquals(heightOf(HiPayCardEntryTags.EXPIRY), heightOf(HiPayCardEntryTags.CVC), 1f)
