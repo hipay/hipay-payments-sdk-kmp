@@ -87,7 +87,8 @@ public class HiPayCardEntryController(
     public val network: CardNetwork
         get() = selectedNetwork?.kmpNetwork ?: CardNetworks.detect(panDigits)
 
-    public val isCvcRequired: Boolean get() = CardNetworks.isCvcRequired(network)
+    // Co-brand aware (story 11.5): a mono Maestro requires a CVC, a co-branded one does not.
+    public val isCvcRequired: Boolean get() = CardNetworks.isCvcRequired(network, networks.map { it.kmpNetwork })
     public val cvcMaxLength: Int get() = CardNetworks.cvcLength(network)
     public val isNumberComplete: Boolean get() = CardNetworks.isNumberComplete(panDigits)
     public val isExpiryComplete: Boolean get() = expiryDigits.length == 4
@@ -122,7 +123,11 @@ public class HiPayCardEntryController(
         get() = if (expiryBlurred) CardFieldValidation.expiryReason(expiryMonth, expiryYear).messageKey() else null
 
     public val cvcErrorKey: CardEntryStringKey?
-        get() = if (cvcBlurred) CardFieldValidation.cvcReason(cvc, network).messageKey() else null
+        get() = if (cvcBlurred) {
+            CardFieldValidation.cvcReason(cvc, network, networks.map { it.kmpNetwork }).messageKey()
+        } else {
+            null
+        }
 
     private val numberErrorKey: CardEntryStringKey?
         get() = if (numberBlurred) CardFieldValidation.cardNumberReason(panDigits).messageKey() else null

@@ -42,12 +42,16 @@ public object CardFieldValidation {
         else -> ValidationReason.VALID
     }
 
-    /** Not required or empty → VALID. Else checks length/format against the network's CVC length. */
-    public fun cvcReason(cvc: String, network: CardNetwork): ValidationReason {
+    /**
+     * Not required or empty → VALID. Else checks length/format against the network's CVC length.
+     * [offered] is the offered/co-brand set so the requirement is co-brand aware (story 11.5):
+     * a mono-network Maestro requires a CVC, a co-branded one does not.
+     */
+    public fun cvcReason(cvc: String, network: CardNetwork, offered: List<CardNetwork>): ValidationReason {
         // Network not yet resolved → do not flag (see object CONTRACT); the
         // expected CVC length is unknown until the network is known.
         if (network == CardNetwork.UNKNOWN) return ValidationReason.VALID
-        if (!CardNetworks.isCvcRequired(network) || cvc.isEmpty()) return ValidationReason.VALID
+        if (!CardNetworks.isCvcRequired(network, offered) || cvc.isEmpty()) return ValidationReason.VALID
         val expected = CardNetworks.cvcLength(network)
         return when {
             cvc.any { it !in '0'..'9' } -> ValidationReason.INVALID_CVV
@@ -56,6 +60,10 @@ public object CardFieldValidation {
             else -> ValidationReason.INVALID_CVV
         }
     }
+
+    /** Convenience: a lone network is treated as mono (so a bare Maestro requires a CVC). */
+    public fun cvcReason(cvc: String, network: CardNetwork): ValidationReason =
+        cvcReason(cvc, network, listOf(network))
 
     /** Empty → VALID (untouched). Over 60 chars → HOLDER_TOO_LONG. */
     public fun holderReason(holder: String): ValidationReason =

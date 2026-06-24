@@ -77,9 +77,21 @@ public object CardNetworks {
     public fun cvcLength(network: CardNetwork): Int =
         if (network == CardNetwork.AMEX) 4 else 3
 
-    /** Maestro and Bancontact do not require a CVC; the other networks do. */
+    /**
+     * CVC requirement, **co-brand aware** (story 11.5). A **mono-network Maestro** (Maestro is the
+     * only offered/authorized network) requires a CVC; a **co-branded** Maestro (≥2 offered) does
+     * not. Bancontact never requires a CVC; every other network does. [offered] is the offered set
+     * from the controller (the co-brand set) — pass the networks currently on offer.
+     */
+    public fun isCvcRequired(network: CardNetwork, offered: List<CardNetwork>): Boolean = when (network) {
+        CardNetwork.MAESTRO -> offered.size <= 1 // mono Maestro → CVC required; co-branded → not
+        CardNetwork.BCMC -> false
+        else -> true
+    }
+
+    /** Convenience: a lone network is treated as mono (so a bare Maestro requires a CVC). */
     public fun isCvcRequired(network: CardNetwork): Boolean =
-        network != CardNetwork.MAESTRO && network != CardNetwork.BCMC
+        isCvcRequired(network, listOf(network))
 
     /** Display formatting: Amex 4-6-5, everything else groups of 4. */
     public fun format(number: String): String =

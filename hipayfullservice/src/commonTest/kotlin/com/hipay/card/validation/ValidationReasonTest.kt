@@ -75,8 +75,14 @@ class ValidationReasonTest {
     @Test
     fun cvcNotRequiredOrEmptyIsValid() {
         assertEquals(ValidationReason.VALID, CardFieldValidation.cvcReason("", CardNetwork.VISA))
-        assertEquals(ValidationReason.VALID, CardFieldValidation.cvcReason("12", CardNetwork.MAESTRO)) // not required
         assertEquals(ValidationReason.VALID, CardFieldValidation.cvcReason("", CardNetwork.BCMC))
+        // Story 11.5: a co-branded Maestro does not require a CVC → any value is VALID.
+        val maestroCobrand = listOf(CardNetwork.MAESTRO, CardNetwork.CB)
+        assertEquals(ValidationReason.VALID, CardFieldValidation.cvcReason("12", CardNetwork.MAESTRO, maestroCobrand))
+        // ...but a mono Maestro DOES require it: empty → VALID, partial → INCOMPLETE.
+        assertEquals(ValidationReason.VALID, CardFieldValidation.cvcReason("", CardNetwork.MAESTRO))
+        assertEquals(ValidationReason.INCOMPLETE_CVV, CardFieldValidation.cvcReason("12", CardNetwork.MAESTRO))
+        assertEquals(ValidationReason.VALID, CardFieldValidation.cvcReason("123", CardNetwork.MAESTRO))
     }
 
     @Test

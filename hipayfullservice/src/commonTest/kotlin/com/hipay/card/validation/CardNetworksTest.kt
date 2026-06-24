@@ -72,12 +72,22 @@ class CardNetworksTest {
     }
 
     @Test
-    fun cvcNotRequiredForMaestro() {
-        assertFalse(CardNetworks.isCvcRequired(CardNetwork.MAESTRO))
-        // Bancontact has no CVV either
+    fun cvcPolicyIsCoBrandAwareForMaestro() {
+        // Story 11.5: mono Maestro requires a CVC; co-branded Maestro does not.
+        // Single-arg = lone network = mono → required.
+        assertTrue(CardNetworks.isCvcRequired(CardNetwork.MAESTRO))
+        assertTrue(CardNetworks.isCvcRequired(CardNetwork.MAESTRO, listOf(CardNetwork.MAESTRO)))
+        // Co-branded (≥2 offered) → not required.
+        assertFalse(CardNetworks.isCvcRequired(CardNetwork.MAESTRO, listOf(CardNetwork.MAESTRO, CardNetwork.CB)))
+        assertFalse(CardNetworks.isCvcRequired(CardNetwork.MAESTRO, listOf(CardNetwork.MAESTRO, CardNetwork.VISA)))
+        // Bancontact never requires a CVV (mono or co-branded).
         assertFalse(CardNetworks.isCvcRequired(CardNetwork.BCMC))
+        assertFalse(CardNetworks.isCvcRequired(CardNetwork.BCMC, listOf(CardNetwork.BCMC, CardNetwork.MAESTRO)))
+        // Every other network always requires a CVV, regardless of the offered set.
         assertTrue(CardNetworks.isCvcRequired(CardNetwork.VISA))
         assertTrue(CardNetworks.isCvcRequired(CardNetwork.AMEX))
+        assertTrue(CardNetworks.isCvcRequired(CardNetwork.VISA, listOf(CardNetwork.VISA, CardNetwork.MAESTRO)))
+        assertTrue(CardNetworks.isCvcRequired(CardNetwork.UNKNOWN))
     }
 
     // --- Formatting (network-dependent grouping) ---

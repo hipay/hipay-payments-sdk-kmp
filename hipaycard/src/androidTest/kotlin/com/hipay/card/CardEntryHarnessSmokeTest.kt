@@ -61,13 +61,14 @@ class CardEntryHarnessSmokeTest {
     }
 
     @Test
-    fun maestroDisablesCvc() {
+    fun monoMaestroRequiresCvc() {
         val robot = CardEntryRobot(composeRule)
         robot.setContent { HiPayCardEntry(controller()) }
 
-        // Incomplete Maestro prefix (starts with 50) → CVC not required → field disabled.
+        // Incomplete Maestro prefix (starts with 50). Locally this is a MONO Maestro (no co-brand
+        // detected → offered = [Maestro]) → CVC IS required → field enabled (story 11.5).
         robot.type(HiPayCardEntryTags.NUMBER, "5018")
         robot.assertPresent(HiPayCardEntryTags.network("maestro"))
-        robot.assertEnabled(HiPayCardEntryTags.CVC, enabled = false)
+        robot.assertEnabled(HiPayCardEntryTags.CVC, enabled = true)
     }
 }
