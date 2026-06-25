@@ -193,7 +193,10 @@ public class HiPayCardEntryController(
         val detected = CardNetworks.detect(digits)
         if (detected != lastDetected) {
             lastDetected = detected
-            // Clear a stale CVC when the network (hence its CVC policy) changes.
+            // Clear a stale CVC when the network (hence its CVC policy) changes. Single-arg = mono
+            // (a bare detected network); this is a TRANSIENT cap/clear — `applyOffered` below is the
+            // AUTHORITATIVE co-brand-aware clear (it re-evaluates against the offered set). Don't
+            // treat this line as the CVC policy source (story 11.5 review).
             if (!CardNetworks.isCvcRequired(detected)) cvc = ""
             else cvc = cvc.take(CardNetworks.cvcLength(detected))
         }

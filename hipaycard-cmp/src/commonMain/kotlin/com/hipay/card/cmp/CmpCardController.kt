@@ -160,7 +160,9 @@ public class CmpCardController(
         val detected = CardNetworks.detect(panDigits)
         if (detected != lastDetected) {
             lastDetected = detected
-            // Clear a stale CVC when the network (hence its CVC policy) changes.
+            // Clear a stale CVC when the network (hence its CVC policy) changes. Single-arg = mono
+            // (a bare detected network); TRANSIENT cap/clear — `applyOffered` below is the
+            // AUTHORITATIVE co-brand-aware clear. Not the CVC policy source (story 11.5 review).
             cvc = if (!CardNetworks.isCvcRequired(detected)) "" else cvc.take(CardNetworks.cvcLength(detected))
         }
         // Local offered set (backend refinement deferred — slice A).
