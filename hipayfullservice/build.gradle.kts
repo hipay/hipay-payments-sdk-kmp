@@ -108,10 +108,8 @@ mavenPublishing {
         url = "https://github.com/hipay/hipay-fullservice-kmp"
         licenses {
             license {
-                // TODO(legal, story 8.1): HiPay legal must confirm the published license
-                // (proprietary vs OSS). Placeholder kept explicit (not "XXX") until then.
-                name = "TODO(legal): license to be confirmed by HiPay"
-                url = "https://hipay.com"
+                name = "Apache-2.0"
+                url = "https://www.apache.org/licenses/LICENSE-2.0"
                 distribution = "repo"
             }
         }
