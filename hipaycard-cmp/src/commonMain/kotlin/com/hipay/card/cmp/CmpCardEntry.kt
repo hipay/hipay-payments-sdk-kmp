@@ -21,6 +21,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -50,6 +53,22 @@ internal fun CmpCardEntry(
     @Suppress("UNUSED_PARAMETER") setsAccessibilityOrder: Boolean = true,
     @Suppress("UNUSED_PARAMETER") localeOverride: String? = null,
 ) {
+    // Focus auto-advance on field completion (story 11.10, parity with iOS + Android). Keyed on
+    // the completion booleans → fires only on the incomplete→complete edge.
+    val expiryFocus = remember { FocusRequester() }
+    val cvcFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(controller.isNumberComplete) {
+        if (controller.isNumberComplete) expiryFocus.requestFocus()
+    }
+    LaunchedEffect(controller.isExpiryComplete) {
+        if (controller.isExpiryComplete) {
+            if (controller.isCvcRequired) cvcFocus.requestFocus() else focusManager.clearFocus()
+        }
+    }
+    val cvcJustFilled = controller.isCvcRequired && controller.cvc.length == controller.cvcMaxLength
+    LaunchedEffect(cvcJustFilled) { if (cvcJustFilled) focusManager.clearFocus() }
+
     Column(
         modifier = modifier.fillMaxWidth().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -97,7 +116,7 @@ internal fun CmpCardEntry(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     // Raw digits as value; "/" rendered by the transformation → caret stays correct (11.8).
                     visualTransformation = ExpiryVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().focusRequester(expiryFocus),
                 )
             }
             // CVC — shown-disabled when not required; "ⓘ" toggles the full-width info text (11.2).
@@ -119,7 +138,7 @@ internal fun CmpCardEntry(
                                 .clickable { showCvvInfo = !showCvvInfo },
                         )
                     }) else null,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().focusRequester(cvcFocus),
                 )
             }
         }

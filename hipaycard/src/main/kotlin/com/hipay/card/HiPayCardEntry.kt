@@ -27,9 +27,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -117,6 +120,23 @@ private fun CardEntryContent(
     modifier: Modifier,
     setsAccessibilityOrder: Boolean,
 ) {
+    // Focus auto-advance on field completion (story 11.10, parity with iOS). Keyed on the
+    // completion booleans → fires only on the incomplete→complete edge, so editing a complete
+    // field never rips focus.
+    val expiryFocus = remember { FocusRequester() }
+    val cvcFocus = remember { FocusRequester() }
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(controller.isNumberComplete) {
+        if (controller.isNumberComplete) expiryFocus.requestFocus()
+    }
+    LaunchedEffect(controller.isExpiryComplete) {
+        if (controller.isExpiryComplete) {
+            if (controller.isCvcRequired) cvcFocus.requestFocus() else focusManager.clearFocus()
+        }
+    }
+    val cvcJustFilled = controller.isCvcRequired && controller.cvc.length == controller.cvcMaxLength
+    LaunchedEffect(cvcJustFilled) { if (cvcJustFilled) focusManager.clearFocus() }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -174,6 +194,7 @@ private fun CardEntryContent(
                     // Raw digits as value; "/" rendered by the transformation → caret stays correct (11.8).
                     visualTransformation = ExpiryVisualTransformation(),
                     modifier = Modifier.fillMaxWidth().testTag(HiPayCardEntryTags.EXPIRY)
+                        .focusRequester(expiryFocus)
                         .blurring(controller, Field.EXPIRY),
                 )
             }
@@ -194,6 +215,7 @@ private fun CardEntryContent(
                     // Info affordance only when the CVC is required (no overlay on a disabled field).
                     trailingIcon = if (controller.isCvcRequired) ({ CvvInfoIcon { showCvvInfo = !showCvvInfo } }) else null,
                     modifier = Modifier.fillMaxWidth().testTag(HiPayCardEntryTags.CVC)
+                        .focusRequester(cvcFocus)
                         .blurring(controller, Field.CVC),
                 )
             }
