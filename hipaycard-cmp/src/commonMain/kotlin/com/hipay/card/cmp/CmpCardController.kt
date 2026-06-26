@@ -226,7 +226,7 @@ public class CmpCardController(
         )
         val transaction = gateway.requestNewOrder(order, signature)
         // Clear sensitive/derived state after a successful order (parity with :hipaycard).
-        holder = ""; cardNumber = ""; cvc = ""
+        holder = ""; cardNumber = ""; expiry = ""; cvc = ""
         networks = emptyList(); selectedNetwork = null
         userSelectedNetwork = false; lastDetected = CardNetwork.UNKNOWN
         holderBlurred = false; numberBlurred = false; expiryBlurred = false; cvcBlurred = false

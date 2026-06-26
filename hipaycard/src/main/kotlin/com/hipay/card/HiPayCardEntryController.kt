@@ -292,6 +292,7 @@ public class HiPayCardEntryController(
         // not show stale errors against now-empty fields.
         holder = ""
         cardNumber = ""
+        expiry = ""
         cvc = ""
         networks = emptyList()
         selectedNetwork = null
