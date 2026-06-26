@@ -28,6 +28,7 @@ actual class HiPayCardController actual constructor(
     )
 
     actual val canPay: Boolean get() = delegate.canPay
+    actual val isProcessing: Boolean get() = delegate.isProcessing
 
     actual suspend fun pay(
         orderId: String,
@@ -40,6 +41,7 @@ actual class HiPayCardController actual constructor(
         signature: String?,
         customer: CustomerInfo?,
         shipping: CustomerInfo?,
+        autoPresent3DS: Boolean,
     ): Transaction = delegate.pay(
         orderId = orderId,
         amount = amount,
@@ -51,7 +53,11 @@ actual class HiPayCardController actual constructor(
         signature = signature,
         customer = customer,
         shipping = shipping,
+        autoPresent3DS = autoPresent3DS,
     )
+
+    // Android 3DS = native :hipaycard Custom Tabs (story 11.13); the host forwards onNewIntent here.
+    actual fun resume3DS(url: String) = delegate.resume3DS(url)
 
     actual fun dispose() = delegate.dispose()
 }

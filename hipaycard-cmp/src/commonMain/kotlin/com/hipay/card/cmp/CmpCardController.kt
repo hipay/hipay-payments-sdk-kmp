@@ -14,10 +14,14 @@ import com.hipay.card.validation.CardValidators
 import com.hipay.card.validation.ValidationReason
 import com.hipay.card.validation.messageKey
 import com.hipay.core.HiPayConfig
+import com.hipay.core.callback.CallbackUrlParser
 import com.hipay.core.gateway.GatewayClient
 import com.hipay.core.gateway.model.CustomerInfo
 import com.hipay.core.gateway.model.OrderRequest
 import com.hipay.core.gateway.model.Transaction
+import com.hipay.core.gateway.model.TransactionState
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 /**
  * Compose-Multiplatform state holder for the shared card-entry UI (story 10.2, slice A) —
@@ -40,6 +44,9 @@ public class CmpCardController(
 
     private val tokenizer = CardTokenizer(config)
     private val gateway = GatewayClient(config)
+    // Platform 3DS presenter (story 11.13): iOS → ASWebAuthenticationSession; Android actual is a
+    // no-op (the Android CMP controller delegates to native :hipaycard, never to this class).
+    private val threeDSLauncher = CmpThreeDSLauncher()
 
     public var holder: String by mutableStateOf(""); private set
     public var cardNumber: String by mutableStateOf(""); private set
@@ -48,6 +55,10 @@ public class CmpCardController(
 
     public var networks: List<CardNetwork> by mutableStateOf(emptyList()); private set
     public var selectedNetwork: CardNetwork? by mutableStateOf(null); private set
+
+    /** True while a [pay] is in flight (set by the SDK, story 11.14). The card UI locks its fields
+     *  on this; the host disables its Pay button with `!canPay || isProcessing`. Read-only. */
+    public var isProcessing: Boolean by mutableStateOf(false); private set
 
     public var holderBlurred: Boolean by mutableStateOf(false); private set
     public var numberBlurred: Boolean by mutableStateOf(false); private set
@@ -181,8 +192,12 @@ public class CmpCardController(
 
     /**
      * Tokenizes the card and creates the order. The vault token is consumed here and never
-     * exposed (PCI/NFR2). Card fields are cleared after a successful order. Returns the
-     * [Transaction]; a FORWARDING state carries `forwardUrl` for 3DS (host-handled).
+     * exposed (PCI/NFR2). Card fields are cleared after a successful order.
+     *
+     * 3DS (story 11.13): with [autoPresent3DS] = true (default) and a FORWARDING outcome, the SDK
+     * presents the challenge in an in-app `ASWebAuthenticationSession` (iOS), self-captures the
+     * callback, confirms via `getTransaction` (FR9) and returns the FINAL [Transaction]. With
+     * `false` (or if the user cancels the sheet) the raw FORWARDING transaction is returned.
      */
     public suspend fun pay(
         orderId: String,
@@ -195,7 +210,11 @@ public class CmpCardController(
         signature: String? = null,
         customer: CustomerInfo? = null,
         shipping: CustomerInfo? = null,
+        autoPresent3DS: Boolean = true,
     ): Transaction {
+        // Lock the fields for the whole flow (incl. the suspended 3DS); reset on every exit (11.14).
+        isProcessing = true
+        try {
         val product = network.productCode()
         val token = tokenizer.generateToken(
             cardNumber = panDigits,
@@ -230,8 +249,35 @@ public class CmpCardController(
         networks = emptyList(); selectedNetwork = null
         userSelectedNetwork = false; lastDetected = CardNetwork.UNKNOWN
         holderBlurred = false; numberBlurred = false; expiryBlurred = false; cvcBlurred = false
-        return transaction
+
+        val forwardUrl = transaction.forwardUrl
+        if (!autoPresent3DS || transaction.state != TransactionState.FORWARDING || forwardUrl == null) {
+            return transaction
+        }
+        // In-app 3DS (iOS ASWebAuthenticationSession self-captures the hipay* callback). Suspend
+        // until the session completes; a null callback = user cancelled → hand back the raw tx.
+        val callbackUrl = suspendCancellableCoroutine { cont ->
+            threeDSLauncher.launch(forwardUrl, redirectScheme) { url ->
+                if (cont.isActive) cont.resume(url)
+            }
+        }
+        return if (callbackUrl == null) transaction else confirm3DS(callbackUrl, transaction.transactionReference, signature)
+        } finally {
+            isProcessing = false
+        }
     }
+
+    /** FR9 confirmation: prefer the captured reference, else the callback's; never trust redirect params. */
+    private suspend fun confirm3DS(callbackUrl: String, reference: String?, signature: String?): Transaction {
+        val cb = CallbackUrlParser.parse(callbackUrl)
+        val ref = reference ?: cb.queryParams["reference"]
+        ?: throw IllegalStateException("missing transaction reference")
+        return gateway.getTransaction(ref, signature)
+    }
+
+    /** No-op on iOS: the in-app ASWebAuthenticationSession captures its own callback (story 11.13).
+     *  Present for API parity with the Android path (which routes to the native controller). */
+    public fun resume3DS(url: String) {}
 
     /** No owned coroutine scope (slice A: synchronous local detection); kept for API parity. */
     public fun dispose() {}

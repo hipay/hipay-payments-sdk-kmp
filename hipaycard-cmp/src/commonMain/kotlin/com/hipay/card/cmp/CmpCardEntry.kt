@@ -53,6 +53,8 @@ internal fun CmpCardEntry(
     @Suppress("UNUSED_PARAMETER") setsAccessibilityOrder: Boolean = true,
     @Suppress("UNUSED_PARAMETER") localeOverride: String? = null,
 ) {
+    // Lock all fields while a payment is in flight — driven by the SDK (story 11.14); no host param.
+    val enabled = !controller.isProcessing
     // Focus auto-advance on field completion (story 11.10, parity with iOS + Android). Keyed on
     // the completion booleans → fires only on the incomplete→complete edge.
     val expiryFocus = remember { FocusRequester() }
@@ -80,6 +82,7 @@ internal fun CmpCardEntry(
             label = { FieldLabel(cmpString(CardEntryStringKey.LABEL_HOLDER)) },
             placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_HOLDER)) },
             singleLine = true,
+            enabled = enabled,
             modifier = Modifier.fillMaxWidth(),
         )
         ErrorText(controller.holderErrorKey)
@@ -92,6 +95,7 @@ internal fun CmpCardEntry(
             placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_NUMBER)) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            enabled = enabled,
             // Raw digits as value; spaces rendered by the transformation → caret stays correct (11.1).
             visualTransformation = CardNumberVisualTransformation(controller.network),
             modifier = Modifier.fillMaxWidth(),
@@ -113,6 +117,7 @@ internal fun CmpCardEntry(
                     label = { FieldLabel(cmpString(CardEntryStringKey.LABEL_EXPIRY)) },
                     placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_EXPIRY)) },
                     singleLine = true,
+                    enabled = enabled,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     // Raw digits as value; "/" rendered by the transformation → caret stays correct (11.8).
                     visualTransformation = ExpiryVisualTransformation(),
@@ -124,7 +129,7 @@ internal fun CmpCardEntry(
                 OutlinedTextField(
                     value = controller.cvc,
                     onValueChange = controller::onCvcChange,
-                    enabled = controller.isCvcRequired,
+                    enabled = enabled && controller.isCvcRequired,
                     label = { FieldLabel(cmpString(CardEntryStringKey.LABEL_CVV)) },
                     placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_CVV)) },
                     singleLine = true,

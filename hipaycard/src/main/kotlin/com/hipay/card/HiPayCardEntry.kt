@@ -19,6 +19,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -94,6 +95,14 @@ public fun HiPayCardEntry(
     /** Optional ISO language override ("fr"/"en"/"it"); null → device locale (D11). */
     localeOverride: String? = null,
 ) {
+    // Bind the host Activity context so the controller can present 3DS in Custom Tabs (story 11.13).
+    // Captured here from the REAL LocalContext (before any locale-override wrapper below) and cleared
+    // on dispose so the controller never outlives the screen holding a stale Activity.
+    val hostContext = LocalContext.current
+    DisposableEffect(controller, hostContext) {
+        controller.bindPresentationContext(hostContext)
+        onDispose { controller.bindPresentationContext(null) }
+    }
     if (localeOverride == null) {
         CardEntryContent(controller, modifier, setsAccessibilityOrder)
         return
@@ -120,6 +129,9 @@ private fun CardEntryContent(
     modifier: Modifier,
     setsAccessibilityOrder: Boolean,
 ) {
+    // Lock all fields while a payment is in flight — driven by the SDK itself (story 11.14): the
+    // controller sets isProcessing across pay() (incl. the 3DS round-trip), no host wiring needed.
+    val enabled = !controller.isProcessing
     // Focus auto-advance on field completion (story 11.10, parity with iOS). Keyed on the
     // completion booleans → fires only on the incomplete→complete edge, so editing a complete
     // field never rips focus.
@@ -152,6 +164,7 @@ private fun CardEntryContent(
                 label = { FieldLabel(cardString(CardEntryStringKey.LABEL_HOLDER)) },
                 placeholder = { Text(cardString(CardEntryStringKey.PLACEHOLDER_HOLDER)) },
                 singleLine = true,
+                enabled = enabled,
                 modifier = Modifier.fillMaxWidth().testTag(HiPayCardEntryTags.HOLDER)
                     .blurring(controller, Field.HOLDER),
             )
@@ -166,6 +179,7 @@ private fun CardEntryContent(
                 label = { FieldLabel(cardString(CardEntryStringKey.LABEL_NUMBER)) },
                 placeholder = { Text(cardString(CardEntryStringKey.PLACEHOLDER_NUMBER)) },
                 singleLine = true,
+                enabled = enabled,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 trailingIcon = { NetworkChips(controller) },
                 // Raw digits as value; spaces rendered by the transformation → caret stays correct (11.1).
@@ -190,6 +204,7 @@ private fun CardEntryContent(
                     label = { FieldLabel(cardString(CardEntryStringKey.LABEL_EXPIRY)) },
                     placeholder = { Text(cardString(CardEntryStringKey.PLACEHOLDER_EXPIRY)) },
                     singleLine = true,
+                    enabled = enabled,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     // Raw digits as value; "/" rendered by the transformation → caret stays correct (11.8).
                     visualTransformation = ExpiryVisualTransformation(),
@@ -210,7 +225,7 @@ private fun CardEntryContent(
                     label = { FieldLabel(cardString(CardEntryStringKey.LABEL_CVV)) },
                     placeholder = { Text(cardString(CardEntryStringKey.PLACEHOLDER_CVV)) },
                     singleLine = true,
-                    enabled = controller.isCvcRequired,
+                    enabled = enabled && controller.isCvcRequired,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     // Info affordance only when the CVC is required (no overlay on a disabled field).
                     trailingIcon = if (controller.isCvcRequired) ({ CvvInfoIcon { showCvvInfo = !showCvvInfo } }) else null,

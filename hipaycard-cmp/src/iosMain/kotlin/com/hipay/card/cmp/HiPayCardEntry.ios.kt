@@ -23,6 +23,7 @@ actual class HiPayCardController actual constructor(
     internal val impl = CmpCardController(config, allowedNetworks)
 
     actual val canPay: Boolean get() = impl.canPay
+    actual val isProcessing: Boolean get() = impl.isProcessing
 
     actual suspend fun pay(
         orderId: String,
@@ -35,6 +36,7 @@ actual class HiPayCardController actual constructor(
         signature: String?,
         customer: CustomerInfo?,
         shipping: CustomerInfo?,
+        autoPresent3DS: Boolean,
     ): Transaction = impl.pay(
         orderId = orderId,
         amount = amount,
@@ -46,7 +48,11 @@ actual class HiPayCardController actual constructor(
         signature = signature,
         customer = customer,
         shipping = shipping,
+        autoPresent3DS = autoPresent3DS,
     )
+
+    // iOS 3DS = in-app ASWebAuthenticationSession (self-captures the callback); no host wiring.
+    actual fun resume3DS(url: String) = impl.resume3DS(url)
 
     actual fun dispose() = impl.dispose()
 }
