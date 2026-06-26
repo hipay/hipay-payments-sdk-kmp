@@ -60,7 +60,7 @@ public class HiPayCardEntryController(
     // ---- Editable state (Compose snapshot state; mutated only via the on*Change handlers) ----
     public var holder: String by mutableStateOf(""); private set
     public var cardNumber: String by mutableStateOf(""); private set   // RAW digits (11.1); spacing is a VisualTransformation
-    public var expiry: String by mutableStateOf(""); private set       // "MM/YY"
+    public var expiry: String by mutableStateOf(""); private set       // RAW digits MMYY (11.8); "/" is a VisualTransformation
     public var cvc: String by mutableStateOf(""); private set
 
     // ---- Network state ----
@@ -148,18 +148,17 @@ public class HiPayCardEntryController(
     public fun onNumberChange(input: String) {
         // Store RAW digits (story 11.1) — HiPayCardEntry renders the spaces via a
         // VisualTransformation, so the caret never breaks on a grouping space.
-        cardNumber = input.filter { it in '0'..'9' }.take(19)
+        // Cap to the DETECTED network's complete length (story 11.7): Visa 16 / Amex 15 / etc.,
+        // 19 while UNKNOWN so early typing is never blocked. Detect on the new digits.
+        val digits = input.filter { it in '0'..'9' }
+        cardNumber = digits.take(CardNetworks.completionLength(CardNetworks.detect(digits)))
         recomputeNetworks()
     }
 
     public fun onExpiryChange(input: String) {
-        val deleting = input.length < expiry.length
-        val digits = input.filter { it in '0'..'9' }.take(4)
-        expiry = when {
-            digits.length < 2 -> digits
-            digits.length == 2 -> if (deleting) digits else "$digits/"
-            else -> digits.substring(0, 2) + "/" + digits.substring(2)
-        }
+        // Store RAW digits (story 11.8) — HiPayCardEntry renders the "/" via an
+        // ExpiryVisualTransformation, so the caret never breaks on the separator.
+        expiry = input.filter { it in '0'..'9' }.take(4)
     }
 
     public fun onCvcChange(input: String) {

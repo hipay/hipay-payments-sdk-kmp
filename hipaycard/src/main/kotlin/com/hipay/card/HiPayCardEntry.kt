@@ -171,6 +171,8 @@ private fun CardEntryContent(
                     placeholder = { Text(cardString(CardEntryStringKey.PLACEHOLDER_EXPIRY)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    // Raw digits as value; "/" rendered by the transformation → caret stays correct (11.8).
+                    visualTransformation = ExpiryVisualTransformation(),
                     modifier = Modifier.fillMaxWidth().testTag(HiPayCardEntryTags.EXPIRY)
                         .blurring(controller, Field.EXPIRY),
                 )

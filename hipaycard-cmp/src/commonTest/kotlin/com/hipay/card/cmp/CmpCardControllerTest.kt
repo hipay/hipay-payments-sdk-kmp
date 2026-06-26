@@ -46,10 +46,28 @@ class CmpCardControllerTest {
     }
 
     @Test
-    fun expiryIsFormatted() {
+    fun numberCappedToDetectedNetworkLength() {
+        // Story 11.7: input capped to the detected network's complete length, not a flat 19.
+        val visa = controller()
+        visa.onNumberChange("4111111111111111999") // 19 digits typed on a Visa (16)
+        assertEquals(16, visa.cardNumber.length)
+        assertEquals("4111111111111111", visa.cardNumber)
+
+        val amex = controller()
+        amex.onNumberChange("3782822463100050000") // 19 digits on an Amex (15)
+        assertEquals(15, amex.cardNumber.length)
+
+        val unknown = controller()
+        unknown.onNumberChange("99999999999999999999") // 20 digits, unrecognized → 19 max
+        assertEquals(19, unknown.cardNumber.length)
+    }
+
+    @Test
+    fun expiryIsRawDigits() {
+        // Story 11.8: value is RAW digits MMYY; the "/" is an ExpiryVisualTransformation (display only).
         val c = controller()
-        c.onExpiryChange("1299")
-        assertEquals("12/99", c.expiry)
+        c.onExpiryChange("12/99") // even if a "/" is pasted
+        assertEquals("1299", c.expiry)
     }
 
     @Test

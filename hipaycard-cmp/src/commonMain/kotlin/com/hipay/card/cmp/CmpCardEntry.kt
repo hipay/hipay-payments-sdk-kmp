@@ -95,6 +95,8 @@ internal fun CmpCardEntry(
                     placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_EXPIRY)) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    // Raw digits as value; "/" rendered by the transformation → caret stays correct (11.8).
+                    visualTransformation = ExpiryVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
