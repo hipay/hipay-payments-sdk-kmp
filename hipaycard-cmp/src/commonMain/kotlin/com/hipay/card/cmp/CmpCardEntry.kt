@@ -87,7 +87,8 @@ internal fun CmpCardEntry(
         )
         ErrorText(controller.holderErrorKey)
 
-        // Card number (+ local network chips)
+        // Card number — the network chips sit INSIDE the field as the trailing icon (right-aligned),
+        // matching native Android/iOS (parity); not stacked below the field.
         OutlinedTextField(
             value = controller.cardNumber,
             onValueChange = controller::onNumberChange,
@@ -98,9 +99,9 @@ internal fun CmpCardEntry(
             enabled = enabled,
             // Raw digits as value; spaces rendered by the transformation → caret stays correct (11.1).
             visualTransformation = CardNumberVisualTransformation(controller.network),
+            trailingIcon = { NetworkChips(controller) },
             modifier = Modifier.fillMaxWidth(),
         )
-        NetworkChips(controller)
         // Network-not-authorized takes precedence over the number's own error (D1).
         ErrorText(controller.numberSlotErrorKey)
 

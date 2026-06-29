@@ -408,9 +408,24 @@ public class HiPayCardEntryController(
             override fun onActivityResumed(activity1: Activity) {
                 if (activity1 !== activity) return
                 val pending = pending3DS
-                if (pending != null) { // no deep-link return arrived → dismissed
+                if (pending != null) { // returned without a deep-link callback
                     pending3DS = null
-                    pending.deferred.complete(forwarding) // still FORWARDING server-side; host may retry
+                    // Don't assume an abort: RECONCILE with the authoritative server state (FR9, story
+                    // 11.16). The user may have completed 3DS in the tab without the deep link firing —
+                    // getTransaction returns COMPLETED then; a genuine dismiss stays FORWARDING.
+                    val ref = pending.reference
+                    if (ref != null) {
+                        scope.launch {
+                            val tx = try {
+                                gateway.getTransaction(ref, pending.signature)
+                            } catch (e: Exception) {
+                                forwarding
+                            }
+                            pending.deferred.complete(tx)
+                        }
+                    } else {
+                        pending.deferred.complete(forwarding)
+                    }
                 }
                 unregisterCancellationWatcher()
             }

@@ -20,6 +20,7 @@ import com.hipay.core.gateway.model.CustomerInfo
 import com.hipay.core.gateway.model.OrderRequest
 import com.hipay.core.gateway.model.Transaction
 import com.hipay.core.gateway.model.TransactionState
+import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
@@ -44,9 +45,11 @@ public class CmpCardController(
 
     private val tokenizer = CardTokenizer(config)
     private val gateway = GatewayClient(config)
-    // Platform 3DS presenter (story 11.13): iOS → ASWebAuthenticationSession; Android actual is a
-    // no-op (the Android CMP controller delegates to native :hipaycard, never to this class).
+    // Platform 3DS presenter (story 11.13): iOS → ASWebAuthenticationSession / external Safari;
+    // Android actual is a no-op (the Android CMP controller delegates to native :hipaycard).
     private val threeDSLauncher = CmpThreeDSLauncher()
+    // EXTERNAL_BROWSER 3DS: pay() suspends here until resume3DS(url) forwards the app-scheme return.
+    private var pendingExternal: CancellableContinuation<String?>? = null
 
     public var holder: String by mutableStateOf(""); private set
     public var cardNumber: String by mutableStateOf(""); private set
@@ -194,10 +197,12 @@ public class CmpCardController(
      * Tokenizes the card and creates the order. The vault token is consumed here and never
      * exposed (PCI/NFR2). Card fields are cleared after a successful order.
      *
-     * 3DS (story 11.13): with [autoPresent3DS] = true (default) and a FORWARDING outcome, the SDK
-     * presents the challenge in an in-app `ASWebAuthenticationSession` (iOS), self-captures the
-     * callback, confirms via `getTransaction` (FR9) and returns the FINAL [Transaction]. With
-     * `false` (or if the user cancels the sheet) the raw FORWARDING transaction is returned.
+     * 3DS (story 11.13) on a FORWARDING outcome, by [threeDS] mode (iOS):
+     * - [HiPayThreeDSMode.IN_APP_SESSION] (default): in-app `ASWebAuthenticationSession`,
+     *   self-captures the callback, no host wiring; cancel → raw FORWARDING tx returned.
+     * - [HiPayThreeDSMode.EXTERNAL_BROWSER]: external Safari; `pay()` suspends until the host
+     *   forwards the app-scheme return via [resume3DS].
+     * Both confirm via `getTransaction` (FR9) and return the FINAL [Transaction].
      */
     public suspend fun pay(
         orderId: String,
@@ -210,7 +215,7 @@ public class CmpCardController(
         signature: String? = null,
         customer: CustomerInfo? = null,
         shipping: CustomerInfo? = null,
-        autoPresent3DS: Boolean = true,
+        threeDS: HiPayThreeDSMode = HiPayThreeDSMode.IN_APP_SESSION,
     ): Transaction {
         // Lock the fields for the whole flow (incl. the suspended 3DS); reset on every exit (11.14).
         isProcessing = true
@@ -251,17 +256,41 @@ public class CmpCardController(
         holderBlurred = false; numberBlurred = false; expiryBlurred = false; cvcBlurred = false
 
         val forwardUrl = transaction.forwardUrl
-        if (!autoPresent3DS || transaction.state != TransactionState.FORWARDING || forwardUrl == null) {
+        if (transaction.state != TransactionState.FORWARDING || forwardUrl == null) {
             return transaction
         }
-        // In-app 3DS (iOS ASWebAuthenticationSession self-captures the hipay* callback). Suspend
-        // until the session completes; a null callback = user cancelled → hand back the raw tx.
-        val callbackUrl = suspendCancellableCoroutine { cont ->
-            threeDSLauncher.launch(forwardUrl, redirectScheme) { url ->
-                if (cont.isActive) cont.resume(url)
+        val callbackUrl: String? = when (threeDS) {
+            // In-app session self-captures the scheme:// callback. Suspend until it completes;
+            // a null callback = user cancelled the sheet → hand back the raw FORWARDING tx.
+            HiPayThreeDSMode.IN_APP_SESSION -> suspendCancellableCoroutine { cont ->
+                threeDSLauncher.launchInApp(forwardUrl, redirectScheme) { url ->
+                    if (cont.isActive) cont.resume(url)
+                }
+            }
+            // External Safari: suspend until the host forwards the app-scheme return via resume3DS,
+            // OR until the app returns to the foreground without one = user abort → null (story 11.16).
+            HiPayThreeDSMode.EXTERNAL_BROWSER -> suspendCancellableCoroutine { cont ->
+                pendingExternal = cont
+                cont.invokeOnCancellation { pendingExternal = null; threeDSLauncher.stopExternalWatcher() }
+                threeDSLauncher.launchExternal(forwardUrl) {
+                    // Foreground return without resume3DS → aborted by the user.
+                    pendingExternal?.let { c ->
+                        pendingExternal = null
+                        threeDSLauncher.stopExternalWatcher()
+                        c.resume(null)
+                    }
+                }
             }
         }
-        return if (callbackUrl == null) transaction else confirm3DS(callbackUrl, transaction.transactionReference, signature)
+        return if (callbackUrl != null) {
+            confirm3DS(callbackUrl, transaction.transactionReference, signature)
+        } else {
+            // No callback (sheet cancelled / external Safari abandoned). Don't assume an abort —
+            // RECONCILE with the authoritative server state (FR9, story 11.16): the user may have
+            // validated 3DS without the app receiving the redirect. COMPLETED if captured; otherwise
+            // the order is genuinely still FORWARDING (abandoned).
+            reconcile(transaction.transactionReference, signature) ?: transaction
+        }
         } finally {
             isProcessing = false
         }
@@ -275,9 +304,26 @@ public class CmpCardController(
         return gateway.getTransaction(ref, signature)
     }
 
-    /** No-op on iOS: the in-app ASWebAuthenticationSession captures its own callback (story 11.13).
-     *  Present for API parity with the Android path (which routes to the native controller). */
-    public fun resume3DS(url: String) {}
+    /** Query the authoritative transaction state by the captured reference (story 11.16 foreground
+     *  reconciliation). Returns null if there's no reference or the query fails → caller falls back. */
+    private suspend fun reconcile(reference: String?, signature: String?): Transaction? {
+        val ref = reference ?: return null
+        return try {
+            gateway.getTransaction(ref, signature)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /** Forward the 3DS app-scheme return for [HiPayThreeDSMode.EXTERNAL_BROWSER] (iOS host
+     *  `.onOpenURL`). Resumes the suspended [pay], which then confirms via `getTransaction`. No-op
+     *  for IN_APP_SESSION (self-captures) and when nothing is pending. */
+    public fun resume3DS(url: String) {
+        val cont = pendingExternal ?: return
+        pendingExternal = null
+        threeDSLauncher.stopExternalWatcher() // real callback arrived → stop the abort watcher
+        cont.resume(url)
+    }
 
     /** No owned coroutine scope (slice A: synchronous local detection); kept for API parity. */
     public fun dispose() {}

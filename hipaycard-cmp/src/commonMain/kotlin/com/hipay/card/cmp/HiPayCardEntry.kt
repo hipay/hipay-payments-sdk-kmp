@@ -29,12 +29,12 @@ expect class HiPayCardController(
     val isProcessing: Boolean
 
     /**
-     * Tokenizes the entered card and creates the order. With [autoPresent3DS] = true (default) and
-     * a `FORWARDING` outcome, the SDK presents the 3DS challenge itself — iOS in an in-app
-     * `ASWebAuthenticationSession` (self-captures the callback), Android in Chrome Custom Tabs (the
-     * host forwards the deep-link return via [resume3DS]) — and returns the FINAL, server-confirmed
-     * [Transaction] (FR9). With `false` (or if no presentation is possible) the raw `FORWARDING`
-     * transaction is returned for manual handling (story 11.13).
+     * Tokenizes the entered card and creates the order. On a `FORWARDING` outcome the SDK presents
+     * the 3DS challenge itself and returns the FINAL, server-confirmed [Transaction] (FR9). The
+     * [threeDS] mode (iOS): [HiPayThreeDSMode.IN_APP_SESSION] (default) = in-app
+     * `ASWebAuthenticationSession` (self-captures the callback, no host wiring);
+     * [HiPayThreeDSMode.EXTERNAL_BROWSER] = external Safari (host forwards the return via
+     * [resume3DS]). On Android both modes use Chrome Custom Tabs + [resume3DS] from `onNewIntent`.
      */
     suspend fun pay(
         orderId: String,
@@ -47,7 +47,7 @@ expect class HiPayCardController(
         signature: String? = null,
         customer: CustomerInfo? = null,
         shipping: CustomerInfo? = null,
-        autoPresent3DS: Boolean = true,
+        threeDS: HiPayThreeDSMode = HiPayThreeDSMode.IN_APP_SESSION,
     ): Transaction
 
     /**

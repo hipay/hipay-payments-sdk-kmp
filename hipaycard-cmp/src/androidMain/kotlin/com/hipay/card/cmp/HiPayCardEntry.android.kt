@@ -41,7 +41,7 @@ actual class HiPayCardController actual constructor(
         signature: String?,
         customer: CustomerInfo?,
         shipping: CustomerInfo?,
-        autoPresent3DS: Boolean,
+        threeDS: HiPayThreeDSMode,
     ): Transaction = delegate.pay(
         orderId = orderId,
         amount = amount,
@@ -53,7 +53,9 @@ actual class HiPayCardController actual constructor(
         signature = signature,
         customer = customer,
         shipping = shipping,
-        autoPresent3DS = autoPresent3DS,
+        // Android presents 3DS in Chrome Custom Tabs for both modes (no external/in-app distinction,
+        // no soft-lock); the host forwards the return via resume3DS either way.
+        autoPresent3DS = true,
     )
 
     // Android 3DS = native :hipaycard Custom Tabs (story 11.13); the host forwards onNewIntent here.

@@ -36,7 +36,7 @@ actual class HiPayCardController actual constructor(
         signature: String?,
         customer: CustomerInfo?,
         shipping: CustomerInfo?,
-        autoPresent3DS: Boolean,
+        threeDS: HiPayThreeDSMode,
     ): Transaction = impl.pay(
         orderId = orderId,
         amount = amount,
@@ -48,7 +48,7 @@ actual class HiPayCardController actual constructor(
         signature = signature,
         customer = customer,
         shipping = shipping,
-        autoPresent3DS = autoPresent3DS,
+        threeDS = threeDS,
     )
 
     // iOS 3DS = in-app ASWebAuthenticationSession (self-captures the callback); no host wiring.
