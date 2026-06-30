@@ -353,9 +353,10 @@ public class HiPayCardEntryController(
         // 3DS: present in-app (Custom Tabs) and suspend until resume3DS confirms, unless the host
         // opted out or no context is bound — then hand back the raw FORWARDING tx (legacy 7.5).
         val context = presentationContext
+        val forwardUrl = transaction.forwardUrl
         if (!autoPresent3DS ||
             transaction.state != TransactionState.FORWARDING ||
-            transaction.forwardUrl == null ||
+            forwardUrl.isNullOrBlank() ||
             context == null
         ) {
             return transaction
@@ -363,11 +364,16 @@ public class HiPayCardEntryController(
         val deferred = CompletableDeferred<Transaction>()
         pending3DS = Pending3DS(deferred, transaction.transactionReference, signature)
         // Watch for a dismissed Custom Tab (story 11.15) BEFORE launching, so we never miss the return.
-        registerCancellationWatcher(context, forwarding = transaction)
-        CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(transaction.forwardUrl))
+        registerCancellationWatcher(context)
+        CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(forwardUrl))
         return deferred.await()
         } finally {
             isProcessing = false
+            // If the host scope was cancelled mid-3DS, await() resumes here without resume3DS or the
+            // watcher having cleaned up → release both so we never leak the Activity-lifecycle callback
+            // (idempotent on the happy path, where they are already cleared).
+            pending3DS = null
+            unregisterCancellationWatcher()
         }
     }
 
@@ -381,50 +387,46 @@ public class HiPayCardEntryController(
         pending3DS = null
         unregisterCancellationWatcher() // a real return arrived → stop watching for a dismissal
         scope.launch {
-            try {
-                val cb = CallbackUrlParser.parse(uri)
-                val reference = pending.reference ?: cb.queryParams["reference"]
-                if (reference == null) {
-                    pending.deferred.completeExceptionally(IllegalStateException("missing transaction reference"))
-                    return@launch
-                }
-                pending.deferred.complete(gateway.getTransaction(reference, pending.signature))
-            } catch (e: Exception) {
-                pending.deferred.completeExceptionally(e)
-            }
+            val reference = pending.reference
+                ?: runCatching { CallbackUrlParser.parse(uri).queryParams["reference"] }.getOrNull()
+            pending.deferred.complete(reconcileOrPending(reference, pending.signature))
+        }
+    }
+
+    /**
+     * FR9 confirmation that never yields a false outcome: query `getTransaction` for the
+     * authoritative state from the captured [reference]; if we can't confirm — no reference, or the
+     * server is unreachable — return an indeterminate PENDING snapshot ([Transaction.verificationPending])
+     * rather than a thrown error or a false abort, so the host can re-query later.
+     */
+    private suspend fun reconcileOrPending(reference: String?, signature: String?): Transaction {
+        if (reference == null) return Transaction.verificationPending(null)
+        return try {
+            gateway.getTransaction(reference, signature)
+        } catch (e: Exception) {
+            Transaction.verificationPending(reference)
         }
     }
 
     /**
      * Detects a dismissed Custom Tab (story 11.15): Custom Tabs emits no callback, so when the host
      * Activity comes back to the foreground with a 3DS still pending (no deep-link [resume3DS] fired),
-     * the user cancelled → complete [pay] with the raw FORWARDING tx and unlock. `onNewIntent` precedes
+     * we DON'T assume an abort — we reconcile with the authoritative server state:
+     * the user may have validated 3DS in the tab without the deep link firing (→ COMPLETED), a genuine
+     * dismiss stays FORWARDING, an unreachable server → indeterminate PENDING. `onNewIntent` precedes
      * `onResume` in `singleTop`, so a real return clears `pending3DS` before this fires.
      */
-    private fun registerCancellationWatcher(context: Context, forwarding: Transaction) {
+    private fun registerCancellationWatcher(context: Context) {
         val activity = context.findActivity() ?: return // can't watch without an Activity → no-op
         val app = activity.application
         val callback = object : Application.ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity1: Activity) {
                 if (activity1 !== activity) return
                 val pending = pending3DS
-                if (pending != null) { // returned without a deep-link callback
+                if (pending != null) { // returned without a deep-link callback → reconcile, never assume abort
                     pending3DS = null
-                    // Don't assume an abort: RECONCILE with the authoritative server state (FR9, story
-                    // 11.16). The user may have completed 3DS in the tab without the deep link firing —
-                    // getTransaction returns COMPLETED then; a genuine dismiss stays FORWARDING.
-                    val ref = pending.reference
-                    if (ref != null) {
-                        scope.launch {
-                            val tx = try {
-                                gateway.getTransaction(ref, pending.signature)
-                            } catch (e: Exception) {
-                                forwarding
-                            }
-                            pending.deferred.complete(tx)
-                        }
-                    } else {
-                        pending.deferred.complete(forwarding)
+                    scope.launch {
+                        pending.deferred.complete(reconcileOrPending(pending.reference, pending.signature))
                     }
                 }
                 unregisterCancellationWatcher()

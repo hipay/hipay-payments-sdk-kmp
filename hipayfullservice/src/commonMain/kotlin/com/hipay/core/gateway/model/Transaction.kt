@@ -38,6 +38,16 @@ public class Transaction(
     public val state: TransactionState get() = TransactionState.fromWire(stateRaw)
 
     public companion object {
+        /**
+         * Indeterminate "verification pending" snapshot for [reference] when the SDK could not reach
+         * the server to confirm a 3DS return. State is [TransactionState.PENDING] —
+         * deliberately NOT [TransactionState.FORWARDING] (which means a server-confirmed not-completed =
+         * genuine abort): the host should treat this as awaiting confirmation and re-query
+         * [com.hipay.core.gateway.GatewayClient.getTransaction] later, never as a failure or an abort.
+         */
+        public fun verificationPending(reference: String?): Transaction =
+            Transaction(stateRaw = "pending", transactionReference = reference)
+
         // The Gateway sends "" where an absent sub-object would be expected
         // (e.g. `"threeDSecure": ""` on a 3DS-challenge order, captured live
         // 2026-06-13) and legacy mappers show `reason` can be either a string

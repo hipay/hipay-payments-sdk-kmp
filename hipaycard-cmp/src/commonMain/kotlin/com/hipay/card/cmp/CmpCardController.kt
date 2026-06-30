@@ -199,7 +199,7 @@ public class CmpCardController(
      *
      * 3DS (story 11.13) on a FORWARDING outcome, by [threeDS] mode (iOS):
      * - [HiPayThreeDSMode.IN_APP_SESSION] (default): in-app `ASWebAuthenticationSession`,
-     *   self-captures the callback, no host wiring; cancel → raw FORWARDING tx returned.
+     *   self-captures the callback, no host wiring; cancel → reconciled with the server.
      * - [HiPayThreeDSMode.EXTERNAL_BROWSER]: external Safari; `pay()` suspends until the host
      *   forwards the app-scheme return via [resume3DS].
      * Both confirm via `getTransaction` (FR9) and return the FINAL [Transaction].
@@ -261,7 +261,7 @@ public class CmpCardController(
         }
         val callbackUrl: String? = when (threeDS) {
             // In-app session self-captures the scheme:// callback. Suspend until it completes;
-            // a null callback = user cancelled the sheet → hand back the raw FORWARDING tx.
+            // a null callback = user cancelled the sheet → reconcile with the server below (never assume abort).
             HiPayThreeDSMode.IN_APP_SESSION -> suspendCancellableCoroutine { cont ->
                 threeDSLauncher.launchInApp(forwardUrl, redirectScheme) { url ->
                     if (cont.isActive) cont.resume(url)
@@ -285,11 +285,11 @@ public class CmpCardController(
         return if (callbackUrl != null) {
             confirm3DS(callbackUrl, transaction.transactionReference, signature)
         } else {
-            // No callback (sheet cancelled / external Safari abandoned). Don't assume an abort —
+            // No callback (in-app sheet cancelled / external Safari abandoned). Don't assume an abort —
             // RECONCILE with the authoritative server state (FR9, story 11.16): the user may have
-            // validated 3DS without the app receiving the redirect. COMPLETED if captured; otherwise
-            // the order is genuinely still FORWARDING (abandoned).
-            reconcile(transaction.transactionReference, signature) ?: transaction
+            // validated 3DS without the app receiving the redirect. COMPLETED if captured; FORWARDING if
+            // genuinely abandoned; PENDING if the server is unreachable (indeterminate, re-query later).
+            reconcileOrPending(transaction.transactionReference, signature)
         }
         } finally {
             isProcessing = false
@@ -300,18 +300,19 @@ public class CmpCardController(
     private suspend fun confirm3DS(callbackUrl: String, reference: String?, signature: String?): Transaction {
         val cb = CallbackUrlParser.parse(callbackUrl)
         val ref = reference ?: cb.queryParams["reference"]
-        ?: throw IllegalStateException("missing transaction reference")
-        return gateway.getTransaction(ref, signature)
+        return reconcileOrPending(ref, signature)
     }
 
-    /** Query the authoritative transaction state by the captured reference (story 11.16 foreground
-     *  reconciliation). Returns null if there's no reference or the query fails → caller falls back. */
-    private suspend fun reconcile(reference: String?, signature: String?): Transaction? {
-        val ref = reference ?: return null
+    /** FR9 confirmation that never yields a false outcome (story 11.16): query getTransaction for the
+     *  authoritative state from [reference]; if we can't confirm — no reference, or the server is
+     *  unreachable — return an indeterminate PENDING snapshot ([Transaction.verificationPending]) rather
+     *  than a thrown error or a false abort, so the host can re-query later. */
+    private suspend fun reconcileOrPending(reference: String?, signature: String?): Transaction {
+        if (reference == null) return Transaction.verificationPending(null)
         return try {
-            gateway.getTransaction(ref, signature)
+            gateway.getTransaction(reference, signature)
         } catch (e: Exception) {
-            null
+            Transaction.verificationPending(reference)
         }
     }
 
