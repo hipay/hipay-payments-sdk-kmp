@@ -22,9 +22,14 @@ public interface RawSecureStore {
 }
 
 /**
- * Per-merchant, per-environment namespace key for the secure entry: STAGE/PRODUCTION and
- * different merchant accounts never collide. The card module passes this to its
- * [RawSecureStore] implementation when keying the Keychain/Keystore entry.
+ * Per-merchant, per-environment namespace key for the secure entry: STAGE/PRODUCTION and different
+ * merchant accounts never collide. The `username` is **length-prefixed** so a value containing dots
+ * (or an empty one) can never be confused with another key — the mapping is injective on
+ * (environment, username), preventing cross-merchant card bleed. A `v1` segment allows a future
+ * key-format migration. The card module passes this to its [RawSecureStore] implementation when
+ * keying the Keychain/Keystore entry.
  */
-public fun secureCardStoreNamespace(config: HiPayConfig): String =
-    "com.hipay.savedcards.${config.environment.name}.${config.username}"
+public fun secureCardStoreNamespace(config: HiPayConfig): String {
+    val user = config.username
+    return "com.hipay.savedcards.v1.${config.environment.name}.${user.length}.$user"
+}

@@ -22,7 +22,10 @@ internal class SavedCardsEnvelope(
     val cards: List<StoredCard> = emptyList(),
 )
 
-private val storeJson = Json { ignoreUnknownKeys = true }
+// STRICT on purpose (the default, no ignoreUnknownKeys): the store owns this envelope, so an
+// unexpected shape is corruption — strict parsing + the version gate keep the fail-closed / fail-soft
+// contract honest. (Distinct from the gateway's lenient Json, which must tolerate a third-party wire format.)
+private val storeJson = Json.Default
 
 /**
  * Saved-card store LOGIC — platform-free, single-sourced in Kotlin.
@@ -30,9 +33,14 @@ private val storeJson = Json { ignoreUnknownKeys = true }
  * Owns: consent gate, overwrite-on-match by masked-PAN+expiry, cap-3 + Least Recently Used (LRU),
  * expired-card auto-purge, versioned (de)serialization (fail-closed on an unknown version), and
  * fail-soft graceful degrade (any storage/parse failure ⇒ behaves as "no saved cards", never throws).
+ * Mutating operations return whether the change was persisted, so the caller can react — e.g. surface
+ * a failed save, or confirm a consent-withdrawal deletion.
  *
- * It drives an injected [RawSecureStore] (the platform Keychain/Keystore primitive; a
- * fake in tests). Never logs; never stores the PAN or CVV.
+ * NOT thread-safe: each mutator does a read-modify-write with no locking — call it from a single
+ * thread (the UI / main thread), which is the intended usage.
+ *
+ * It drives an injected [RawSecureStore] (the platform Keychain/Keystore primitive; a fake in tests).
+ * Never logs; never stores the PAN or CVV.
  *
  * @param raw the platform secure-storage primitive.
  * @param currentYearMonth current year/month for the expiry purge — injected, so no date dependency.
@@ -48,43 +56,48 @@ public class SecureCardStore(
     /**
      * Persist [card] only if [consentGiven] — consent is enforced at the store, not just in the UI.
      * Overwrites any card with the same identity (masked-PAN + expiry); enforces the 3-card cap by
-     * evicting the least-recently-used. A no-op without consent.
+     * evicting the least-recently-used. Returns true iff the card was persisted (false without consent
+     * or on a storage-write failure).
      */
-    public fun save(card: SavedCard, consentGiven: Boolean) {
-        if (!consentGiven) return
+    public fun save(card: SavedCard, consentGiven: Boolean): Boolean {
+        if (!consentGiven) return false
         val env = load()
         val nextSeq = env.seq + 1
-        val kept = env.cards.filterNot { it.card.identity == card.identity }.toMutableList() // overwrite-on-match
+        val kept = env.cards.filterNot { it.card.identity == card.identity }.toMutableList()
         kept.add(StoredCard(card, nextSeq))
-        val capped = kept.sortedByDescending { it.seq }.take(MAX_CARDS) // cap-3 + LRU
-        persist(SavedCardsEnvelope(seq = nextSeq, cards = capped))
+        val capped = kept.sortedByDescending { it.seq }.take(MAX_CARDS)
+        return persist(SavedCardsEnvelope(seq = nextSeq, cards = capped))
     }
 
-    /** Bump a card's recency (call when it pays) so LRU reflects real usage. No-op if absent. */
-    public fun touch(card: SavedCard) {
+    /**
+     * Bump a card's recency (call when it pays) so LRU reflects real usage. Returns true iff persisted;
+     * false if the card is absent or on a write failure.
+     */
+    public fun touch(card: SavedCard): Boolean {
         val env = load()
-        if (env.cards.none { it.card.identity == card.identity }) return
+        if (env.cards.none { it.card.identity == card.identity }) return false
         val nextSeq = env.seq + 1
         val updated = env.cards.map {
             if (it.card.identity == card.identity) StoredCard(it.card, nextSeq) else it
         }
-        persist(SavedCardsEnvelope(seq = nextSeq, cards = updated))
+        return persist(SavedCardsEnvelope(seq = nextSeq, cards = updated))
     }
 
-    /** Remove the matching card (by identity). No-op if absent. */
-    public fun delete(card: SavedCard) {
+    /**
+     * Remove the matching card (by identity). Returns true iff the store reflects the removal —
+     * idempotent when the card is already absent; false only on a write failure.
+     */
+    public fun delete(card: SavedCard): Boolean {
         val env = load()
         val remaining = env.cards.filterNot { it.card.identity == card.identity }
-        if (remaining.size == env.cards.size) return
-        persist(env.withCards(remaining))
+        if (remaining.size == env.cards.size) return true // already absent — idempotent success
+        return persist(env.withCards(remaining))
     }
 
-    /** Remove every saved card (consent withdrawn, or first-launch purge). */
-    public fun clearAll() {
-        runCatching { raw.clear() }
-    }
+    /** Remove every saved card (consent withdrawn, or first-launch purge). Returns true iff the clear succeeded. */
+    public fun clearAll(): Boolean = runCatching { raw.clear() }.isSuccess
 
-    // --- internals ---
+    // --- internals persistent data ---
 
     private fun load(): SavedCardsEnvelope {
         val blob = runCatching { raw.read() }.getOrNull() ?: return SavedCardsEnvelope()
@@ -92,6 +105,7 @@ public class SecureCardStore(
             .getOrNull() ?: return SavedCardsEnvelope()               // fail-soft on a corrupt blob
         if (env.version != SAVED_CARDS_VERSION) return SavedCardsEnvelope() // fail-closed on an unknown version
         val now = currentYearMonth()
+        if (!now.isPlausible()) return env                            // bogus clock → never destructively purge
         val live = env.cards.filterNot { isExpired(it.card, now) }
         if (live.size != env.cards.size) {                            // purge expired cards on load
             val pruned = env.withCards(live)
@@ -101,16 +115,19 @@ public class SecureCardStore(
         return env
     }
 
-    private fun persist(env: SavedCardsEnvelope) {
-        runCatching { raw.write(storeJson.encodeToString(SavedCardsEnvelope.serializer(), env)) }
-    }
+    private fun persist(env: SavedCardsEnvelope): Boolean =
+        runCatching { raw.write(storeJson.encodeToString(SavedCardsEnvelope.serializer(), env)) }.isSuccess
 
     private fun isExpired(card: SavedCard, now: YearMonth): Boolean {
-        val year = card.expiryYear.toIntOrNull() ?: return true   // unparseable expiry ⇒ treat as expired (fail-soft)
-        val month = card.expiryMonth.toIntOrNull() ?: return true
+        val year = normalizeYear(card.expiryYear) ?: return true   // unparseable year ⇒ treat as expired (fail-soft)
+        val month = card.expiryMonth.trim().toIntOrNull() ?: return true
+        if (month !in 1..12) return true                           // invalid month ⇒ treat as expired
         return year < now.year || (year == now.year && month < now.month)
     }
 }
+
+/** A clock value is trusted for the destructive expiry purge only when it looks real. */
+private fun YearMonth.isPlausible(): Boolean = year in 2000..2100 && month in 1..12
 
 private fun SavedCardsEnvelope.withCards(cards: List<StoredCard>) =
     SavedCardsEnvelope(version = version, seq = seq, cards = cards)

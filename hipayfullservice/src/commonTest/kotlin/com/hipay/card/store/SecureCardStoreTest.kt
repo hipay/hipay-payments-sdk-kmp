@@ -13,13 +13,21 @@ import kotlin.test.assertTrue
 private class FakeRawSecureStore(
     var blob: String? = null,
     private val failRead: Boolean = false,
+    private val failWrite: Boolean = false,
+    private val failClear: Boolean = false,
 ) : RawSecureStore {
     override fun read(): String? {
         if (failRead) throw RuntimeException("storage unavailable")
         return blob
     }
-    override fun write(value: String) { blob = value }
-    override fun clear() { blob = null }
+    override fun write(value: String) {
+        if (failWrite) throw RuntimeException("write failed")
+        blob = value
+    }
+    override fun clear() {
+        if (failClear) throw RuntimeException("clear failed")
+        blob = null
+    }
 }
 
 class SecureCardStoreTest {
@@ -177,5 +185,92 @@ class SecureCardStoreTest {
         val reopened = store(raw).list()
         assertEquals(1, reopened.size)
         assertEquals("keep", reopened[0].token)
+    }
+
+    // --- success-signal on mutating ops ---
+
+    @Test fun save_returns_true_on_success_and_false_without_consent() {
+        val s = store()
+        assertFalse(s.save(card(), consentGiven = false))
+        assertTrue(s.save(card(), consentGiven = true))
+    }
+
+    @Test fun save_under_write_failure_returns_false_and_stays_empty() {
+        val raw = FakeRawSecureStore(failWrite = true)
+        val s = store(raw)
+        assertFalse(s.save(card(), consentGiven = true))
+        assertTrue(s.list().isEmpty())
+        assertNull(raw.blob)
+    }
+
+    @Test fun clearAll_returns_false_when_the_clear_fails() {
+        val raw = FakeRawSecureStore(failClear = true)
+        assertFalse(store(raw).clearAll())
+    }
+
+    @Test fun delete_absent_card_is_idempotent_true() {
+        val s = store()
+        s.save(card(pan = "1"), true)
+        assertTrue(s.delete(card(pan = "9")))
+        assertEquals(1, s.list().size)
+    }
+
+    @Test fun touch_absent_card_returns_false() {
+        assertFalse(store().touch(card(pan = "9")))
+    }
+
+    // --- LRU / cap edge cases ---
+
+    @Test fun list_order_is_exact_after_touch_then_save() {
+        val s = store()
+        s.save(card(pan = "1"), true)
+        s.save(card(pan = "2"), true)
+        s.save(card(pan = "3"), true)
+        s.touch(s.list().first { it.maskedPan == "1" }) // 1 becomes most-recent
+        assertEquals(listOf("1", "3", "2"), s.list().map { it.maskedPan })
+    }
+
+    @Test fun overwrite_at_cap_does_not_evict_another_card() {
+        val s = store()
+        s.save(card(pan = "1"), true)
+        s.save(card(pan = "2"), true)
+        s.save(card(pan = "3"), true)
+        s.save(card(pan = "2", token = "renewed"), true) // in-place overwrite while at cap
+        val list = s.list()
+        assertEquals(setOf("1", "2", "3"), list.map { it.maskedPan }.toSet())
+        assertEquals("renewed", list.first { it.maskedPan == "2" }.token)
+    }
+
+    // --- expiry robustness ---
+
+    @Test fun two_digit_expiry_year_is_normalised_not_purged() {
+        val s = store(now = { YearMonth(2030, 6) })
+        s.save(card(month = "12", year = "30"), true) // "30" → 2030, month 12 ⇒ still valid
+        assertEquals(1, s.list().size)
+    }
+
+    @Test fun implausible_clock_does_not_purge_the_vault() {
+        val raw = FakeRawSecureStore()
+        store(raw, now = { YearMonth(2030, 6) }).save(card(month = "12", year = "2030"), true)
+        // A bogus far-future clock must NOT trigger the destructive purge.
+        val reopened = store(raw, now = { YearMonth(9999, 1) }).list()
+        assertEquals(1, reopened.size)
+    }
+
+    @Test fun invalid_month_is_treated_as_expired() {
+        val s = store(now = { YearMonth(2030, 6) })
+        s.save(card(month = "13", year = "2030"), true)
+        assertTrue(s.list().isEmpty())
+    }
+
+    // --- namespace injectivity ---
+
+    @Test fun namespace_length_prefix_avoids_dotted_username_collision() {
+        val a = secureCardStoreNamespace(HiPayConfig("a.b", "pw", Environment.STAGE))
+        val b = secureCardStoreNamespace(HiPayConfig("a", "pw", Environment.STAGE))
+        val empty = secureCardStoreNamespace(HiPayConfig("", "pw", Environment.STAGE))
+        val one = secureCardStoreNamespace(HiPayConfig("x", "pw", Environment.STAGE))
+        assertNotEquals(a, b)
+        assertNotEquals(empty, one)
     }
 }

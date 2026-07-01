@@ -19,13 +19,31 @@ public class SavedCard(
     public val expiryMonth: String,
     public val expiryYear: String,
 ) {
-    /** Identity for dedup/overwrite: masked PAN + expiry — never the token, never last4 alone. */
-    internal val identity: String get() = "$maskedPan|$expiryMonth|$expiryYear"
+    /**
+     * Identity for dedup/overwrite: normalised masked PAN + expiry — never the token, never last4 alone.
+     * The masked PAN is reduced to its `[0-9x]` characters (case-insensitive) so a cosmetic re-mask of
+     * the same card (spacing, uppercase X, differing BIN length) still matches; month/year are parsed
+     * to numbers (2-digit years normalised to 20xx) so `"30"` and `"2030"` are the same card. The parts
+     * are numeric-only, so the `|` delimiter is injection-safe.
+     */
+    internal val identity: String
+        get() {
+            val pan = maskedPan.lowercase().filter { it in '0'..'9' || it == 'x' }
+            val mm = expiryMonth.trim().toIntOrNull() ?: -1
+            val yyyy = normalizeYear(expiryYear) ?: -1
+            return "$pan|$mm|$yyyy"
+        }
 
     // Never expose the token — mirror HiPayConfig/CardToken terseness.
     override fun toString(): String =
         "SavedCard(maskedPan=$maskedPan, network=$network, exp=$expiryMonth/$expiryYear)"
 }
 
-/** Year + month for the expiry check, injected so the store carries no date dependency (NFR5). */
+/** Year + month for the expiry check, injected so the store carries no date dependency. */
 public data class YearMonth(public val year: Int, public val month: Int)
+
+/** Parse a card expiry year, normalising a 2-digit year (`"30"`) to `2030`. Null if unparseable. */
+internal fun normalizeYear(raw: String): Int? {
+    val y = raw.trim().toIntOrNull() ?: return null
+    return if (y in 0..99) 2000 + y else y
+}
