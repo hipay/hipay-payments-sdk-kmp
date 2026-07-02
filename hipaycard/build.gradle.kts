@@ -55,6 +55,9 @@ dependencies {
     // Chrome Custom Tabs: SDK-managed 3DS presentation (story 11.13). Browser/UI dep stays
     // on :hipaycard only — the headless KMP core (:hipayfullservice) remains UI/browser-free.
     implementation(libs.androidx.browser)
+    // Jetpack DataStore: encrypted saved-card blob storage. Stays on the
+    // card module — the headless core has no storage dep (NFR5 / D15).
+    implementation(libs.androidx.datastore.preferences)
 
     // Instrumented Compose UI-test harness (story 7.1).
     androidTestImplementation(platform(libs.androidx.compose.bom))

@@ -8,7 +8,7 @@ import kotlinx.serialization.Serializable
  *
  * Holds ONLY what one-click needs: the multi-use Secure Vault [token] (the payment
  * credential), a backend-MASKED pan (BIN6 + last4, e.g. "411111xxxxxx1111"), and the
- * display network/holder/expiry. The raw PAN and the CVV are NEVER stored (NFR2/NFR8).
+ * display network/holder/expiry. The raw PAN and the CVV are NEVER stored.
  */
 @Serializable
 public class SavedCard(

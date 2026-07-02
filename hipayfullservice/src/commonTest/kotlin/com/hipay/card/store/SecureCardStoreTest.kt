@@ -48,7 +48,7 @@ class SecureCardStoreTest {
         now: () -> YearMonth = jan2030,
     ) = SecureCardStore(raw, now)
 
-    // AC4 — consent enforced at the store
+    // consent enforced at the store
     @Test fun saves_only_with_consent() {
         val raw = FakeRawSecureStore()
         val s = store(raw)
@@ -59,7 +59,7 @@ class SecureCardStoreTest {
         assertEquals(1, s.list().size)
     }
 
-    // AC3 — overwrite-on-match by maskedPan + expiry
+    // overwrite-on-match by maskedPan + expiry
     @Test fun overwrites_on_matching_maskedpan_and_expiry() {
         val s = store()
         s.save(card(holder = "OLD", token = "t1"), true)
@@ -77,7 +77,7 @@ class SecureCardStoreTest {
         assertEquals(2, s.list().size)
     }
 
-    // AC5 — cap 3 + LRU
+    // cap 3 + LRU
     @Test fun caps_at_three_evicting_least_recently_used() {
         val s = store()
         s.save(card(pan = "1", token = "a"), true)
@@ -109,7 +109,7 @@ class SecureCardStoreTest {
         assertEquals(listOf("2", "1"), s.list().map { it.maskedPan })
     }
 
-    // AC6 — expired auto-purge on load
+    // expired auto-purge on load
     @Test fun purges_expired_on_load() {
         val raw = FakeRawSecureStore()
         val s = store(raw, now = { YearMonth(2030, 6) })
@@ -124,19 +124,19 @@ class SecureCardStoreTest {
         assertEquals(1, s.list().size)
     }
 
-    // AC8 — fail-soft on corrupt blob
+    // fail-soft on corrupt blob
     @Test fun corrupt_blob_fails_soft_to_empty() {
         val raw = FakeRawSecureStore(blob = "not-json{{{")
         assertTrue(store(raw).list().isEmpty())
     }
 
-    // AC2 — fail-closed on unknown version
+    // fail-closed on unknown version
     @Test fun unknown_version_fails_closed() {
         val raw = FakeRawSecureStore(blob = """{"version":999,"seq":1,"cards":[]}""")
         assertTrue(store(raw).list().isEmpty())
     }
 
-    // AC8 — read failure degrades to empty, never throws
+    // read failure degrades to empty, never throws
     @Test fun read_failure_degrades_to_empty_without_throwing() {
         val raw = FakeRawSecureStore(failRead = true)
         assertEquals(emptyList(), store(raw).list())
@@ -159,7 +159,7 @@ class SecureCardStoreTest {
         assertEquals(listOf("2"), s.list().map { it.maskedPan })
     }
 
-    // AC7 — per-merchant + per-environment namespacing
+    // per-merchant + per-environment namespacing
     @Test fun namespace_is_per_merchant_and_environment() {
         val stageA = HiPayConfig("user-A", "pw", Environment.STAGE)
         val prodA = HiPayConfig("user-A", "pw", Environment.PRODUCTION)
@@ -173,12 +173,12 @@ class SecureCardStoreTest {
         )
     }
 
-    // AC1 — token never exposed via toString
+    // token never exposed via toString
     @Test fun toString_never_exposes_the_token() {
         assertFalse(card(token = "SECRET-TOKEN").toString().contains("SECRET-TOKEN"))
     }
 
-    // AC1/AC2 — round-trips through (de)serialization across store instances (persistence proof)
+    // round-trips through (de)serialization across store instances (persistence proof)
     @Test fun survives_a_new_store_instance_over_the_same_raw() {
         val raw = FakeRawSecureStore()
         store(raw).save(card(pan = "411111xxxxxx9999", token = "keep"), true)
