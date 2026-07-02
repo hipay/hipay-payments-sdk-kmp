@@ -36,8 +36,9 @@ private val storeJson = Json.Default
  * Mutating operations return whether the change was persisted, so the caller can react — e.g. surface
  * a failed save, or confirm a consent-withdrawal deletion.
  *
- * NOT thread-safe: each mutator does a read-modify-write with no locking — call it from a single
- * thread (the UI / main thread), which is the intended usage.
+ * NOT thread-safe: each mutator does a read-modify-write with no locking — confine it to a single
+ * BACKGROUND thread: platform [RawSecureStore] implementations may do blocking I/O, so keep it
+ * off the main thread.
  *
  * It drives an injected [RawSecureStore] (the platform Keychain/Keystore primitive; a fake in tests).
  * Never logs; never stores the PAN or CVV.

@@ -41,6 +41,12 @@ credentials skip silently when `.hipay_stage_env` is absent.
 - Card data (PAN/CVC) is confined to the card module, never logged, and
   cleared after tokenization; `HiPayException` messages are SDK-synthesized
   (no backend text echo).
+- One-click saved cards (Android): the card-token blob is AES/GCM-encrypted
+  with a non-exportable Android Keystore key and stored in the SDK's DataStore
+  file (`hipay_saved_cards`). A backup or device transfer cannot carry the key,
+  so a restored blob is undecryptable and purged on first read. Recommended
+  hardening: exclude `datastore/hipay_saved_cards.preferences_pb` from backup
+  in your app's `dataExtractionRules` / `fullBackupContent`.
 
 ## Publication
 
