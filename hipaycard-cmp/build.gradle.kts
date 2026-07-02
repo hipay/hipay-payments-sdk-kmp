@@ -23,7 +23,16 @@ kotlin {
         }
     }
     iosArm64()
-    iosSimulatorArm64()
+    iosSimulatorArm64 {
+        // Keychain access for the bare Keychain-store test process: on the simulator, securityd
+        // reads entitlements from the binary's __entitlements section (an application-identifier
+        // is required, else SecItem* fails with errSecMissingEntitlement). Injecting them via
+        // codesign instead trips launchd's spawn security policy — link-time section it is.
+        binaries.getTest("DEBUG").linkerOpts(
+            "-sectcreate", "__TEXT", "__entitlements",
+            layout.projectDirectory.file("keychain-test.entitlements").asFile.absolutePath,
+        )
+    }
 
     sourceSets {
         commonMain.dependencies {
@@ -49,6 +58,14 @@ kotlin {
             implementation(libs.kotlin.test)
         }
     }
+}
+
+// The Keychain-backed store tests need a REAL booted simulator: the default standalone spawn
+// runs without securityd, so every SecItem* call fails with errSecNotAvailable (-25291).
+// Boot any iOS simulator first (`xcrun simctl boot <device>`); the task attaches to it.
+tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest>().configureEach {
+    standalone.set(false)
+    device.set("booted")
 }
 
 android {

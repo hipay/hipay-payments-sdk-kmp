@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Simulator-only: lets the bare Kotlin/Native test executable use the Keychain
+     (SecItem* returns errSecMissingEntitlement without an application identifier). -->
+<plist version="1.0">
+<dict>
+	<key>application-identifier</key>
+	<string>com.hipay.card.cmp.test</string>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>com.hipay.card.cmp.test</string>
+	</array>
+</dict>
+</plist>
