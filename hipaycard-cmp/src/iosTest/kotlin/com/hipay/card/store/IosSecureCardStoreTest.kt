@@ -21,6 +21,7 @@ import kotlinx.cinterop.usePinned
 import kotlinx.cinterop.value
 import platform.CoreFoundation.CFDictionaryCreate
 import platform.CoreFoundation.CFRelease
+import platform.CoreFoundation.CFRetain
 import platform.CoreFoundation.CFTypeRef
 import platform.CoreFoundation.CFTypeRefVar
 import platform.CoreFoundation.kCFAllocatorDefault
@@ -28,18 +29,22 @@ import platform.CoreFoundation.kCFBooleanTrue
 import platform.Foundation.CFBridgingRelease
 import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSData
+import platform.Foundation.NSDictionary
 import platform.Foundation.NSUserDefaults
 import platform.Foundation.create
 import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
 import platform.Security.errSecItemNotFound
 import platform.Security.errSecSuccess
+import platform.Security.kSecAttrAccessible
+import platform.Security.kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
 import platform.Security.kSecAttrAccount
 import platform.Security.kSecAttrService
 import platform.Security.kSecClass
 import platform.Security.kSecClassGenericPassword
 import platform.Security.kSecMatchLimit
 import platform.Security.kSecMatchLimitOne
+import platform.Security.kSecReturnAttributes
 import platform.Security.kSecReturnData
 import platform.Security.kSecValueData
 
@@ -55,7 +60,8 @@ class IosSecureCardStoreTest {
 
     @AfterTest
     fun tearDown() {
-        store.clear()
+        // runCatching: a Keychain hiccup in teardown must not mask the actual test failure.
+        runCatching { store.clear() }
     }
 
     @Test
@@ -123,6 +129,8 @@ class IosSecureCardStoreTest {
         assertEquals("recovered", store.read())
     }
 
+    // CAUTION: this test sweeps EVERY item under the fixed saved-cards service in the process's
+    // Keychain — run the suite on dedicated test simulators, not one holding real demo data.
     @Test
     fun first_launch_purge_clears_every_namespace_once() {
         val config = HiPayConfig("test-user", "pw", Environment.STAGE)
@@ -139,9 +147,23 @@ class IosSecureCardStoreTest {
             createSecureCardStore(config) // flag now set — no second purge
             assertEquals("kept", store.read())
         } finally {
-            configStore.clear()
-            if (hadFlag) defaults.setBool(true, SAVED_CARDS_LAUNCHED_KEY)
+            runCatching { configStore.clear() }
+            // Symmetric restore: leave the flag exactly as found (absent stays absent).
+            if (hadFlag) {
+                defaults.setBool(true, SAVED_CARDS_LAUNCHED_KEY)
+            } else {
+                defaults.removeObjectForKey(SAVED_CARDS_LAUNCHED_KEY)
+            }
         }
+    }
+
+    @OptIn(ExperimentalForeignApi::class)
+    @Test
+    fun write_asserts_the_protection_class_even_on_a_preexisting_item() {
+        seedRawBytes("seeded".encodeToByteArray()) // raw item WITHOUT the accessibility attribute
+        store.write("updated")
+        assertEquals("updated", store.read())
+        assertEquals(cfString(kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly), rawAccessibleAttribute())
     }
 
     @Test
@@ -184,6 +206,43 @@ class IosSecureCardStoreTest {
             }
         } finally {
             CFBridgingRelease(cfData)
+            CFBridgingRelease(cfAccount)
+            CFBridgingRelease(cfService)
+        }
+    }
+
+    /** Balanced bridge of a CF string constant to a Kotlin String (retain + bridging release). */
+    @OptIn(ExperimentalForeignApi::class)
+    private fun cfString(constant: platform.CoreFoundation.CFStringRef?): String =
+        CFBridgingRelease(CFRetain(constant)) as String
+
+    /** The item's `kSecAttrAccessible` value as stored, or null if the item is absent. */
+    @OptIn(ExperimentalForeignApi::class)
+    private fun rawAccessibleAttribute(): String? {
+        val cfService = CFBridgingRetain(SAVED_CARDS_SERVICE)
+        val cfAccount = CFBridgingRetain(namespace)
+        try {
+            return memScoped {
+                val keys = allocArray<CFTypeRefVar>(4)
+                val values = allocArray<CFTypeRefVar>(4)
+                listOf<Pair<CFTypeRef?, CFTypeRef?>>(
+                    kSecClass to kSecClassGenericPassword,
+                    kSecAttrService to cfService,
+                    kSecAttrAccount to cfAccount,
+                    kSecReturnAttributes to kCFBooleanTrue,
+                ).forEachIndexed { i, (k, v) ->
+                    keys[i] = k
+                    values[i] = v
+                }
+                val query = CFDictionaryCreate(kCFAllocatorDefault, keys, values, 4, null, null)
+                val result = alloc<CFTypeRefVar>()
+                val status = SecItemCopyMatching(query, result.ptr)
+                query?.let { CFRelease(it) }
+                if (status != errSecSuccess) return@memScoped null
+                val attributes = CFBridgingRelease(result.value) as? NSDictionary ?: return@memScoped null
+                attributes.objectForKey(cfString(kSecAttrAccessible)) as? String
+            }
+        } finally {
             CFBridgingRelease(cfAccount)
             CFBridgingRelease(cfService)
         }

@@ -24,16 +24,19 @@ import platform.CoreFoundation.kCFBooleanTrue
 import platform.Foundation.CFBridgingRelease
 import platform.Foundation.CFBridgingRetain
 import platform.Foundation.NSCalendar
+import platform.Foundation.NSCalendarIdentifierGregorian
 import platform.Foundation.NSCalendarUnitMonth
 import platform.Foundation.NSCalendarUnitYear
 import platform.Foundation.NSData
 import platform.Foundation.NSDate
+import platform.Foundation.NSLock
 import platform.Foundation.NSUserDefaults
 import platform.Foundation.create
 import platform.Security.SecItemAdd
 import platform.Security.SecItemCopyMatching
 import platform.Security.SecItemDelete
 import platform.Security.SecItemUpdate
+import platform.Security.errSecDuplicateItem
 import platform.Security.errSecItemNotFound
 import platform.Security.errSecSuccess
 import platform.Security.kSecAttrAccessible
@@ -98,20 +101,32 @@ internal class IosSecureCardStore(
     override fun write(value: String) {
         val cfData = CFBridgingRetain(value.toUtf8NSData())
         try {
-            val updated = withItemQuery { query ->
-                memScoped { SecItemUpdate(query, cfDictionary(kSecValueData to cfData)) }
-            }
-            val status = if (updated == errSecItemNotFound) {
-                withItemQuery(
+            var status = updateItem(cfData)
+            if (status == errSecItemNotFound) {
+                status = withItemQuery(
                     kSecValueData to cfData,
                     kSecAttrAccessible to kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
                 ) { attributes -> SecItemAdd(attributes, null) }
-            } else {
-                updated
+                // Lost the add race against a concurrent writer — the item exists now: update it.
+                if (status == errSecDuplicateItem) status = updateItem(cfData)
             }
             check(status == errSecSuccess) { "keychain write failed (status $status)" }
         } finally {
             CFBridgingRelease(cfData)
+        }
+    }
+
+    /** Update half of the upsert — re-asserts the protection class so pre-existing items (created
+     *  without it, or restored precisely because they lacked `ThisDeviceOnly`) get upgraded. */
+    private fun updateItem(cfData: CFTypeRef?) = withItemQuery { query ->
+        memScoped {
+            SecItemUpdate(
+                query,
+                cfDictionary(
+                    kSecValueData to cfData,
+                    kSecAttrAccessible to kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+                ),
+            )
         }
     }
 
@@ -150,6 +165,8 @@ internal class IosSecureCardStore(
 /**
  * A CF dictionary valid within the surrounding [MemScope] call; keys/values must stay retained by
  * the caller for its lifetime (no CF retain callbacks — the kSec constants and bridged values are).
+ * NULL key callbacks also mean POINTER-IDENTITY key lookup: keys must be the kSec singleton
+ * constants, never a rebuilt/bridged string.
  */
 @OptIn(ExperimentalForeignApi::class)
 private fun MemScope.cfDictionary(vararg pairs: Pair<CFTypeRef?, CFTypeRef?>): CFDictionaryRef? {
@@ -182,18 +199,22 @@ private fun NSData.decodeUtf8OrNull(): String? {
     return runCatching { copy.decodeToString(throwOnInvalidSequence = true) }.getOrNull()
 }
 
-/** One-time sweep of every saved-card item (all namespaces) under the fixed service. */
+/**
+ * One-time sweep of every saved-card item (all namespaces) under the fixed service.
+ * True iff the sweep is known complete (success, or nothing to purge).
+ */
 @OptIn(ExperimentalForeignApi::class)
-internal fun purgeAllSavedCardItems() {
+internal fun purgeAllSavedCardItems(): Boolean {
     val cfService = CFBridgingRetain(SAVED_CARDS_SERVICE)
     try {
-        memScoped {
-            SecItemDelete(
+        return memScoped {
+            val status = SecItemDelete(
                 cfDictionary(
                     kSecClass to kSecClassGenericPassword,
                     kSecAttrService to cfService,
                 ),
-            ) // errSecItemNotFound = nothing to purge; other statuses are non-fatal here
+            )
+            status == errSecSuccess || status == errSecItemNotFound
         }
     } finally {
         CFBridgingRelease(cfService)
@@ -208,11 +229,21 @@ internal fun purgeAllSavedCardItems() {
  * detector. [HiPayConfig] carries no one-click reference — enabling one-click is the UI layer's
  * opt-in. Call from a single background thread (the store it returns is not thread-safe).
  */
+// Serializes the first-launch check-purge-arm section across concurrent factory calls.
+private val firstLaunchLock = NSLock()
+
 public fun createSecureCardStore(config: HiPayConfig): SecureCardStore {
     val defaults = NSUserDefaults.standardUserDefaults
-    if (!defaults.boolForKey(SAVED_CARDS_LAUNCHED_KEY)) {
-        purgeAllSavedCardItems()
-        defaults.setBool(true, SAVED_CARDS_LAUNCHED_KEY)
+    firstLaunchLock.lock()
+    try {
+        // The flag is armed ONLY after a successful sweep: a transient failure (e.g. a background
+        // first launch before the device's first unlock) leaves it unset, so the purge retries on
+        // the next launch instead of latching stale items in forever.
+        if (!defaults.boolForKey(SAVED_CARDS_LAUNCHED_KEY) && purgeAllSavedCardItems()) {
+            defaults.setBool(true, SAVED_CARDS_LAUNCHED_KEY)
+        }
+    } finally {
+        firstLaunchLock.unlock()
     }
     return SecureCardStore(
         IosSecureCardStore(secureCardStoreNamespace(config)),
@@ -221,7 +252,10 @@ public fun createSecureCardStore(config: HiPayConfig): SecureCardStore {
 }
 
 private fun iosYearMonth(): YearMonth {
-    val components = NSCalendar.currentCalendar.components(
+    // Pinned Gregorian: the user's calendar (Thai Buddhist year 2569, Japanese era…) would put the
+    // year outside the store's plausibility window and silently disable the expiry purge.
+    val calendar = NSCalendar(calendarIdentifier = NSCalendarIdentifierGregorian)
+    val components = calendar.components(
         NSCalendarUnitYear or NSCalendarUnitMonth,
         fromDate = NSDate(),
     )

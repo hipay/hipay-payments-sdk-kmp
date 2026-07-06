@@ -66,6 +66,21 @@ kotlin {
 tasks.withType<org.jetbrains.kotlin.gradle.targets.native.tasks.KotlinNativeSimulatorTest>().configureEach {
     standalone.set(false)
     device.set("booted")
+    doFirst {
+        // Fail fast with an actionable message instead of an opaque simctl attach error.
+        val booted = ProcessBuilder("xcrun", "simctl", "list", "devices", "booted")
+            .redirectErrorStream(true).start()
+            .let { process ->
+                val output = process.inputStream.readBytes().decodeToString()
+                process.waitFor()
+                output
+            }
+        check(booted.contains("(Booted)")) {
+            "No booted iOS simulator — these tests attach to a running device (securityd is " +
+                "unavailable to standalone-spawned processes). Boot one first: " +
+                "`xcrun simctl boot <device>` (any iPhone simulator works)."
+        }
+    }
 }
 
 android {
