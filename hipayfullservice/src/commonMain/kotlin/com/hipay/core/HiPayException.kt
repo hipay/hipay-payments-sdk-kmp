@@ -18,6 +18,14 @@ public enum class HiPayErrorCode {
 
     /** Local input validation failure — no network call was made. */
     VALIDATION,
+
+    /**
+     * A saved-card payment was rejected because the stored token is no longer
+     * usable (revoked, unknown or expired token). Raised only by the one-click
+     * pay path, after the stale card has been purged from local storage — the
+     * host should fall back to full card entry.
+     */
+    CARD_NO_LONGER_VALID,
 }
 
 /**

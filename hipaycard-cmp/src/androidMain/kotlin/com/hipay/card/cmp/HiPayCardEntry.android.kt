@@ -3,6 +3,7 @@ package com.hipay.card.cmp
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.hipay.card.HiPayCardNetwork
+import com.hipay.card.store.SavedCard
 import com.hipay.card.validation.CardNetwork
 import com.hipay.core.HiPayConfig
 import com.hipay.core.gateway.model.CustomerInfo
@@ -42,6 +43,7 @@ actual class HiPayCardController actual constructor(
         customer: CustomerInfo?,
         shipping: CustomerInfo?,
         threeDS: HiPayThreeDSMode,
+        saveCard: Boolean,
     ): Transaction = delegate.pay(
         orderId = orderId,
         amount = amount,
@@ -56,7 +58,38 @@ actual class HiPayCardController actual constructor(
         // Android presents 3DS in Chrome Custom Tabs for both modes (no external/in-app distinction,
         // no soft-lock); the host forwards the return via resume3DS either way.
         autoPresent3DS = true,
+        saveCard = saveCard,
     )
+
+    actual suspend fun payWithSavedCard(
+        card: SavedCard,
+        orderId: String,
+        amount: String,
+        currency: String,
+        description: String,
+        language: String,
+        redirectScheme: String,
+        authenticationIndicator: Int,
+        signature: String?,
+        customer: CustomerInfo?,
+        shipping: CustomerInfo?,
+        threeDS: HiPayThreeDSMode,
+    ): Transaction = delegate.payWithSavedCard(
+        card = card,
+        orderId = orderId,
+        amount = amount,
+        currency = currency,
+        description = description,
+        language = language,
+        redirectScheme = redirectScheme,
+        authenticationIndicator = authenticationIndicator,
+        signature = signature,
+        customer = customer,
+        shipping = shipping,
+        autoPresent3DS = true,
+    )
+
+    actual suspend fun savedCards(): List<SavedCard> = delegate.savedCards()
 
     // Android 3DS = native :hipaycard Custom Tabs (story 11.13); the host forwards onNewIntent here.
     actual fun resume3DS(url: String) = delegate.resume3DS(url)

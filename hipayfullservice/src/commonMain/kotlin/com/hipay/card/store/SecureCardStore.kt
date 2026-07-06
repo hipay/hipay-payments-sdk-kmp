@@ -25,7 +25,10 @@ internal class SavedCardsEnvelope(
 // STRICT on purpose (the default, no ignoreUnknownKeys): the store owns this envelope, so an
 // unexpected shape is corruption — strict parsing + the version gate keep the fail-closed / fail-soft
 // contract honest. (Distinct from the gateway's lenient Json, which must tolerate a third-party wire format.)
-private val storeJson = Json.Default
+// Resolved through a getter, NOT a file-level `val`: in the RELEASE static framework, a file-level
+// property reached through the ObjC bridge was observed null-initialized (EXC_BAD_ACCESS at 0x8
+// inside encodeToString) — the getter dodges the file-initializer entirely.
+private inline val storeJson: Json get() = Json.Default
 
 /**
  * Saved-card store LOGIC — platform-free, single-sourced in Kotlin.

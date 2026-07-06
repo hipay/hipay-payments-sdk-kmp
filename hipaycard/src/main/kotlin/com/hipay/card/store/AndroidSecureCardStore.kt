@@ -18,6 +18,7 @@ import kotlinx.coroutines.withTimeout
 import java.security.GeneralSecurityException
 import java.security.KeyStore
 import java.util.Calendar
+import java.util.GregorianCalendar
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -204,6 +205,8 @@ public fun createSecureCardStore(context: Context, config: HiPayConfig): SecureC
 }
 
 private fun androidYearMonth(): YearMonth {
-    val calendar = Calendar.getInstance()
+    // Pinned Gregorian: a locale calendar (Thai Buddhist year 2569, Japanese era)
+    // would fall outside the store's plausibility window and disable the expiry purge.
+    val calendar = GregorianCalendar()
     return YearMonth(calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH) + 1)
 }

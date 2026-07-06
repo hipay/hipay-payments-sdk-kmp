@@ -2,6 +2,7 @@ package com.hipay.card.cmp
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import com.hipay.card.store.SavedCard
 import com.hipay.card.validation.CardNetwork
 import com.hipay.core.HiPayConfig
 import com.hipay.core.gateway.model.CustomerInfo
@@ -37,6 +38,7 @@ actual class HiPayCardController actual constructor(
         customer: CustomerInfo?,
         shipping: CustomerInfo?,
         threeDS: HiPayThreeDSMode,
+        saveCard: Boolean,
     ): Transaction = impl.pay(
         orderId = orderId,
         amount = amount,
@@ -49,7 +51,38 @@ actual class HiPayCardController actual constructor(
         customer = customer,
         shipping = shipping,
         threeDS = threeDS,
+        saveCard = saveCard,
     )
+
+    actual suspend fun payWithSavedCard(
+        card: SavedCard,
+        orderId: String,
+        amount: String,
+        currency: String,
+        description: String,
+        language: String,
+        redirectScheme: String,
+        authenticationIndicator: Int,
+        signature: String?,
+        customer: CustomerInfo?,
+        shipping: CustomerInfo?,
+        threeDS: HiPayThreeDSMode,
+    ): Transaction = impl.payWithSavedCard(
+        card = card,
+        orderId = orderId,
+        amount = amount,
+        currency = currency,
+        description = description,
+        language = language,
+        redirectScheme = redirectScheme,
+        authenticationIndicator = authenticationIndicator,
+        signature = signature,
+        customer = customer,
+        shipping = shipping,
+        threeDS = threeDS,
+    )
+
+    actual suspend fun savedCards(): List<SavedCard> = impl.savedCards()
 
     // iOS 3DS = in-app ASWebAuthenticationSession (self-captures the callback); no host wiring.
     actual fun resume3DS(url: String) = impl.resume3DS(url)

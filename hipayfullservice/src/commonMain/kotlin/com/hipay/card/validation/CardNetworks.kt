@@ -66,7 +66,7 @@ public object CardNetworks {
     public fun fromApiBrand(brand: String?): CardNetwork? = when (brand?.lowercase()) {
         "visa" -> CardNetwork.VISA
         "mastercard" -> CardNetwork.MASTERCARD
-        "american-express", "amex" -> CardNetwork.AMEX
+        "american-express", "amex", "american express" -> CardNetwork.AMEX
         "maestro" -> CardNetwork.MAESTRO
         "cb", "carte-bancaire", "carte bancaire" -> CardNetwork.CB
         "bcmc", "bancontact" -> CardNetwork.BCMC

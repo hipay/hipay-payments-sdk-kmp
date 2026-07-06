@@ -146,6 +146,31 @@ class HipayHttpClientTest {
         }
         assertEquals(HiPayErrorCode.SERVER, ex.code)
         assertEquals(500, ex.httpStatus)
+        assertEquals(null, ex.apiCode)
+    }
+
+    @Test
+    fun http500WithStructuredBodyStaysServerButExposesApiFields() = runTest {
+        // The gateway answers some business rejections with a structured
+        // {code,message} body on a 5xx (observed on stage: "Unknown Token" is
+        // a 500). Classification stays SERVER, but the payload is preserved
+        // so callers can identify the definitive verdict.
+        val engine = MockEngine {
+            respond(
+                """{"code":"3040001","message":"Unknown Token","description":""}""",
+                HttpStatusCode.InternalServerError,
+                headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
+        val ex = assertFailsWith<HiPayException> {
+            HipayHttpClient(config, engine).get(config.environment.gatewayV1Url + "transaction/x")
+        }
+        assertEquals(HiPayErrorCode.SERVER, ex.code)
+        assertEquals(500, ex.httpStatus)
+        assertEquals(3040001, ex.apiCode)
+        assertEquals("Unknown Token", ex.apiMessage)
+        // PCI by design: backend text never leaks into message/toString
+        assertFalse(ex.message!!.contains("Unknown Token"))
     }
 
     @Test

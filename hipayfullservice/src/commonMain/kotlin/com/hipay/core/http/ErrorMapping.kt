@@ -13,7 +13,9 @@ import kotlinx.serialization.json.jsonPrimitive
  * Mirrors the legacy contract (HPFAbstractClient.m / HPFHTTPClient.m):
  * - 4xx carrying a parseable `{"code", "message"[, "description"]}` body -> API
  * - other 4xx -> CLIENT
- * - 5xx -> SERVER
+ * - 5xx -> SERVER; a parseable structured body still populates the api*
+ *   fields (the gateway answers some business rejections on a 500 — e.g.
+ *   "Unknown Token" — and callers need the code to identify the verdict)
  * - transport failure -> NETWORK
  * VALIDATION is reserved for local validators (card path).
  */
@@ -40,10 +42,14 @@ internal fun mapErrorResponse(status: Int, body: String): HiPayException {
             httpStatus = status,
         )
     }
+    val api = parseApiError(body)
     return HiPayException(
         code = HiPayErrorCode.SERVER,
         message = "HTTP $status from HiPay API",
         httpStatus = status,
+        apiCode = api?.code,
+        apiMessage = api?.message?.let(::redactPanLikeOrNull),
+        apiDescription = api?.description?.let(::redactPanLikeOrNull),
     )
 }
 

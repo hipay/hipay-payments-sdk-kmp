@@ -5,6 +5,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.hipay.card.CardTokenizer
+import com.hipay.card.model.CardToken
+import com.hipay.card.store.SavedCard
+import com.hipay.card.store.SecureCardStore
+import com.hipay.card.store.cardNoLongerValidOrNull
+import com.hipay.card.store.savedCardFromToken
+import com.hipay.card.store.savedCardPaymentProduct
 import com.hipay.card.validation.AllowedNetworks
 import com.hipay.card.validation.CardEntryStringKey
 import com.hipay.card.validation.CardFieldValidation
@@ -14,6 +20,7 @@ import com.hipay.card.validation.CardValidators
 import com.hipay.card.validation.ValidationReason
 import com.hipay.card.validation.messageKey
 import com.hipay.core.HiPayConfig
+import com.hipay.core.HiPayException
 import com.hipay.core.callback.CallbackUrlParser
 import com.hipay.core.gateway.GatewayClient
 import com.hipay.core.gateway.model.CustomerInfo
@@ -21,7 +28,10 @@ import com.hipay.core.gateway.model.OrderRequest
 import com.hipay.core.gateway.model.Transaction
 import com.hipay.core.gateway.model.TransactionState
 import kotlinx.coroutines.CancellableContinuation
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
 
 /**
@@ -38,13 +48,26 @@ import kotlin.coroutines.resume
  * tracked for slice B / a follow-up; chips here come from local BIN detection.
  */
 public class CmpCardController(
-    config: HiPayConfig,
+    private val config: HiPayConfig,
     private val allowed: List<CardNetwork> = emptyList(),
 ) {
     public enum class Field { HOLDER, NUMBER, EXPIRY, CVC }
 
     private val tokenizer = CardTokenizer(config)
     private val gateway = GatewayClient(config)
+
+    // ---- Saved cards (one-click) ----
+    // One store instance per controller, EVERY access (creation included) confined to this
+    // single-thread dispatcher: the store is not thread-safe. Default (not IO — unavailable in
+    // common code) is fine here: the iOS Keychain primitive is a fast synchronous call, and
+    // Android never instantiates this controller.
+    private val storeDispatcher = Dispatchers.Default.limitedParallelism(1)
+    private var store: SecureCardStore? = null
+
+    private suspend fun <T> withStore(block: (SecureCardStore) -> T): T =
+        withContext(storeDispatcher) {
+            block(store ?: createCmpSecureCardStore(config).also { store = it })
+        }
     // Platform 3DS presenter (story 11.13): iOS → ASWebAuthenticationSession / external Safari;
     // Android actual is a no-op (the Android CMP controller delegates to native :hipaycard).
     private val threeDSLauncher = CmpThreeDSLauncher()
@@ -216,6 +239,7 @@ public class CmpCardController(
         customer: CustomerInfo? = null,
         shipping: CustomerInfo? = null,
         threeDS: HiPayThreeDSMode = HiPayThreeDSMode.IN_APP_SESSION,
+        saveCard: Boolean = false,
     ): Transaction {
         // Lock the fields for the whole flow (incl. the suspended 3DS); reset on every exit (11.14).
         isProcessing = true
@@ -227,7 +251,7 @@ public class CmpCardController(
             expiryYear = expiryYear,
             holder = holder,
             cvc = if (isCvcRequired) cvc else "",
-            multiUse = false,
+            multiUse = saveCard,
         )
         val base = "$redirectScheme://hipay-fullservice/gateway/orders/$orderId"
         val order = OrderRequest(
@@ -255,6 +279,120 @@ public class CmpCardController(
         userSelectedNetwork = false; lastDetected = CardNetwork.UNKNOWN
         holderBlurred = false; numberBlurred = false; expiryBlurred = false; cvcBlurred = false
 
+        val final = resolve3DS(transaction, redirectScheme, signature, threeDS)
+        if (saveCard) persistSavedCard(token, final)
+        return final
+        } finally {
+            isProcessing = false
+        }
+    }
+
+    /**
+     * One-click payment with a previously saved card: the order is created directly
+     * from the stored reusable token — no card re-entry, no CVV, no tokenization
+     * round-trip. 3DS behaves exactly as in [pay].
+     *
+     * On a final `COMPLETED` the card's recency is bumped (most-recently-used). If
+     * the gateway reports the stored token as no longer usable, the card is purged
+     * from local storage and a [HiPayException] with
+     * `HiPayErrorCode.CARD_NO_LONGER_VALID` is thrown — fall back to card entry.
+     * A declined payment is returned as a normal `DECLINED` transaction.
+     */
+    public suspend fun payWithSavedCard(
+        card: SavedCard,
+        orderId: String,
+        amount: String,
+        currency: String = "EUR",
+        description: String,
+        language: String = "en_GB",
+        redirectScheme: String,
+        authenticationIndicator: Int = 0,
+        signature: String? = null,
+        customer: CustomerInfo? = null,
+        shipping: CustomerInfo? = null,
+        threeDS: HiPayThreeDSMode = HiPayThreeDSMode.IN_APP_SESSION,
+    ): Transaction {
+        isProcessing = true
+        try {
+            val base = "$redirectScheme://hipay-fullservice/gateway/orders/$orderId"
+            val order = OrderRequest(
+                orderId = orderId,
+                paymentProduct = savedCardPaymentProduct(card),
+                amount = amount,
+                description = description,
+                acceptUrl = "$base/accept",
+                declineUrl = "$base/decline",
+                pendingUrl = "$base/pending",
+                exceptionUrl = "$base/exception",
+                cancelUrl = "$base/cancel",
+                currency = currency,
+                language = language,
+                customer = customer,
+                shippingAddress = shipping,
+                cardToken = card.token,
+                eci = 7,
+                authenticationIndicator = authenticationIndicator,
+                oneClick = true,
+            )
+            val transaction = try {
+                gateway.requestNewOrder(order, signature)
+            } catch (e: HiPayException) {
+                throw cardNoLongerValidOrNull(e)?.also { purgeQuietly(card) } ?: e
+            }
+            val final = resolve3DS(transaction, redirectScheme, signature, threeDS)
+            if (final.state == TransactionState.COMPLETED) touchQuietly(card)
+            return final
+        } finally {
+            isProcessing = false
+        }
+    }
+
+    /**
+     * The cards previously saved for one-click payment (most recent first,
+     * expired cards purged).
+     */
+    public suspend fun savedCards(): List<SavedCard> = withStore { it.list() }
+
+    /** Persist the tokenized card after a COMPLETED payment; any failure is silent (fail-soft). */
+    private suspend fun persistSavedCard(token: CardToken, transaction: Transaction) {
+        if (transaction.state != TransactionState.COMPLETED) return
+        val card = savedCardFromToken(token) ?: return
+        try {
+            withStore { it.save(card, consentGiven = true) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Fail-soft: the payment outcome is already decided; storage must not affect it.
+        }
+    }
+
+    /** Purge a no-longer-valid card; storage failure never masks the payment error (fail-soft). */
+    private suspend fun purgeQuietly(card: SavedCard) {
+        try {
+            withStore { it.delete(card) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+        }
+    }
+
+    /** Bump the card's recency after a completed one-click payment (fail-soft). */
+    private suspend fun touchQuietly(card: SavedCard) {
+        try {
+            withStore { it.touch(card) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+        }
+    }
+
+    /** 3DS resolution shared by [pay] and [payWithSavedCard] — behaviour unchanged from [pay]. */
+    private suspend fun resolve3DS(
+        transaction: Transaction,
+        redirectScheme: String,
+        signature: String?,
+        threeDS: HiPayThreeDSMode,
+    ): Transaction {
         val forwardUrl = transaction.forwardUrl
         if (transaction.state != TransactionState.FORWARDING || forwardUrl == null) {
             return transaction
@@ -290,9 +428,6 @@ public class CmpCardController(
             // validated 3DS without the app receiving the redirect. COMPLETED if captured; FORWARDING if
             // genuinely abandoned; PENDING if the server is unreachable (indeterminate, re-query later).
             reconcileOrPending(transaction.transactionReference, signature)
-        }
-        } finally {
-            isProcessing = false
         }
     }
 

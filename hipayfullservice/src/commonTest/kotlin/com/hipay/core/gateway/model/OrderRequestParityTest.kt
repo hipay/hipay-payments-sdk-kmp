@@ -18,7 +18,9 @@ class OrderRequestParityTest {
         customer: CustomerInfo? = null,
         shipping: CustomerInfo? = null,
         customData: Map<String, String> = emptyMap(),
+        oneClick: Boolean = false,
     ) = OrderRequest(
+        oneClick = oneClick,
         orderId = "TEST-ORDER-1",
         paymentProduct = "visa",
         operation = Operation.SALE,
@@ -77,6 +79,28 @@ class OrderRequestParityTest {
         val withCard = cardOrder().toFields()
         assertEquals("7", withCard["eci"])
         assertEquals("0", withCard["authentication_indicator"])
+    }
+
+    @Test
+    fun oneClickEmitsTheFlagOnlyWithAToken() {
+        // Wire regression: a non-one-click order must serialize exactly as today.
+        assertFalse("one_click" in cardOrder().toFields())
+
+        val fields = cardOrder(oneClick = true).toFields()
+        assertEquals("1", fields["one_click"])
+        // A saved-card payment is a customer-initiated e-commerce transaction:
+        // ECI stays 7 (9 is recurring/merchant-initiated, a different product).
+        assertEquals("7", fields["eci"])
+
+        // one_click is a card-payment field: without a token it is never emitted.
+        val noToken = OrderRequest(
+            orderId = "O1", paymentProduct = "visa", amount = "2.00", description = "d",
+            acceptUrl = "a://x", declineUrl = "a://x", pendingUrl = "a://x",
+            exceptionUrl = "a://x", cancelUrl = "a://x",
+            oneClick = true,
+        ).toFields()
+        assertFalse("one_click" in noToken)
+        assertFalse("cardtoken" in noToken)
     }
 
     @Test

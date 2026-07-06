@@ -35,6 +35,9 @@ public class OrderRequest(
     public val cardToken: String? = null,
     public val eci: Int = 7,
     public val authenticationIndicator: Int = 0,
+    // Saved-card (one-click) payment with a reusable token. The transaction is
+    // customer-initiated e-commerce, so ECI stays 7 (9 is recurring/MIT)
+    public val oneClick: Boolean = false,
 ) {
     // Amount is validated in toFields() (called inside the @Throws suspend
     // requestNewOrder), NOT in init: a Kotlin constructor that throws is not a
@@ -73,6 +76,9 @@ public class OrderRequest(
             fields["cardtoken"] = cardToken
             fields["eci"] = eci.toString()
             fields["authentication_indicator"] = authenticationIndicator.toString()
+            if (oneClick) {
+                fields["one_click"] = "1"
+            }
         }
         return fields
     }

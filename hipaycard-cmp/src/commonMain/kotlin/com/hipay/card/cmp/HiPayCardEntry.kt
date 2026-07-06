@@ -2,6 +2,7 @@ package com.hipay.card.cmp
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import com.hipay.card.store.SavedCard
 import com.hipay.card.validation.CardNetwork
 import com.hipay.core.HiPayConfig
 import com.hipay.core.gateway.model.CustomerInfo
@@ -48,7 +49,40 @@ expect class HiPayCardController(
         customer: CustomerInfo? = null,
         shipping: CustomerInfo? = null,
         threeDS: HiPayThreeDSMode = HiPayThreeDSMode.IN_APP_SESSION,
+        saveCard: Boolean = false,
     ): Transaction
+
+    /**
+     * One-click payment with a previously saved card: the order is created directly from the
+     * stored reusable token — no card re-entry, no CVV, no tokenization round-trip. 3DS behaves
+     * exactly as in [pay]. On a final `COMPLETED` the card's recency is bumped. If the gateway
+     * reports the stored token as no longer usable, the card is purged from local storage and a
+     * `HiPayException` with `HiPayErrorCode.CARD_NO_LONGER_VALID` is thrown — fall back to card
+     * entry. A declined payment is returned as a normal `DECLINED` transaction.
+     *
+     * Android: requires the card component rendered (it binds the presentation context) or an
+     * explicitly bound context; fails fast with `IllegalStateException` otherwise.
+     */
+    suspend fun payWithSavedCard(
+        card: SavedCard,
+        orderId: String,
+        amount: String,
+        currency: String = "EUR",
+        description: String,
+        language: String = "en_GB",
+        redirectScheme: String,
+        authenticationIndicator: Int = 0,
+        signature: String? = null,
+        customer: CustomerInfo? = null,
+        shipping: CustomerInfo? = null,
+        threeDS: HiPayThreeDSMode = HiPayThreeDSMode.IN_APP_SESSION,
+    ): Transaction
+
+    /**
+     * The cards previously saved for one-click payment (most recent first, expired cards purged).
+     * Android: same bound-context requirement as [payWithSavedCard].
+     */
+    suspend fun savedCards(): List<SavedCard>
 
     /**
      * Forward the 3DS deep-link return here (Android: from the host Activity's `onNewIntent`) so the

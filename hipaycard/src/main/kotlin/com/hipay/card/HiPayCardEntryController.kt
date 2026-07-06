@@ -21,18 +21,28 @@ import com.hipay.card.validation.CardNetworks
 import com.hipay.card.validation.CardValidators
 import com.hipay.card.validation.ValidationReason
 import com.hipay.card.validation.AllowedNetworks
+import com.hipay.card.model.CardToken
+import com.hipay.card.store.SavedCard
+import com.hipay.card.store.SecureCardStore
+import com.hipay.card.store.cardNoLongerValidOrNull
+import com.hipay.card.store.createSecureCardStore
+import com.hipay.card.store.savedCardFromToken
+import com.hipay.card.store.savedCardPaymentProduct
 import com.hipay.core.HiPayConfig
+import com.hipay.core.HiPayException
 import com.hipay.core.gateway.GatewayClient
 import com.hipay.core.gateway.model.CustomerInfo
 import com.hipay.core.gateway.model.OrderRequest
 import com.hipay.core.gateway.model.Transaction
 import com.hipay.core.gateway.model.TransactionState
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 
 /**
@@ -52,7 +62,7 @@ import java.util.Calendar
  *   `DisposableEffect`).
  */
 public class HiPayCardEntryController(
-    config: HiPayConfig,
+    private val config: HiPayConfig,
     allowedNetworks: List<HiPayCardNetwork> = emptyList(),
     scope: CoroutineScope? = null,
 ) {
@@ -83,9 +93,51 @@ public class HiPayCardEntryController(
     private var lifecycleApp: Application? = null
     private var lifecycleCallback: Application.ActivityLifecycleCallbacks? = null
 
-    /** Bound by [HiPayCardEntry] from `LocalContext`; do not call from app code. Internal wiring. */
+    /** Bound by [HiPayCardEntry] from `LocalContext`; do not call from app code — exception: a
+     *  headless host using the one-click APIs without rendering the component binds its context here. */
     public fun bindPresentationContext(context: Context?) {
         presentationContext = context
+    }
+
+    // ---- Saved cards (one-click) ----
+    // One store instance per controller, and EVERY access (creation included) confined to this
+    // single-thread dispatcher: the store is not thread-safe, and the platform factory refuses
+    // the main thread (it does blocking DataStore I/O).
+    private val storeDispatcher = Dispatchers.IO.limitedParallelism(1)
+    private var store: SecureCardStore? = null
+
+    /** Only call from [storeDispatcher]. */
+    private fun obtainStore(applicationContext: Context): SecureCardStore =
+        store ?: createSecureCardStore(applicationContext, config).also { store = it }
+
+    private fun requireOneClickContext(): Context =
+        checkNotNull(presentationContext?.applicationContext) {
+            "one-click requires a presentation context: render HiPayCardEntry, " +
+                "or call bindPresentationContext(context) first"
+        }
+
+    /**
+     * The cards previously saved for one-click payment (most recent first, expired
+     * cards purged). Requires a bound presentation context. Not thread-safe against
+     * concurrent one-click calls on other controllers sharing the same config.
+     */
+    public suspend fun savedCards(): List<SavedCard> {
+        val context = requireOneClickContext()
+        return withContext(storeDispatcher) { obtainStore(context).list() }
+    }
+
+    /** Persist the tokenized card after a COMPLETED payment; any failure is silent (fail-soft). */
+    private suspend fun persistSavedCard(token: CardToken, transaction: Transaction) {
+        if (transaction.state != TransactionState.COMPLETED) return
+        val card = savedCardFromToken(token) ?: return
+        val context = presentationContext?.applicationContext ?: return
+        try {
+            withContext(storeDispatcher) { obtainStore(context).save(card, consentGiven = true) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Fail-soft: the payment outcome is already decided; storage must not affect it.
+        }
     }
 
     // ---- Editable state (Compose snapshot state; mutated only via the on*Change handlers) ----
@@ -287,6 +339,13 @@ public class HiPayCardEntryController(
      * calling [resume3DS] from `onNewIntent`. With [autoPresent3DS] `false` (or if
      * no presentation context is bound), the raw `FORWARDING` transaction is
      * returned and the host handles the redirect itself (legacy story 7.5 path).
+     *
+     * Saved cards: with [saveCard] `true` (the payer's explicit consent — the save
+     * switch state), the card is tokenized as reusable and persisted to the secure
+     * card store, but ONLY once this call itself observes a final `COMPLETED`
+     * (directly, or through the SDK-managed 3DS). A `PENDING` outcome, or the
+     * [autoPresent3DS] `false` path where the host confirms the redirect manually,
+     * never saves. Storage failures are silent — the payment result is unaffected.
      */
     public suspend fun pay(
         orderId: String,
@@ -300,7 +359,9 @@ public class HiPayCardEntryController(
         customer: CustomerInfo? = null,
         shipping: CustomerInfo? = null,
         autoPresent3DS: Boolean = true,
+        saveCard: Boolean = false,
     ): Transaction {
+        if (saveCard) requireOneClickContext() // fail fast BEFORE any money moves
         // Lock the fields for the whole flow (incl. the suspended 3DS); reset on every exit (11.14).
         isProcessing = true
         try {
@@ -311,7 +372,7 @@ public class HiPayCardEntryController(
             expiryYear = expiryYear,
             holder = holder,
             cvc = if (isCvcRequired) cvc else "",
-            multiUse = false,
+            multiUse = saveCard,
         )
         val base = "$redirectScheme://hipay-fullservice/gateway/orders/$orderId"
         val order = OrderRequest(
@@ -350,8 +411,29 @@ public class HiPayCardEntryController(
         expiryBlurred = false
         cvcBlurred = false
 
-        // 3DS: present in-app (Custom Tabs) and suspend until resume3DS confirms, unless the host
-        // opted out or no context is bound — then hand back the raw FORWARDING tx (legacy 7.5).
+        val final = present3DSAndAwait(transaction, signature, autoPresent3DS)
+        if (saveCard) persistSavedCard(token, final)
+        return final
+        } finally {
+            isProcessing = false
+            // If the host scope was cancelled mid-3DS, await() resumes here without resume3DS or the
+            // watcher having cleaned up → release both so we never leak the Activity-lifecycle callback
+            // (idempotent on the happy path, where they are already cleared).
+            pending3DS = null
+            unregisterCancellationWatcher()
+        }
+    }
+
+    /**
+     * 3DS presentation shared by [pay] and [payWithSavedCard]: present in-app (Custom Tabs) and
+     * suspend until [resume3DS] (or the cancellation watcher) confirms, unless the host opted out
+     * or no context is bound — then hand back the raw FORWARDING tx for manual host handling.
+     */
+    private suspend fun present3DSAndAwait(
+        transaction: Transaction,
+        signature: String?,
+        autoPresent3DS: Boolean,
+    ): Transaction {
         val context = presentationContext
         val forwardUrl = transaction.forwardUrl
         if (!autoPresent3DS ||
@@ -367,13 +449,89 @@ public class HiPayCardEntryController(
         registerCancellationWatcher(context)
         CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(forwardUrl))
         return deferred.await()
+    }
+
+    /**
+     * One-click payment with a previously saved card: the order is created directly
+     * from the stored reusable token — no card re-entry, no CVV, no tokenization
+     * round-trip. 3DS behaves exactly as in [pay] (a challenge still fires when the
+     * bank requires it). Requires a bound presentation context.
+     *
+     * On a final `COMPLETED` the card's recency is bumped (most-recently-used). If
+     * the gateway reports the stored token as no longer usable, the card is purged
+     * from local storage and a [HiPayException] with
+     * `HiPayErrorCode.CARD_NO_LONGER_VALID` is thrown — fall back to card entry.
+     * A declined payment is returned as a normal `DECLINED` transaction.
+     */
+    public suspend fun payWithSavedCard(
+        card: SavedCard,
+        orderId: String,
+        amount: String,
+        currency: String = "EUR",
+        description: String,
+        language: String = "en_GB",
+        redirectScheme: String,
+        authenticationIndicator: Int = 0,
+        signature: String? = null,
+        customer: CustomerInfo? = null,
+        shipping: CustomerInfo? = null,
+        autoPresent3DS: Boolean = true,
+    ): Transaction {
+        val storeContext = requireOneClickContext()
+        isProcessing = true
+        try {
+            val base = "$redirectScheme://hipay-fullservice/gateway/orders/$orderId"
+            val order = OrderRequest(
+                orderId = orderId,
+                paymentProduct = savedCardPaymentProduct(card),
+                amount = amount,
+                description = description,
+                acceptUrl = "$base/accept",
+                declineUrl = "$base/decline",
+                pendingUrl = "$base/pending",
+                exceptionUrl = "$base/exception",
+                cancelUrl = "$base/cancel",
+                currency = currency,
+                language = language,
+                customer = customer,
+                shippingAddress = shipping,
+                cardToken = card.token,
+                eci = 7,
+                authenticationIndicator = authenticationIndicator,
+                oneClick = true,
+            )
+            val transaction = try {
+                gateway.requestNewOrder(order, signature)
+            } catch (e: HiPayException) {
+                throw cardNoLongerValidOrNull(e)?.also { purgeQuietly(storeContext, card) } ?: e
+            }
+            val final = present3DSAndAwait(transaction, signature, autoPresent3DS)
+            if (final.state == TransactionState.COMPLETED) touchQuietly(storeContext, card)
+            return final
         } finally {
             isProcessing = false
-            // If the host scope was cancelled mid-3DS, await() resumes here without resume3DS or the
-            // watcher having cleaned up → release both so we never leak the Activity-lifecycle callback
-            // (idempotent on the happy path, where they are already cleared).
             pending3DS = null
             unregisterCancellationWatcher()
+        }
+    }
+
+    /** Purge a no-longer-valid card; storage failure never masks the payment error (fail-soft). */
+    private suspend fun purgeQuietly(applicationContext: Context, card: SavedCard) {
+        try {
+            withContext(storeDispatcher) { obtainStore(applicationContext).delete(card) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+        }
+    }
+
+    /** Bump the card's recency after a completed one-click payment (fail-soft). */
+    private suspend fun touchQuietly(applicationContext: Context, card: SavedCard) {
+        try {
+            withContext(storeDispatcher) { obtainStore(applicationContext).touch(card) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
         }
     }
 
