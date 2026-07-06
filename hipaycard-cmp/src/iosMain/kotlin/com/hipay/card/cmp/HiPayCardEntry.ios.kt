@@ -3,6 +3,7 @@ package com.hipay.card.cmp
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.hipay.card.store.SavedCard
+import com.hipay.card.store.SavedCardOutcome
 import com.hipay.card.validation.CardNetwork
 import com.hipay.core.HiPayConfig
 import com.hipay.core.gateway.model.CustomerInfo
@@ -83,6 +84,8 @@ actual class HiPayCardController actual constructor(
     )
 
     actual suspend fun savedCards(): List<SavedCard> = impl.savedCards()
+
+    actual val lastSaveOutcome: SavedCardOutcome? get() = impl.lastSaveOutcome
 
     // iOS 3DS = in-app ASWebAuthenticationSession (self-captures the callback); no host wiring.
     actual fun resume3DS(url: String) = impl.resume3DS(url)

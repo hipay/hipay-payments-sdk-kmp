@@ -17,22 +17,53 @@ import com.hipay.core.HiPayException
  * `[0-9x]` characters, so mixing sources would give the same card two
  * different identities and break update-on-match.
  *
- * Returns null (fail-soft, nothing persisted) when the masked pan or the
- * expiry is missing — without them the card has no identity. Display-only
- * fields (network, holder) default to empty.
+ * Returns null (fail-soft, nothing persisted) when the card cannot be
+ * represented: the masked pan or expiry is missing (no identity), OR the brand
+ * is absent/unrecognized. A recognizable network is required because the later
+ * one-click order derives its `payment_product` from the stored brand —
+ * persisting a card whose brand we can't map would force a guessed product and
+ * risk a token/product mismatch at pay time. The holder is display-only and
+ * defaults to empty. A null return is surfaced to the host as
+ * [SavedCardOutcome.NOT_ELIGIBLE].
  */
 public fun savedCardFromToken(token: CardToken): SavedCard? {
     val maskedPan = token.pan ?: return null
     val expiryMonth = token.cardExpiryMonth ?: return null
     val expiryYear = token.cardExpiryYear ?: return null
+    val brand = token.brand ?: return null
+    if (CardNetworks.fromApiBrand(brand) == null) return null // no mappable payment_product
     return SavedCard(
         token = token.token,
         maskedPan = maskedPan,
-        network = token.brand.orEmpty(),
+        network = brand,
         holder = token.cardHolder.orEmpty(),
         expiryMonth = expiryMonth,
         expiryYear = expiryYear,
     )
+}
+
+/**
+ * Outcome of a save requested via `pay(saveCard = true)`, exposed as observable state by the card
+ * controllers so a host can react — e.g. a "card saved" confirmation or a "this card can't be
+ * saved" notice (the notice UI itself is out of the pay-path scope). It is null until a save is
+ * attempted (the payment did not complete, or `saveCard` was false).
+ */
+public enum class SavedCardOutcome {
+    /** The card was persisted for one-click. */
+    SAVED,
+
+    /**
+     * The payment succeeded but the card could not be represented for storage — the token lacked a
+     * masked pan / expiry, or its brand is not a recognizable network. Not saved; retrying will not
+     * help (the host may inform the user the card is not eligible for one-click).
+     */
+    NOT_ELIGIBLE,
+
+    /**
+     * The payment succeeded and the card was eligible, but the secure store rejected the write.
+     * Not saved; the failure is transient-ish and the host may retry or surface a soft error.
+     */
+    STORAGE_FAILED,
 }
 
 /**

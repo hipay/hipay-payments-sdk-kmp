@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import com.hipay.card.CardTokenizer
 import com.hipay.card.model.CardToken
 import com.hipay.card.store.SavedCard
+import com.hipay.card.store.SavedCardOutcome
 import com.hipay.card.store.SecureCardStore
 import com.hipay.card.store.cardNoLongerValidOrNull
 import com.hipay.card.store.savedCardFromToken
@@ -90,6 +91,13 @@ public class CmpCardController(
     public var numberBlurred: Boolean by mutableStateOf(false); private set
     public var expiryBlurred: Boolean by mutableStateOf(false); private set
     public var cvcBlurred: Boolean by mutableStateOf(false); private set
+
+    /**
+     * Result of the most recent `pay(saveCard = true)` save attempt, for the host to react to
+     * (e.g. a confirmation or a "card not saved" notice). Null when no save was attempted — a
+     * fresh `pay(saveCard = true)` resets it, and it stays null when the payment does not complete.
+     */
+    public var lastSaveOutcome: SavedCardOutcome? by mutableStateOf(null); private set
 
     private var userSelectedNetwork = false
     private var lastDetected: CardNetwork = CardNetwork.UNKNOWN
@@ -241,6 +249,7 @@ public class CmpCardController(
         threeDS: HiPayThreeDSMode = HiPayThreeDSMode.IN_APP_SESSION,
         saveCard: Boolean = false,
     ): Transaction {
+        if (saveCard) lastSaveOutcome = null
         // Lock the fields for the whole flow (incl. the suspended 3DS); reset on every exit (11.14).
         isProcessing = true
         try {
@@ -353,16 +362,28 @@ public class CmpCardController(
      */
     public suspend fun savedCards(): List<SavedCard> = withStore { it.list() }
 
-    /** Persist the tokenized card after a COMPLETED payment; any failure is silent (fail-soft). */
+    /**
+     * Persist the tokenized card after a COMPLETED payment; never throws (the payment already
+     * settled). Records the outcome in [lastSaveOutcome].
+     */
     private suspend fun persistSavedCard(token: CardToken, transaction: Transaction) {
         if (transaction.state != TransactionState.COMPLETED) return
-        val card = savedCardFromToken(token) ?: return
-        try {
-            withStore { it.save(card, consentGiven = true) }
+        val card = savedCardFromToken(token)
+        if (card == null) {
+            lastSaveOutcome = SavedCardOutcome.NOT_ELIGIBLE
+            return
+        }
+        lastSaveOutcome = try {
+            if (withStore { it.save(card, consentGiven = true) }) {
+                SavedCardOutcome.SAVED
+            } else {
+                SavedCardOutcome.STORAGE_FAILED
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             // Fail-soft: the payment outcome is already decided; storage must not affect it.
+            SavedCardOutcome.STORAGE_FAILED
         }
     }
 

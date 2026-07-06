@@ -3,6 +3,7 @@ package com.hipay.card.cmp
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.hipay.card.store.SavedCard
+import com.hipay.card.store.SavedCardOutcome
 import com.hipay.card.validation.CardNetwork
 import com.hipay.core.HiPayConfig
 import com.hipay.core.gateway.model.CustomerInfo
@@ -83,6 +84,12 @@ expect class HiPayCardController(
      * Android: same bound-context requirement as [payWithSavedCard].
      */
     suspend fun savedCards(): List<SavedCard>
+
+    /**
+     * Result of the most recent `pay(saveCard = true)` save attempt (observable), for the host to
+     * react to (e.g. a "card saved" / "card not saved" notice). Null when no save was attempted.
+     */
+    val lastSaveOutcome: SavedCardOutcome?
 
     /**
      * Forward the 3DS deep-link return here (Android: from the host Activity's `onNewIntent`) so the

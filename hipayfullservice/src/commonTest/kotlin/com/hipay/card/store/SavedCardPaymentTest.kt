@@ -49,9 +49,19 @@ class SavedCardPaymentTest {
     }
 
     @Test
-    fun missingDisplayOnlyFieldsDefaultToEmpty() {
-        val card = assertNotNull(savedCardFromToken(fullToken(brand = null, holder = null)))
-        assertEquals("", card.network)
+    fun unmappableBrandFailsSoftToNull() {
+        // A saved card must resolve to a payment_product; an absent or unrecognized
+        // brand would force a guessed product at one-click time, so it is not persisted
+        // (surfaced to the host as NOT_ELIGIBLE).
+        assertNull(savedCardFromToken(fullToken(brand = null)))
+        assertNull(savedCardFromToken(fullToken(brand = "")))
+        assertNull(savedCardFromToken(fullToken(brand = "something-new")))
+    }
+
+    @Test
+    fun missingHolderDefaultsToEmptyWhenBrandIsKnown() {
+        val card = assertNotNull(savedCardFromToken(fullToken(holder = null)))
+        assertEquals("VISA", card.network)
         assertEquals("", card.holder)
     }
 
@@ -69,9 +79,18 @@ class SavedCardPaymentTest {
         assertEquals("maestro", product("maestro"))
         assertEquals("cb", product("CB"))
         assertEquals("bcmc", product("bcmc"))
-        // unknown/empty brand falls back to visa (frozen `?: "visa"` contract convention)
-        assertEquals("visa", product("something-new"))
-        assertEquals("visa", savedCardPaymentProduct(assertNotNull(savedCardFromToken(fullToken(brand = null)))))
+    }
+
+    @Test
+    fun paymentProductFallsBackToVisaOnlyForAnAlreadyStoredUnknownBrand() {
+        // savedCardFromToken now refuses an unmappable brand, so this fallback is only
+        // reachable defensively (e.g. a card persisted by a future/looser writer). Exercised
+        // by hand-building the SavedCard, not via savedCardFromToken.
+        val stored = SavedCard(
+            token = "t".repeat(64), maskedPan = "411111xxxxxx1111", network = "future-brand",
+            holder = "J", expiryMonth = "12", expiryYear = "2031",
+        )
+        assertEquals("visa", savedCardPaymentProduct(stored))
     }
 
     // --- cardNoLongerValidOrNull ---

@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.hipay.card.HiPayCardNetwork
 import com.hipay.card.store.SavedCard
+import com.hipay.card.store.SavedCardOutcome
 import com.hipay.card.validation.CardNetwork
 import com.hipay.core.HiPayConfig
 import com.hipay.core.gateway.model.CustomerInfo
@@ -90,6 +91,8 @@ actual class HiPayCardController actual constructor(
     )
 
     actual suspend fun savedCards(): List<SavedCard> = delegate.savedCards()
+
+    actual val lastSaveOutcome: SavedCardOutcome? get() = delegate.lastSaveOutcome
 
     // Android 3DS = native :hipaycard Custom Tabs (story 11.13); the host forwards onNewIntent here.
     actual fun resume3DS(url: String) = delegate.resume3DS(url)

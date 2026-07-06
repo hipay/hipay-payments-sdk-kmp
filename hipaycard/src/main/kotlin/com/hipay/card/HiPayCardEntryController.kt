@@ -23,6 +23,7 @@ import com.hipay.card.validation.ValidationReason
 import com.hipay.card.validation.AllowedNetworks
 import com.hipay.card.model.CardToken
 import com.hipay.card.store.SavedCard
+import com.hipay.card.store.SavedCardOutcome
 import com.hipay.card.store.SecureCardStore
 import com.hipay.card.store.cardNoLongerValidOrNull
 import com.hipay.card.store.createSecureCardStore
@@ -126,17 +127,40 @@ public class HiPayCardEntryController(
         return withContext(storeDispatcher) { obtainStore(context).list() }
     }
 
-    /** Persist the tokenized card after a COMPLETED payment; any failure is silent (fail-soft). */
-    private suspend fun persistSavedCard(token: CardToken, transaction: Transaction) {
+    /**
+     * Result of the most recent `pay(saveCard = true)` save attempt, for the host to react to
+     * (e.g. a confirmation or a "card not saved" notice). Null when no save was attempted — a
+     * fresh `pay(saveCard = true)` resets it, and it stays null when the payment does not complete.
+     */
+    public var lastSaveOutcome: SavedCardOutcome? by mutableStateOf(null); private set
+
+    /**
+     * Persist the tokenized card after a COMPLETED payment; never throws (the payment already
+     * settled). Records the outcome in [lastSaveOutcome]. [applicationContext] is captured by the
+     * caller BEFORE the (possibly backgrounding) 3DS window, so a component leaving composition
+     * mid-3DS cannot null it out and silently drop the save.
+     */
+    private suspend fun persistSavedCard(
+        applicationContext: Context,
+        token: CardToken,
+        transaction: Transaction,
+    ) {
         if (transaction.state != TransactionState.COMPLETED) return
-        val card = savedCardFromToken(token) ?: return
-        val context = presentationContext?.applicationContext ?: return
-        try {
-            withContext(storeDispatcher) { obtainStore(context).save(card, consentGiven = true) }
+        val card = savedCardFromToken(token)
+        if (card == null) {
+            lastSaveOutcome = SavedCardOutcome.NOT_ELIGIBLE
+            return
+        }
+        lastSaveOutcome = try {
+            val persisted = withContext(storeDispatcher) {
+                obtainStore(applicationContext).save(card, consentGiven = true)
+            }
+            if (persisted) SavedCardOutcome.SAVED else SavedCardOutcome.STORAGE_FAILED
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             // Fail-soft: the payment outcome is already decided; storage must not affect it.
+            SavedCardOutcome.STORAGE_FAILED
         }
     }
 
@@ -345,7 +369,8 @@ public class HiPayCardEntryController(
      * card store, but ONLY once this call itself observes a final `COMPLETED`
      * (directly, or through the SDK-managed 3DS). A `PENDING` outcome, or the
      * [autoPresent3DS] `false` path where the host confirms the redirect manually,
-     * never saves. Storage failures are silent — the payment result is unaffected.
+     * never saves. Storage failures are silent — the payment result is unaffected;
+     * the host reads [lastSaveOutcome] to learn whether the card was saved.
      */
     public suspend fun pay(
         orderId: String,
@@ -361,7 +386,10 @@ public class HiPayCardEntryController(
         autoPresent3DS: Boolean = true,
         saveCard: Boolean = false,
     ): Transaction {
-        if (saveCard) requireOneClickContext() // fail fast BEFORE any money moves
+        // Capture the store context up front (fail fast BEFORE any money moves, and pin it so a
+        // component leaving composition during the 3DS window can't null it and drop the save).
+        val storeContext = if (saveCard) requireOneClickContext() else null
+        if (saveCard) lastSaveOutcome = null
         // Lock the fields for the whole flow (incl. the suspended 3DS); reset on every exit (11.14).
         isProcessing = true
         try {
@@ -412,7 +440,7 @@ public class HiPayCardEntryController(
         cvcBlurred = false
 
         val final = present3DSAndAwait(transaction, signature, autoPresent3DS)
-        if (saveCard) persistSavedCard(token, final)
+        if (storeContext != null) persistSavedCard(storeContext, token, final)
         return final
         } finally {
             isProcessing = false
