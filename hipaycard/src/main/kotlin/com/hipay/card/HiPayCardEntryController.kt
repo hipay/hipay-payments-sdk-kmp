@@ -30,6 +30,7 @@ import com.hipay.card.store.createSecureCardStore
 import com.hipay.card.store.savedCardFromToken
 import com.hipay.card.store.savedCardPaymentProduct
 import com.hipay.core.HiPayConfig
+import com.hipay.core.HiPayErrorCode
 import com.hipay.core.HiPayException
 import com.hipay.core.gateway.GatewayClient
 import com.hipay.core.gateway.model.CustomerInfo
@@ -66,6 +67,9 @@ public class HiPayCardEntryController(
     private val config: HiPayConfig,
     allowedNetworks: List<HiPayCardNetwork> = emptyList(),
     scope: CoroutineScope? = null,
+    /** Explicit integrator opt-in for the one-click (saved cards) UI — off by default: without it
+     *  the component renders and behaves exactly as before and no card store is ever created. */
+    public val oneClickEnabled: Boolean = false,
 ) {
     /** Field identifiers (for blur tracking / first-invalid focus — error UI is story 7.4). */
     public enum class Field { HOLDER, NUMBER, EXPIRY, CVC }
@@ -133,6 +137,62 @@ public class HiPayCardEntryController(
      * fresh `pay(saveCard = true)` resets it, and it stays null when the payment does not complete.
      */
     public var lastSaveOutcome: SavedCardOutcome? by mutableStateOf(null); private set
+
+    // ---- One-click UI state (rendered by HiPayCardEntry only when oneClickEnabled) ----
+
+    /** The saved card offered for one-click (most recently used/saved); null when none or not loaded. */
+    public var savedCard: SavedCard? by mutableStateOf(null); private set
+
+    /** True when the saved card is the active selection (entry fields collapsed). Exactly one of
+     *  {saved card, new card} is selected at all times once a card exists. */
+    public var isSavedCardSelected: Boolean by mutableStateOf(false); private set
+
+    /** The in-frame "save this card" switch state (consent) — default OFF, reset after each
+     *  successful save (consent is per-transaction). */
+    public var saveCardOptIn: Boolean by mutableStateOf(false); private set
+
+    /** Select the saved card (collapses the entry fields — their values are preserved). */
+    public fun selectSavedCard() {
+        if (savedCard != null) isSavedCardSelected = true
+    }
+
+    /** Select the new-card branch (expands the entry fields). */
+    public fun selectNewCard() {
+        isSavedCardSelected = false
+    }
+
+    /** Save-switch handler (called from the component's toggle). */
+    public fun onSaveCardOptInChange(optIn: Boolean) {
+        saveCardOptIn = optIn
+    }
+
+    /**
+     * (Re)loads the saved card and resets the selection to it (MRU pre-selected; none → new-card).
+     * Called by the component after composition and by the pay flows on terminal outcomes; fail-soft
+     * (no card store, and no-op, unless [oneClickEnabled] and a presentation context is bound).
+     */
+    public suspend fun refreshSavedCards() {
+        if (!oneClickEnabled) return
+        val context = presentationContext?.applicationContext ?: return
+        val first = try {
+            withContext(storeDispatcher) { obtainStore(context).list() }.firstOrNull()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
+        savedCard = first
+        isSavedCardSelected = first != null
+    }
+
+    private suspend fun refreshSavedCardsQuietly() {
+        try {
+            refreshSavedCards()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+        }
+    }
 
     /**
      * Persist the tokenized card after a COMPLETED payment; never throws (the payment already
@@ -207,14 +267,16 @@ public class HiPayCardEntryController(
     public val isCvcComplete: Boolean get() = !isCvcRequired || cvc.length == cvcMaxLength
     public val isNetworkAuthorized: Boolean get() = AllowedNetworks.isAuthorized(network, allowedKmp)
 
-    /** True when the host's Pay action may proceed (inline error rendering is story 7.4). */
+    /** True when the host's Pay action may proceed (the fields render their own inline errors).
+     *  A selected saved card is always payable — field state is irrelevant on that branch. */
     public val canPay: Boolean
-        get() = holder.isNotBlank() &&
-            CardValidators.isHolderValid(holder) &&
-            CardValidators.isCardNumberValid(panDigits) &&
-            CardValidators.isExpiryDateValid(expiryMonth, expiryYear) &&
-            isCvcComplete &&
-            isNetworkAuthorized
+        get() = (oneClickEnabled && isSavedCardSelected && savedCard != null) ||
+            (holder.isNotBlank() &&
+                CardValidators.isHolderValid(holder) &&
+                CardValidators.isCardNumberValid(panDigits) &&
+                CardValidators.isExpiryDateValid(expiryMonth, expiryYear) &&
+                isCvcComplete &&
+                isNetworkAuthorized)
 
     /** First field (holder→number→expiry→cvc) currently failing — for the host's focus-to-error. */
     public val firstInvalidField: Field?
@@ -386,10 +448,39 @@ public class HiPayCardEntryController(
         autoPresent3DS: Boolean = true,
         saveCard: Boolean = false,
     ): Transaction {
+        // One-click routing: with the saved card selected, the same host call pays via the
+        // stored token — no tokenization, no CVV; the host's single touch-point is preserved.
+        val routedCard = savedCard
+        if (oneClickEnabled && isSavedCardSelected && routedCard != null) {
+            return try {
+                val final = payWithSavedCard(
+                    card = routedCard,
+                    orderId = orderId,
+                    amount = amount,
+                    currency = currency,
+                    description = description,
+                    language = language,
+                    redirectScheme = redirectScheme,
+                    authenticationIndicator = authenticationIndicator,
+                    signature = signature,
+                    customer = customer,
+                    shipping = shipping,
+                    autoPresent3DS = autoPresent3DS,
+                )
+                if (final.state == TransactionState.COMPLETED) refreshSavedCardsQuietly()
+                final
+            } catch (e: HiPayException) {
+                // The purged card must leave the UI and the selection falls back to entry.
+                if (e.code == HiPayErrorCode.CARD_NO_LONGER_VALID) refreshSavedCardsQuietly()
+                throw e
+            }
+        }
+        // The component's save switch and the parameter express the same consent.
+        val effectiveSave = saveCard || (oneClickEnabled && saveCardOptIn)
         // Capture the store context up front (fail fast BEFORE any money moves, and pin it so a
         // component leaving composition during the 3DS window can't null it and drop the save).
-        val storeContext = if (saveCard) requireOneClickContext() else null
-        if (saveCard) lastSaveOutcome = null
+        val storeContext = if (effectiveSave) requireOneClickContext() else null
+        if (effectiveSave) lastSaveOutcome = null
         // Lock the fields for the whole flow (incl. the suspended 3DS); reset on every exit (11.14).
         isProcessing = true
         try {
@@ -400,7 +491,7 @@ public class HiPayCardEntryController(
             expiryYear = expiryYear,
             holder = holder,
             cvc = if (isCvcRequired) cvc else "",
-            multiUse = saveCard,
+            multiUse = effectiveSave,
         )
         val base = "$redirectScheme://hipay-fullservice/gateway/orders/$orderId"
         val order = OrderRequest(
@@ -440,7 +531,13 @@ public class HiPayCardEntryController(
         cvcBlurred = false
 
         val final = present3DSAndAwait(transaction, signature, autoPresent3DS)
-        if (storeContext != null) persistSavedCard(storeContext, token, final)
+        if (storeContext != null) {
+            persistSavedCard(storeContext, token, final)
+            if (final.state == TransactionState.COMPLETED) {
+                saveCardOptIn = false // consent is per-transaction
+                refreshSavedCardsQuietly() // the new card appears, pre-selected for the next payment
+            }
+        }
         return final
         } finally {
             isProcessing = false

@@ -21,11 +21,20 @@ import com.hipay.core.gateway.model.Transaction
 actual class HiPayCardController actual constructor(
     config: HiPayConfig,
     allowedNetworks: List<CardNetwork>,
+    oneClickEnabled: Boolean,
 ) {
-    internal val impl = CmpCardController(config, allowedNetworks)
+    internal val impl = CmpCardController(config, allowedNetworks, oneClickEnabled)
 
     actual val canPay: Boolean get() = impl.canPay
     actual val isProcessing: Boolean get() = impl.isProcessing
+
+    actual val savedCard: SavedCard? get() = impl.savedCard
+    actual val isSavedCardSelected: Boolean get() = impl.isSavedCardSelected
+    actual val saveCardOptIn: Boolean get() = impl.saveCardOptIn
+    actual fun selectSavedCard() = impl.selectSavedCard()
+    actual fun selectNewCard() = impl.selectNewCard()
+    actual fun onSaveCardOptInChange(optIn: Boolean) = impl.onSaveCardOptInChange(optIn)
+    actual suspend fun refreshSavedCards() = impl.refreshSavedCards()
 
     actual suspend fun pay(
         orderId: String,

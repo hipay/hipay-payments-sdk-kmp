@@ -22,9 +22,33 @@ import com.hipay.core.gateway.model.Transaction
 expect class HiPayCardController(
     config: HiPayConfig,
     allowedNetworks: List<CardNetwork> = emptyList(),
+    /** Explicit integrator opt-in for the one-click (saved cards) UI — off by default: without it
+     *  the component renders and behaves exactly as before and no card store is ever created. */
+    oneClickEnabled: Boolean = false,
 ) {
-    /** True when every required field is valid (Compose-observable). */
+    /** True when every required field is valid, or a saved card is selected (Compose-observable). */
     val canPay: Boolean
+
+    /** The saved card offered for one-click (most recently used/saved); null when none/not loaded. */
+    val savedCard: SavedCard?
+
+    /** True when the saved card is the active selection (entry fields collapsed). */
+    val isSavedCardSelected: Boolean
+
+    /** The in-frame "save this card" switch state (consent) — default OFF, reset after each save. */
+    val saveCardOptIn: Boolean
+
+    /** Select the saved card (collapses the entry fields — their values are preserved). */
+    fun selectSavedCard()
+
+    /** Select the new-card branch (expands the entry fields). */
+    fun selectNewCard()
+
+    /** Save-switch handler. */
+    fun onSaveCardOptInChange(optIn: Boolean)
+
+    /** (Re)loads the saved card and resets the selection to it (no-op unless one-click opted in). */
+    suspend fun refreshSavedCards()
 
     /** True while a [pay] is in flight (set by the SDK, story 11.14); the card UI locks its fields
      *  on this and the host disables its Pay button with `!canPay || isProcessing`. */

@@ -21,6 +21,7 @@ import com.hipay.card.validation.CardValidators
 import com.hipay.card.validation.ValidationReason
 import com.hipay.card.validation.messageKey
 import com.hipay.core.HiPayConfig
+import com.hipay.core.HiPayErrorCode
 import com.hipay.core.HiPayException
 import com.hipay.core.callback.CallbackUrlParser
 import com.hipay.core.gateway.GatewayClient
@@ -51,6 +52,9 @@ import kotlin.coroutines.resume
 public class CmpCardController(
     private val config: HiPayConfig,
     private val allowed: List<CardNetwork> = emptyList(),
+    /** Explicit integrator opt-in for the one-click (saved cards) UI — off by default: without it
+     *  the component renders and behaves exactly as before and no card store is ever created. */
+    public val oneClickEnabled: Boolean = false,
 ) {
     public enum class Field { HOLDER, NUMBER, EXPIRY, CVC }
 
@@ -99,6 +103,60 @@ public class CmpCardController(
      */
     public var lastSaveOutcome: SavedCardOutcome? by mutableStateOf(null); private set
 
+    // ---- One-click UI state (rendered by the card entry only when oneClickEnabled) ----
+
+    /** The saved card offered for one-click (most recently used/saved); null when none or not loaded. */
+    public var savedCard: SavedCard? by mutableStateOf(null); private set
+
+    /** True when the saved card is the active selection (entry fields collapsed). */
+    public var isSavedCardSelected: Boolean by mutableStateOf(false); private set
+
+    /** The in-frame "save this card" switch state (consent) — default OFF, reset after each
+     *  successful save (consent is per-transaction). */
+    public var saveCardOptIn: Boolean by mutableStateOf(false); private set
+
+    /** Select the saved card (collapses the entry fields — their values are preserved). */
+    public fun selectSavedCard() {
+        if (savedCard != null) isSavedCardSelected = true
+    }
+
+    /** Select the new-card branch (expands the entry fields). */
+    public fun selectNewCard() {
+        isSavedCardSelected = false
+    }
+
+    /** Save-switch handler (called from the component's toggle). */
+    public fun onSaveCardOptInChange(optIn: Boolean) {
+        saveCardOptIn = optIn
+    }
+
+    /**
+     * (Re)loads the saved card and resets the selection to it (MRU pre-selected; none → new-card).
+     * Called by the card entry after composition and by the pay flows on terminal outcomes;
+     * no-op (and no store created) unless [oneClickEnabled]. Fail-soft.
+     */
+    public suspend fun refreshSavedCards() {
+        if (!oneClickEnabled) return
+        val first = try {
+            withStore { it.list() }.firstOrNull()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
+        }
+        savedCard = first
+        isSavedCardSelected = first != null
+    }
+
+    private suspend fun refreshSavedCardsQuietly() {
+        try {
+            refreshSavedCards()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+        }
+    }
+
     private var userSelectedNetwork = false
     private var lastDetected: CardNetwork = CardNetwork.UNKNOWN
 
@@ -119,13 +177,15 @@ public class CmpCardController(
     public val isCvcComplete: Boolean get() = !isCvcRequired || cvc.length == cvcMaxLength
     public val isNetworkAuthorized: Boolean get() = AllowedNetworks.isAuthorized(network, allowed)
 
+    /** A selected saved card is always payable — field state is irrelevant on that branch. */
     public val canPay: Boolean
-        get() = holder.isNotBlank() &&
-            CardValidators.isHolderValid(holder) &&
-            CardValidators.isCardNumberValid(panDigits) &&
-            CardValidators.isExpiryDateValid(expiryMonth, expiryYear) &&
-            isCvcComplete &&
-            isNetworkAuthorized
+        get() = (oneClickEnabled && isSavedCardSelected && savedCard != null) ||
+            (holder.isNotBlank() &&
+                CardValidators.isHolderValid(holder) &&
+                CardValidators.isCardNumberValid(panDigits) &&
+                CardValidators.isExpiryDateValid(expiryMonth, expiryYear) &&
+                isCvcComplete &&
+                isNetworkAuthorized)
 
     public val firstInvalidField: Field?
         get() = when {
@@ -249,7 +309,36 @@ public class CmpCardController(
         threeDS: HiPayThreeDSMode = HiPayThreeDSMode.IN_APP_SESSION,
         saveCard: Boolean = false,
     ): Transaction {
-        if (saveCard) lastSaveOutcome = null
+        // One-click routing: with the saved card selected, the same host call pays via the
+        // stored token — no tokenization, no CVV; the host's single touch-point is preserved.
+        val routedCard = savedCard
+        if (oneClickEnabled && isSavedCardSelected && routedCard != null) {
+            return try {
+                val final = payWithSavedCard(
+                    card = routedCard,
+                    orderId = orderId,
+                    amount = amount,
+                    currency = currency,
+                    description = description,
+                    language = language,
+                    redirectScheme = redirectScheme,
+                    authenticationIndicator = authenticationIndicator,
+                    signature = signature,
+                    customer = customer,
+                    shipping = shipping,
+                    threeDS = threeDS,
+                )
+                if (final.state == TransactionState.COMPLETED) refreshSavedCardsQuietly()
+                final
+            } catch (e: HiPayException) {
+                // The purged card must leave the UI and the selection falls back to entry.
+                if (e.code == HiPayErrorCode.CARD_NO_LONGER_VALID) refreshSavedCardsQuietly()
+                throw e
+            }
+        }
+        // The component's save switch and the parameter express the same consent.
+        val effectiveSave = saveCard || (oneClickEnabled && saveCardOptIn)
+        if (effectiveSave) lastSaveOutcome = null
         // Lock the fields for the whole flow (incl. the suspended 3DS); reset on every exit (11.14).
         isProcessing = true
         try {
@@ -260,7 +349,7 @@ public class CmpCardController(
             expiryYear = expiryYear,
             holder = holder,
             cvc = if (isCvcRequired) cvc else "",
-            multiUse = saveCard,
+            multiUse = effectiveSave,
         )
         val base = "$redirectScheme://hipay-fullservice/gateway/orders/$orderId"
         val order = OrderRequest(
@@ -289,7 +378,13 @@ public class CmpCardController(
         holderBlurred = false; numberBlurred = false; expiryBlurred = false; cvcBlurred = false
 
         val final = resolve3DS(transaction, redirectScheme, signature, threeDS)
-        if (saveCard) persistSavedCard(token, final)
+        if (effectiveSave) {
+            persistSavedCard(token, final)
+            if (final.state == TransactionState.COMPLETED) {
+                saveCardOptIn = false // consent is per-transaction
+                refreshSavedCardsQuietly() // the new card appears, pre-selected for the next payment
+            }
+        }
         return final
         } finally {
             isProcessing = false

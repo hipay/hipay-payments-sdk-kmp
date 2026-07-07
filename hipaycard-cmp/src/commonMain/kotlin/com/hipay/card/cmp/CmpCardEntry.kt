@@ -1,19 +1,29 @@
 // PCI (NFR2): com.hipay.card path — never log card data here.
 package com.hipay.card.cmp
 
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -27,12 +37,15 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.hipay.card.store.savedCardDisplay
 import com.hipay.card.validation.CardEntryStringKey
 import com.hipay.card.validation.CardNetwork
 import org.jetbrains.compose.resources.painterResource
@@ -71,10 +84,22 @@ internal fun CmpCardEntry(
     val cvcJustFilled = controller.isCvcRequired && controller.cvc.length == controller.cvcMaxLength
     LaunchedEffect(cvcJustFilled) { if (cvcJustFilled) focusManager.clearFocus() }
 
+    // One-click: load the saved card on composition (no-op unless opted in — fail-soft).
+    if (controller.oneClickEnabled) {
+        LaunchedEffect(controller) { controller.refreshSavedCards() }
+    }
+    // With the saved card selected, the entry fields are not rendered — their values stay in the
+    // controller (nothing is cleared until a payment succeeds).
+    val showEntryFields = !(controller.oneClickEnabled && controller.isSavedCardSelected)
+
     Column(
-        modifier = modifier.fillMaxWidth().padding(16.dp),
+        modifier = modifier.fillMaxWidth().padding(16.dp).animateContentSize(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        if (controller.oneClickEnabled && controller.savedCard != null) {
+            CmpSavedCardsSections(controller, enabled)
+        }
+        if (showEntryFields) {
         // Holder
         OutlinedTextField(
             value = controller.holder,
@@ -159,7 +184,140 @@ internal fun CmpCardEntry(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+        // In-frame save switch + one-line consent — the new-card branch of one-click only.
+        if (controller.oneClickEnabled) CmpSaveCardSwitch(controller, enabled)
+        } // showEntryFields
     }
+}
+
+/**
+ * The two one-click zones, sharing one section-header treatment: "Saved cards" (header + the
+ * saved-card cell) and "New card" (an actionable header whose chevron shows the expanded state).
+ * Both selectables form a single-selection group — exactly one is selected at all times; the
+ * system announces the selection state (no visual radio indicator by design).
+ */
+@Composable
+private fun CmpSavedCardsSections(controller: CmpCardController, enabled: Boolean) {
+    val card = controller.savedCard ?: return
+    val display = remember(card) { savedCardDisplay(card) }
+    val a11yLabel = cmpFormat(
+        cmpString(CardEntryStringKey.A11Y_SAVED_CARD),
+        display.network?.displayName() ?: card.network,
+        display.last4,
+        display.displayExpiry,
+    )
+    val selected = controller.isSavedCardSelected
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth().selectableGroup(),
+    ) {
+        CmpSectionHeader(cmpString(CardEntryStringKey.LABEL_SAVED_CARDS))
+        val border =
+            if (selected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+            else BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .border(border, RoundedCornerShape(10.dp))
+                .background(
+                    if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                    else MaterialTheme.colorScheme.surface,
+                    RoundedCornerShape(10.dp),
+                )
+                .selectable(selected = selected, enabled = enabled) { controller.selectSavedCard() }
+                // One merged node: "<Network> finishing 1111, expires MM / YYYY, selected" —
+                // the bullet glyphs are never announced.
+                .semantics(mergeDescendants = true) { contentDescription = a11yLabel }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        ) {
+            Image(
+                painter = painterResource(display.network?.iconResource() ?: neutralCardIcon),
+                contentDescription = null, // described by the merged cell node
+                modifier = Modifier.size(width = 32.dp, height = 20.dp),
+            )
+            Column {
+                Text(display.maskedNumber, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = "${card.holder}  ·  ${display.displayExpiry}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        // "New card": same header treatment, actionable, chevron = expanded state (decorative).
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .selectable(selected = !selected, enabled = enabled) { controller.selectNewCard() }
+                .semantics(mergeDescendants = true) {},
+        ) {
+            CmpSectionHeader(
+                text = cmpString(CardEntryStringKey.LABEL_NEW_CARD),
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = if (selected) "▸" else "▾",
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (selected) MaterialTheme.colorScheme.onSurfaceVariant
+                else MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clearAndSetSemantics {}, // decorative: the row state carries the meaning
+            )
+        }
+    }
+}
+
+/** The shared one-click section-header treatment. */
+@Composable
+private fun CmpSectionHeader(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        maxLines = 1,
+        modifier = modifier,
+    )
+}
+
+/** In-frame "save this card" switch (consent, default OFF) + one-line consent text. */
+@Composable
+private fun CmpSaveCardSwitch(controller: CmpCardController, enabled: Boolean) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .toggleable(
+                value = controller.saveCardOptIn,
+                enabled = enabled,
+                role = Role.Switch,
+                onValueChange = controller::onSaveCardOptInChange,
+            )
+            .semantics(mergeDescendants = true) {},
+    ) {
+        Text(
+            text = cmpString(CardEntryStringKey.LABEL_SAVE_CARD),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        Switch(
+            checked = controller.saveCardOptIn,
+            onCheckedChange = null, // handled by the row's toggleable (one merged a11y node)
+            enabled = enabled,
+        )
+    }
+    Text(
+        text = cmpString(CardEntryStringKey.CONSENT_SAVE_CARD),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 /**

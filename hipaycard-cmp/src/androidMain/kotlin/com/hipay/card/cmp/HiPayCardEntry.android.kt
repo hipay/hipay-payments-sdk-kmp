@@ -21,16 +21,26 @@ import com.hipay.card.HiPayCardEntryController as NativeController
 actual class HiPayCardController actual constructor(
     config: HiPayConfig,
     allowedNetworks: List<CardNetwork>,
+    oneClickEnabled: Boolean,
 ) {
     internal val delegate = NativeController(
         config = config,
         // Public commonMain API uses the shared CardNetwork; map to the Android enum
         // (UNKNOWN / unmappable → dropped).
         allowedNetworks = allowedNetworks.mapNotNull { HiPayCardNetwork.from(it) },
+        oneClickEnabled = oneClickEnabled,
     )
 
     actual val canPay: Boolean get() = delegate.canPay
     actual val isProcessing: Boolean get() = delegate.isProcessing
+
+    actual val savedCard: SavedCard? get() = delegate.savedCard
+    actual val isSavedCardSelected: Boolean get() = delegate.isSavedCardSelected
+    actual val saveCardOptIn: Boolean get() = delegate.saveCardOptIn
+    actual fun selectSavedCard() = delegate.selectSavedCard()
+    actual fun selectNewCard() = delegate.selectNewCard()
+    actual fun onSaveCardOptInChange(optIn: Boolean) = delegate.onSaveCardOptInChange(optIn)
+    actual suspend fun refreshSavedCards() = delegate.refreshSavedCards()
 
     actual suspend fun pay(
         orderId: String,

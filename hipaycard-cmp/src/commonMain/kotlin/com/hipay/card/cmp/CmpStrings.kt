@@ -28,4 +28,17 @@ internal fun cmpString(key: CardEntryStringKey): String = when (key) {
     CardEntryStringKey.ERROR_INCOMPLETE_CVV -> "Security code is incomplete"
     CardEntryStringKey.ERROR_HOLDER_TOO_LONG -> "Cardholder name is too long"
     CardEntryStringKey.ERROR_NETWORK_NOT_AUTHORIZED -> "This card network is not accepted"
+    CardEntryStringKey.LABEL_SAVED_CARDS -> "Saved cards"
+    CardEntryStringKey.LABEL_NEW_CARD -> "New card"
+    CardEntryStringKey.LABEL_SAVE_CARD -> "Save this card"
+    // Draft consent copy: final legal wording validated later with the merchant privacy slot.
+    CardEntryStringKey.CONSENT_SAVE_CARD -> "Save this card for faster checkout. You can remove it at any time."
+    CardEntryStringKey.A11Y_SAVED_CARD -> "%1\$s finishing %2\$s, expires %3\$s"
+}
+
+/** Positional `%n$s` substitution for the slice-A templates (compose-resources handles it in slice B). */
+internal fun cmpFormat(template: String, vararg args: String): String {
+    var out = template
+    args.forEachIndexed { i, arg -> out = out.replace("%${i + 1}\$s", arg) }
+    return out
 }

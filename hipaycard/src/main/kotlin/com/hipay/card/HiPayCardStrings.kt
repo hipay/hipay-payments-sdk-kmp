@@ -34,6 +34,11 @@ internal object HiPayCardStrings {
         CardEntryStringKey.ERROR_INCOMPLETE_CVV -> R.string.ERROR_INCOMPLETE_CVV
         CardEntryStringKey.ERROR_HOLDER_TOO_LONG -> R.string.ERROR_HOLDER_TOO_LONG
         CardEntryStringKey.ERROR_NETWORK_NOT_AUTHORIZED -> R.string.ERROR_NETWORK_NOT_AUTHORIZED
+        CardEntryStringKey.LABEL_SAVED_CARDS -> R.string.LABEL_SAVED_CARDS
+        CardEntryStringKey.LABEL_NEW_CARD -> R.string.LABEL_NEW_CARD
+        CardEntryStringKey.LABEL_SAVE_CARD -> R.string.LABEL_SAVE_CARD
+        CardEntryStringKey.CONSENT_SAVE_CARD -> R.string.CONSENT_SAVE_CARD
+        CardEntryStringKey.A11Y_SAVED_CARD -> R.string.A11Y_SAVED_CARD
     }
 }
 

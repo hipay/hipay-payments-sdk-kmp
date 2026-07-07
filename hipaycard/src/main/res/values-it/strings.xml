@@ -22,4 +22,10 @@
     <string name="ERROR_INCOMPLETE_CVV">Codice di sicurezza incompleto</string>
     <string name="ERROR_HOLDER_TOO_LONG">Nome del titolare troppo lungo</string>
     <string name="ERROR_NETWORK_NOT_AUTHORIZED">Questo circuito di carte non è accettato</string>
+    <string name="LABEL_SAVED_CARDS">Carte salvate</string>
+    <string name="LABEL_NEW_CARD">Nuova carta</string>
+    <string name="LABEL_SAVE_CARD">Salva questa carta</string>
+    <!-- Draft consent copy: final legal wording validated later with the merchant privacy slot. -->
+    <string name="CONSENT_SAVE_CARD">Salva questa carta per pagare più velocemente. Potrai rimuoverla in qualsiasi momento.</string>
+    <string name="A11Y_SAVED_CARD">%1$s che termina con %2$s, scade %3$s</string>
 </resources>
