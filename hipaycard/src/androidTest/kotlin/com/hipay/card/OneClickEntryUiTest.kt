@@ -1,5 +1,8 @@
 package com.hipay.card
 
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOff
@@ -83,10 +86,13 @@ class OneClickEntryUiTest {
     fun withASavedCard_sectionsRenderAndTheCardIsPreselected_fieldsHidden() {
         seedCard()
         val controller = HiPayCardEntryController(config, oneClickEnabled = true)
-        composeRule.setContent { HiPayCardEntry(controller) }
+        // Pin EN so the "New card" collapsed/expanded state description is deterministic.
+        composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
         awaitSections()
         composeRule.onNodeWithTag(HiPayCardEntryTags.SAVED_CARD).assertIsSelected()
-        composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD).assertIsNotSelected()
+        // "New card" is a button that reads its expanded/collapsed state (no radio selection).
+        composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "collapsed"))
         // Bullet-masked display, last4 only — the BIN never shows.
         composeRule.onNodeWithText("•••• •••• •••• 1111").assertIsDisplayed()
         // Entry fields are not rendered while the saved card is selected.
@@ -119,12 +125,15 @@ class OneClickEntryUiTest {
     fun selectingNewCard_expandsFields_andTypedValuesSurviveTheRoundTrip() {
         seedCard()
         val controller = HiPayCardEntryController(config, oneClickEnabled = true)
-        composeRule.setContent { HiPayCardEntry(controller) }
+        // Pin EN so the "New card" expanded/collapsed state description is deterministic.
+        composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
         awaitSections()
 
-        // Expand "New card": fields appear, the saved card is deselected.
+        // Expand "New card": fields appear, the saved card is deselected, header reads "expanded".
         composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD).performClick()
         composeRule.onNodeWithTag(HiPayCardEntryTags.SAVED_CARD).assertIsNotSelected()
+        composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "expanded"))
         composeRule.onNodeWithTag(HiPayCardEntryTags.HOLDER).assertIsDisplayed()
         composeRule.onNodeWithTag(HiPayCardEntryTags.HOLDER).performTextInput("MARIE MARTIN")
 

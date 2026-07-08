@@ -31,9 +31,13 @@ internal fun cmpString(key: CardEntryStringKey): String = when (key) {
     CardEntryStringKey.LABEL_SAVED_CARDS -> "Saved cards"
     CardEntryStringKey.LABEL_NEW_CARD -> "New card"
     CardEntryStringKey.LABEL_SAVE_CARD -> "Save this card"
-    // Draft consent copy: final legal wording validated later with the merchant privacy slot.
+    // PROVISIONAL consent wording — NOT yet legally approved: do not ship to production as-is.
+    // The RGPD-validated copy and a slot for the merchant's own privacy-policy text come in a
+    // later release. The key and its placement are stable — only the text will change.
     CardEntryStringKey.CONSENT_SAVE_CARD -> "Save this card for faster checkout. You can remove it at any time."
     CardEntryStringKey.A11Y_SAVED_CARD -> "%1\$s finishing %2\$s, expires %3\$s"
+    CardEntryStringKey.A11Y_EXPANDED -> "expanded"
+    CardEntryStringKey.A11Y_COLLAPSED -> "collapsed"
 }
 
 /** Positional `%n$s` substitution for the slice-A templates (compose-resources handles it in slice B). */

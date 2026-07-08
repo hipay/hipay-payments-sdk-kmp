@@ -39,6 +39,8 @@ internal object HiPayCardStrings {
         CardEntryStringKey.LABEL_SAVE_CARD -> R.string.LABEL_SAVE_CARD
         CardEntryStringKey.CONSENT_SAVE_CARD -> R.string.CONSENT_SAVE_CARD
         CardEntryStringKey.A11Y_SAVED_CARD -> R.string.A11Y_SAVED_CARD
+        CardEntryStringKey.A11Y_EXPANDED -> R.string.A11Y_EXPANDED
+        CardEntryStringKey.A11Y_COLLAPSED -> R.string.A11Y_COLLAPSED
     }
 }
 

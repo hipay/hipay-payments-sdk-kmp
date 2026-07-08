@@ -1,5 +1,6 @@
 package com.hipay.card.cmp
 
+import com.hipay.card.store.SavedCard
 import com.hipay.core.Environment
 import com.hipay.core.HiPayConfig
 import kotlin.test.Test
@@ -23,16 +24,20 @@ class CmpOneClickStateTest {
     @Test
     fun optInOff_nothingIsSelectedAndNothingLoaded() {
         val c = controller(oneClickEnabled = false)
-        assertNull(c.savedCard)
-        assertFalse(c.isSavedCardSelected)
+        assertTrue(c.savedCards.isEmpty())
+        assertNull(c.selectedSavedCard)
         assertFalse(c.canPay)
     }
 
     @Test
-    fun selectSavedCard_isANoOpWithoutACard() {
+    fun selectSavedCard_ignoresACardThatIsNotInTheLoadedList() {
         val c = controller(oneClickEnabled = true)
-        c.selectSavedCard()
-        assertFalse(c.isSavedCardSelected) // never a selection pointing at nothing
+        val foreign = SavedCard(
+            token = "t".repeat(64), maskedPan = "411111xxxxxx1111", network = "VISA",
+            holder = "J", expiryMonth = "12", expiryYear = "2031",
+        )
+        c.selectSavedCard(foreign)
+        assertNull(c.selectedSavedCard) // never a selection pointing outside savedCards
     }
 
     @Test
@@ -49,7 +54,7 @@ class CmpOneClickStateTest {
     fun selectNewCard_neverThrows_andKeepsFieldsPayableLogicIntact() {
         val c = controller(oneClickEnabled = true)
         c.selectNewCard()
-        assertFalse(c.isSavedCardSelected)
+        assertNull(c.selectedSavedCard)
         assertFalse(c.canPay) // empty fields
     }
 }

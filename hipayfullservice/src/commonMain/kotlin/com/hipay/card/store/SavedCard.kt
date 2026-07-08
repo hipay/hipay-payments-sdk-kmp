@@ -37,6 +37,27 @@ public class SavedCard(
     // Never expose the token — mirror HiPayConfig/CardToken terseness.
     override fun toString(): String =
         "SavedCard(maskedPan=$maskedPan, network=$network, exp=$expiryMonth/$expiryYear)"
+
+    // Value equality on every field: the store reloads fresh instances on each read, so a host
+    // holding a card across a refresh must still be able to compare/select it — and the Kotlin
+    // behaviour must match the Swift wrapper's Equatable.
+    override fun equals(other: Any?): Boolean = other is SavedCard &&
+        token == other.token &&
+        maskedPan == other.maskedPan &&
+        network == other.network &&
+        holder == other.holder &&
+        expiryMonth == other.expiryMonth &&
+        expiryYear == other.expiryYear
+
+    override fun hashCode(): Int {
+        var result = token.hashCode()
+        result = 31 * result + maskedPan.hashCode()
+        result = 31 * result + network.hashCode()
+        result = 31 * result + holder.hashCode()
+        result = 31 * result + expiryMonth.hashCode()
+        result = 31 * result + expiryYear.hashCode()
+        return result
+    }
 }
 
 /** Year + month for the expiry check, injected so the store carries no date dependency. */

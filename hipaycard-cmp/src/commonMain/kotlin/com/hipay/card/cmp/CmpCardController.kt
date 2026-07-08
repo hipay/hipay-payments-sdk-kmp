@@ -53,7 +53,9 @@ public class CmpCardController(
     private val config: HiPayConfig,
     private val allowed: List<CardNetwork> = emptyList(),
     /** Explicit integrator opt-in for the one-click (saved cards) UI — off by default: without it
-     *  the component renders and behaves exactly as before and no card store is ever created. */
+     *  the component renders and behaves exactly as before and no card store is ever created.
+     *  Headless-host note: once [refreshSavedCards] has pre-selected a saved card, a plain [pay]
+     *  call routes to that stored token (no CVV) — call [selectNewCard] first to force card entry. */
     public val oneClickEnabled: Boolean = false,
 ) {
     public enum class Field { HOLDER, NUMBER, EXPIRY, CVC }
@@ -105,24 +107,27 @@ public class CmpCardController(
 
     // ---- One-click UI state (rendered by the card entry only when oneClickEnabled) ----
 
-    /** The saved card offered for one-click (most recently used/saved); null when none or not loaded. */
-    public var savedCard: SavedCard? by mutableStateOf(null); private set
+    /** The saved cards offered for one-click, most recently used/saved first (expired cards
+     *  purged); empty when none or not loaded. Refreshed via [refreshSavedCards]. */
+    public var savedCards: List<SavedCard> by mutableStateOf(emptyList()); private set
 
-    /** True when the saved card is the active selection (entry fields collapsed). */
-    public var isSavedCardSelected: Boolean by mutableStateOf(false); private set
+    /** The active selection: a saved card (entry fields collapsed, values preserved) or null =
+     *  the new-card branch. Never points outside [savedCards]. */
+    public var selectedSavedCard: SavedCard? by mutableStateOf(null); private set
 
     /** The in-frame "save this card" switch state (consent) — default OFF, reset after each
      *  successful save (consent is per-transaction). */
     public var saveCardOptIn: Boolean by mutableStateOf(false); private set
 
-    /** Select the saved card (collapses the entry fields — their values are preserved). */
-    public fun selectSavedCard() {
-        if (savedCard != null) isSavedCardSelected = true
+    /** Select [card] (collapses the entry fields — their values are preserved). Ignored when the
+     *  card is not one of [savedCards]. */
+    public fun selectSavedCard(card: SavedCard) {
+        if (card in savedCards) selectedSavedCard = card
     }
 
     /** Select the new-card branch (expands the entry fields). */
     public fun selectNewCard() {
-        isSavedCardSelected = false
+        selectedSavedCard = null
     }
 
     /** Save-switch handler (called from the component's toggle). */
@@ -130,27 +135,54 @@ public class CmpCardController(
         saveCardOptIn = optIn
     }
 
+    // True once the first load has run: the first load pre-selects the most recent card; later
+    // re-appearance refreshes must NOT (they preserve the payer's current choice — see [reload]).
+    private var hasLoadedOnce = false
+
     /**
-     * (Re)loads the saved card and resets the selection to it (MRU pre-selected; none → new-card).
-     * Called by the card entry after composition and by the pay flows on terminal outcomes;
-     * no-op (and no store created) unless [oneClickEnabled]. Fail-soft.
+     * (Re)loads [savedCards] for the card entry. Called after composition and on each re-appearance.
+     * The selection is PRESERVED across a reload when it still resolves to a present card (a
+     * re-appearance must never silently switch the payer back to a stored card after they picked
+     * "new card"); the most recent card is pre-selected only on the very first load. Fail-soft:
+     * a no-op (and no store created) unless [oneClickEnabled].
+     * Headless-host note: this pre-selection makes a subsequent plain [pay] route to the stored
+     * token — call [selectNewCard] to opt back into card entry.
      */
     public suspend fun refreshSavedCards() {
+        reload(reselectMostRecent = false)
+    }
+
+    /**
+     * Core (re)load. [reselectMostRecent] forces the most-recent card back into the selection
+     * (first load, and after a save / one-click payment); otherwise a still-present selection is
+     * kept and a vanished one (e.g. a purged card) falls back to the new-card branch.
+     */
+    private suspend fun reload(reselectMostRecent: Boolean) {
         if (!oneClickEnabled) return
-        val first = try {
-            withStore { it.list() }.firstOrNull()
+        val cards = try {
+            withStore { it.list() }.allowedByMerchant()
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
-            null
+            emptyList()
         }
-        savedCard = first
-        isSavedCardSelected = first != null
+        val firstLoad = !hasLoadedOnce
+        hasLoadedOnce = true
+        savedCards = cards
+        selectedSavedCard = if (reselectMostRecent || firstLoad) {
+            cards.firstOrNull()
+        } else {
+            selectedSavedCard?.let { prev -> cards.firstOrNull { it == prev } }
+        }
     }
 
-    private suspend fun refreshSavedCardsQuietly() {
+    /** Saved cards whose resolved network the merchant accepts (empty allow-list → all kept). */
+    private fun List<SavedCard>.allowedByMerchant(): List<SavedCard> =
+        filter { AllowedNetworks.isAuthorized(CardNetworks.fromApiBrand(it.network) ?: CardNetwork.UNKNOWN, allowed) }
+
+    private suspend fun reloadQuietly(reselectMostRecent: Boolean) {
         try {
-            refreshSavedCards()
+            reload(reselectMostRecent)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -179,7 +211,7 @@ public class CmpCardController(
 
     /** A selected saved card is always payable — field state is irrelevant on that branch. */
     public val canPay: Boolean
-        get() = (oneClickEnabled && isSavedCardSelected && savedCard != null) ||
+        get() = (oneClickEnabled && selectedSavedCard != null) ||
             (holder.isNotBlank() &&
                 CardValidators.isHolderValid(holder) &&
                 CardValidators.isCardNumberValid(panDigits) &&
@@ -309,32 +341,29 @@ public class CmpCardController(
         threeDS: HiPayThreeDSMode = HiPayThreeDSMode.IN_APP_SESSION,
         saveCard: Boolean = false,
     ): Transaction {
-        // One-click routing: with the saved card selected, the same host call pays via the
+        // One-click routing: with a saved card selected, the same host call pays via the
         // stored token — no tokenization, no CVV; the host's single touch-point is preserved.
-        val routedCard = savedCard
-        if (oneClickEnabled && isSavedCardSelected && routedCard != null) {
-            return try {
-                val final = payWithSavedCard(
-                    card = routedCard,
-                    orderId = orderId,
-                    amount = amount,
-                    currency = currency,
-                    description = description,
-                    language = language,
-                    redirectScheme = redirectScheme,
-                    authenticationIndicator = authenticationIndicator,
-                    signature = signature,
-                    customer = customer,
-                    shipping = shipping,
-                    threeDS = threeDS,
-                )
-                if (final.state == TransactionState.COMPLETED) refreshSavedCardsQuietly()
-                final
-            } catch (e: HiPayException) {
-                // The purged card must leave the UI and the selection falls back to entry.
-                if (e.code == HiPayErrorCode.CARD_NO_LONGER_VALID) refreshSavedCardsQuietly()
-                throw e
-            }
+        val routedCard = selectedSavedCard
+        if (oneClickEnabled && routedCard != null) {
+            // A one-click payment saves nothing — clear any stale outcome from an earlier
+            // new-card pay so the host never reads a save result against this transaction.
+            lastSaveOutcome = null
+            // payWithSavedCard refreshes the saved-card state itself, inside its processing lock,
+            // on COMPLETED and on CARD_NO_LONGER_VALID — so there is no post-unlock double-tap window.
+            return payWithSavedCard(
+                card = routedCard,
+                orderId = orderId,
+                amount = amount,
+                currency = currency,
+                description = description,
+                language = language,
+                redirectScheme = redirectScheme,
+                authenticationIndicator = authenticationIndicator,
+                signature = signature,
+                customer = customer,
+                shipping = shipping,
+                threeDS = threeDS,
+            )
         }
         // The component's save switch and the parameter express the same consent.
         val effectiveSave = saveCard || (oneClickEnabled && saveCardOptIn)
@@ -382,7 +411,7 @@ public class CmpCardController(
             persistSavedCard(token, final)
             if (final.state == TransactionState.COMPLETED) {
                 saveCardOptIn = false // consent is per-transaction
-                refreshSavedCardsQuietly() // the new card appears, pre-selected for the next payment
+                reloadQuietly(reselectMostRecent = true) // the new card appears, pre-selected for the next payment
             }
         }
         return final
@@ -441,21 +470,28 @@ public class CmpCardController(
             val transaction = try {
                 gateway.requestNewOrder(order, signature)
             } catch (e: HiPayException) {
-                throw cardNoLongerValidOrNull(e)?.also { purgeQuietly(card) } ?: e
+                val cnlv = cardNoLongerValidOrNull(e)
+                if (cnlv != null) {
+                    purgeQuietly(card)
+                    // Refresh inside the processing lock, so the purged card is gone and the
+                    // selection has fallen back to the new-card branch before the host unlocks.
+                    reloadQuietly(reselectMostRecent = false)
+                    throw cnlv
+                }
+                throw e
             }
             val final = resolve3DS(transaction, redirectScheme, signature, threeDS)
-            if (final.state == TransactionState.COMPLETED) touchQuietly(card)
+            if (final.state == TransactionState.COMPLETED) {
+                touchQuietly(card)
+                // Refresh inside the lock (the touched card is now MRU and re-selected) so there
+                // is no post-unlock double-tap window on the store read.
+                reloadQuietly(reselectMostRecent = true)
+            }
             return final
         } finally {
             isProcessing = false
         }
     }
-
-    /**
-     * The cards previously saved for one-click payment (most recent first,
-     * expired cards purged).
-     */
-    public suspend fun savedCards(): List<SavedCard> = withStore { it.list() }
 
     /**
      * Persist the tokenized card after a COMPLETED payment; never throws (the payment already

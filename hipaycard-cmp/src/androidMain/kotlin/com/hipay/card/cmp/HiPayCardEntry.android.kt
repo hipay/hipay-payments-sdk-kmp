@@ -34,10 +34,10 @@ actual class HiPayCardController actual constructor(
     actual val canPay: Boolean get() = delegate.canPay
     actual val isProcessing: Boolean get() = delegate.isProcessing
 
-    actual val savedCard: SavedCard? get() = delegate.savedCard
-    actual val isSavedCardSelected: Boolean get() = delegate.isSavedCardSelected
+    actual val savedCards: List<SavedCard> get() = delegate.savedCards
+    actual val selectedSavedCard: SavedCard? get() = delegate.selectedSavedCard
     actual val saveCardOptIn: Boolean get() = delegate.saveCardOptIn
-    actual fun selectSavedCard() = delegate.selectSavedCard()
+    actual fun selectSavedCard(card: SavedCard) = delegate.selectSavedCard(card)
     actual fun selectNewCard() = delegate.selectNewCard()
     actual fun onSaveCardOptInChange(optIn: Boolean) = delegate.onSaveCardOptInChange(optIn)
     actual suspend fun refreshSavedCards() = delegate.refreshSavedCards()
@@ -99,8 +99,6 @@ actual class HiPayCardController actual constructor(
         shipping = shipping,
         autoPresent3DS = true,
     )
-
-    actual suspend fun savedCards(): List<SavedCard> = delegate.savedCards()
 
     actual val lastSaveOutcome: SavedCardOutcome? get() = delegate.lastSaveOutcome
 

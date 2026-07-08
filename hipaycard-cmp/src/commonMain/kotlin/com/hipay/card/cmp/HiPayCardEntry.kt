@@ -29,17 +29,18 @@ expect class HiPayCardController(
     /** True when every required field is valid, or a saved card is selected (Compose-observable). */
     val canPay: Boolean
 
-    /** The saved card offered for one-click (most recently used/saved); null when none/not loaded. */
-    val savedCard: SavedCard?
+    /** The saved cards offered for one-click, most recent first; empty when none or not loaded. */
+    val savedCards: List<SavedCard>
 
-    /** True when the saved card is the active selection (entry fields collapsed). */
-    val isSavedCardSelected: Boolean
+    /** The active selection: a saved card, or null = the new-card branch (fields expanded). */
+    val selectedSavedCard: SavedCard?
 
     /** The in-frame "save this card" switch state (consent) — default OFF, reset after each save. */
     val saveCardOptIn: Boolean
 
-    /** Select the saved card (collapses the entry fields — their values are preserved). */
-    fun selectSavedCard()
+    /** Select [card] (collapses the entry fields — their values are preserved). Ignored when the
+     *  card is not one of [savedCards]. */
+    fun selectSavedCard(card: SavedCard)
 
     /** Select the new-card branch (expands the entry fields). */
     fun selectNewCard()
@@ -47,7 +48,7 @@ expect class HiPayCardController(
     /** Save-switch handler. */
     fun onSaveCardOptInChange(optIn: Boolean)
 
-    /** (Re)loads the saved card and resets the selection to it (no-op unless one-click opted in). */
+    /** (Re)loads [savedCards] and resets the selection (no-op unless one-click opted in). */
     suspend fun refreshSavedCards()
 
     /** True while a [pay] is in flight (set by the SDK, story 11.14); the card UI locks its fields
@@ -102,12 +103,6 @@ expect class HiPayCardController(
         shipping: CustomerInfo? = null,
         threeDS: HiPayThreeDSMode = HiPayThreeDSMode.IN_APP_SESSION,
     ): Transaction
-
-    /**
-     * The cards previously saved for one-click payment (most recent first, expired cards purged).
-     * Android: same bound-context requirement as [payWithSavedCard].
-     */
-    suspend fun savedCards(): List<SavedCard>
 
     /**
      * Result of the most recent `pay(saveCard = true)` save attempt (observable), for the host to

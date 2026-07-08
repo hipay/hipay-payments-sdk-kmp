@@ -38,8 +38,8 @@ class CmpOneClickControllerTest {
         seedCard()
         val c = CmpCardController(config, oneClickEnabled = true)
         c.refreshSavedCards()
-        assertEquals("411111xxxxxx1111", assertNotNull(c.savedCard).maskedPan)
-        assertTrue(c.isSavedCardSelected)
+        assertEquals("411111xxxxxx1111", assertNotNull(c.selectedSavedCard).maskedPan)
+        assertNotNull(c.selectedSavedCard)
         assertTrue(c.canPay) // one tap away, fields empty
     }
 
@@ -47,7 +47,7 @@ class CmpOneClickControllerTest {
     fun refresh_withoutCards_selectsTheNewCardBranch() = runBlocking {
         val c = CmpCardController(config, oneClickEnabled = true)
         c.refreshSavedCards()
-        assertFalse(c.isSavedCardSelected)
+        kotlin.test.assertNull(c.selectedSavedCard)
         assertFalse(c.canPay)
     }
 
@@ -58,8 +58,8 @@ class CmpOneClickControllerTest {
         c.refreshSavedCards()
         c.selectNewCard()
         c.onHolderChange("marie martin")
-        c.selectSavedCard()
-        assertTrue(c.isSavedCardSelected)
+        c.selectSavedCard(c.savedCards.first())
+        assertNotNull(c.selectedSavedCard)
         assertEquals("MARIE MARTIN", c.holder) // preserved (and uppercased by the handler)
     }
 }

@@ -28,10 +28,10 @@ actual class HiPayCardController actual constructor(
     actual val canPay: Boolean get() = impl.canPay
     actual val isProcessing: Boolean get() = impl.isProcessing
 
-    actual val savedCard: SavedCard? get() = impl.savedCard
-    actual val isSavedCardSelected: Boolean get() = impl.isSavedCardSelected
+    actual val savedCards: List<SavedCard> get() = impl.savedCards
+    actual val selectedSavedCard: SavedCard? get() = impl.selectedSavedCard
     actual val saveCardOptIn: Boolean get() = impl.saveCardOptIn
-    actual fun selectSavedCard() = impl.selectSavedCard()
+    actual fun selectSavedCard(card: SavedCard) = impl.selectSavedCard(card)
     actual fun selectNewCard() = impl.selectNewCard()
     actual fun onSaveCardOptInChange(optIn: Boolean) = impl.onSaveCardOptInChange(optIn)
     actual suspend fun refreshSavedCards() = impl.refreshSavedCards()
@@ -91,8 +91,6 @@ actual class HiPayCardController actual constructor(
         shipping = shipping,
         threeDS = threeDS,
     )
-
-    actual suspend fun savedCards(): List<SavedCard> = impl.savedCards()
 
     actual val lastSaveOutcome: SavedCardOutcome? get() = impl.lastSaveOutcome
 

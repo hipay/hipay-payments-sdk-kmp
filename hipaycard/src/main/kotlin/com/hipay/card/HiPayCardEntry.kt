@@ -55,6 +55,7 @@ import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -150,40 +151,44 @@ private fun CardEntryContent(
     // Lock all fields while a payment is in flight — driven by the SDK itself (story 11.14): the
     // controller sets isProcessing across pay() (incl. the 3DS round-trip), no host wiring needed.
     val enabled = !controller.isProcessing
+    // With a saved card selected, the entry fields are not rendered — their values stay in the
+    // controller (nothing is cleared until a payment succeeds).
+    val showEntryFields = !(controller.oneClickEnabled && controller.selectedSavedCard != null)
     // Focus auto-advance on field completion (story 11.10, parity with iOS). Keyed on the
     // completion booleans → fires only on the incomplete→complete edge, so editing a complete
-    // field never rips focus.
+    // field never rips focus. Gated on showEntryFields: the FocusRequesters below are attached
+    // only to the composed entry fields, so requesting focus while a saved card is selected
+    // (fields out of composition, e.g. a programmatic field setter) would crash.
     val expiryFocus = remember { FocusRequester() }
     val cvcFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
     LaunchedEffect(controller.isNumberComplete) {
-        if (controller.isNumberComplete) expiryFocus.requestFocus()
+        if (showEntryFields && controller.isNumberComplete) expiryFocus.requestFocus()
     }
     LaunchedEffect(controller.isExpiryComplete) {
-        if (controller.isExpiryComplete) {
+        if (showEntryFields && controller.isExpiryComplete) {
             if (controller.isCvcRequired) cvcFocus.requestFocus() else focusManager.clearFocus()
         }
     }
     val cvcJustFilled = controller.isCvcRequired && controller.cvc.length == controller.cvcMaxLength
-    LaunchedEffect(cvcJustFilled) { if (cvcJustFilled) focusManager.clearFocus() }
+    LaunchedEffect(cvcJustFilled) { if (showEntryFields && cvcJustFilled) focusManager.clearFocus() }
 
     // One-click: load the saved card once the presentation context is bound (fail-soft before).
     if (controller.oneClickEnabled) {
         LaunchedEffect(controller) { controller.refreshSavedCards() }
     }
-    // With the saved card selected, the entry fields are not rendered — their values stay in the
-    // controller (nothing is cleared until a payment succeeds).
-    val showEntryFields = !(controller.oneClickEnabled && controller.isSavedCardSelected)
 
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(16.dp)
-            .animateContentSize()
+            // Animate the expand/collapse only when one-click is on — an opted-out integrator must
+            // see no new animation of pre-existing size changes (errors, tooltip).
+            .then(if (controller.oneClickEnabled) Modifier.animateContentSize() else Modifier)
             .then(if (setsAccessibilityOrder) Modifier.semantics { isTraversalGroup = true } else Modifier),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        if (controller.oneClickEnabled && controller.savedCard != null) {
+        if (controller.oneClickEnabled && controller.savedCards.isNotEmpty()) {
             FieldGroup(setsAccessibilityOrder, -1f) {
                 SavedCardsSections(controller, enabled)
             }
@@ -287,7 +292,9 @@ private fun CardEntryContent(
  */
 @Composable
 private fun SavedCardsSections(controller: HiPayCardEntryController, enabled: Boolean) {
-    val card = controller.savedCard ?: return
+    // Render the SELECTED card if one is picked, else the most-recent (the cell then reads as
+    // not-selected while the new-card branch is active).
+    val card = controller.selectedSavedCard ?: controller.savedCards.firstOrNull() ?: return
     val display = remember(card) { savedCardDisplay(card) }
     val platformNetwork = display.network?.let { HiPayCardNetwork.from(it) }
     val a11yLabel = stringResource(
@@ -296,7 +303,7 @@ private fun SavedCardsSections(controller: HiPayCardEntryController, enabled: Bo
         display.last4,
         display.displayExpiry,
     )
-    val selected = controller.isSavedCardSelected
+    val selected = controller.selectedSavedCard == card
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth().selectableGroup(),
@@ -317,7 +324,7 @@ private fun SavedCardsSections(controller: HiPayCardEntryController, enabled: Bo
                     else MaterialTheme.colorScheme.surface,
                     RoundedCornerShape(10.dp),
                 )
-                .selectable(selected = selected, enabled = enabled) { controller.selectSavedCard() }
+                .selectable(selected = selected, enabled = enabled) { controller.selectSavedCard(card) }
                 .testTag(HiPayCardEntryTags.SAVED_CARD)
                 // One merged node: "<Network> finishing 1111, expires MM / YYYY, selected" —
                 // the bullet glyphs are never announced.
@@ -340,15 +347,20 @@ private fun SavedCardsSections(controller: HiPayCardEntryController, enabled: Bo
                 )
             }
         }
-        // "New card": same header treatment, actionable, chevron = expanded state (decorative).
+        // "New card": same header treatment, an actionable BUTTON whose expanded/collapsed state
+        // (not a radio selection) carries the meaning; the chevron mirrors it (decorative).
+        val expanded = !selected
+        val expandState = cardString(
+            if (expanded) CardEntryStringKey.A11Y_EXPANDED else CardEntryStringKey.A11Y_COLLAPSED,
+        )
         Row(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 48.dp)
-                .selectable(selected = !selected, enabled = enabled) { controller.selectNewCard() }
+                .clickable(enabled = enabled, role = Role.Button) { controller.selectNewCard() }
                 .testTag(HiPayCardEntryTags.NEW_CARD)
-                .semantics(mergeDescendants = true) {},
+                .semantics(mergeDescendants = true) { stateDescription = expandState },
         ) {
             SectionHeader(
                 text = cardString(CardEntryStringKey.LABEL_NEW_CARD),

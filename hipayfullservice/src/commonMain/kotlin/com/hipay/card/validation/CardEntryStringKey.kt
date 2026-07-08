@@ -31,6 +31,8 @@ public enum class CardEntryStringKey {
     LABEL_SAVE_CARD,
     CONSENT_SAVE_CARD,
     A11Y_SAVED_CARD,
+    A11Y_EXPANDED,
+    A11Y_COLLAPSED,
 }
 
 /**

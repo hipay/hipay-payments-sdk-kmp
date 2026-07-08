@@ -30,11 +30,14 @@ class OneClickControllerTest {
     }
 
     @Test
-    fun savedCards_withoutBoundContext_failsFastWithAClearMessage() {
-        val controller = HiPayCardEntryController(config)
-        val ex = runCatching { runBlocking { controller.savedCards() } }.exceptionOrNull()
-        assertTrue(ex is IllegalStateException)
-        assertTrue(ex!!.message!!.contains("one-click"))
+    fun refresh_withoutBoundContext_isFailSoftAndLoadsNothing() {
+        // refreshSavedCards is fail-soft by design (the component may call it before the
+        // context binds); the STRICT precondition (clear IllegalStateException) stays on the
+        // paying APIs — covered by paySaveCard_withoutBoundContext below.
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        runBlocking { controller.refreshSavedCards() } // must not throw
+        assertTrue(controller.savedCards.isEmpty())
+        assertEquals(null, controller.selectedSavedCard)
     }
 
     @Test
@@ -53,16 +56,16 @@ class OneClickControllerTest {
     }
 
     @Test
-    fun savedCards_isCallableFromTheMainThread_storeConfinedInternally() {
+    fun refresh_isCallableFromTheMainThread_storeConfinedInternally() {
         // The platform factory refuses the main thread; the controller must hop
-        // to its confined dispatcher so a Compose host can call savedCards()
-        // directly from the UI scope.
+        // to its confined dispatcher so a Compose host can refresh directly
+        // from the UI scope.
         clearNamespace()
-        val controller = HiPayCardEntryController(config)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
         controller.bindPresentationContext(context)
         try {
-            val cards = runBlocking(Dispatchers.Main.immediate) { controller.savedCards() }
-            assertEquals(emptyList<SavedCard>(), cards)
+            runBlocking(Dispatchers.Main.immediate) { controller.refreshSavedCards() }
+            assertEquals(emptyList<SavedCard>(), controller.savedCards)
         } finally {
             controller.dispose()
             clearNamespace()
@@ -70,7 +73,7 @@ class OneClickControllerTest {
     }
 
     @Test
-    fun savedCards_seesCardsPersistedUnderTheSameConfigNamespace() {
+    fun refresh_seesCardsPersistedUnderTheSameConfigNamespace_andPreselects() {
         clearNamespace()
         val card = SavedCard(
             token = "t".repeat(64), maskedPan = "411111xxxxxx1111", network = "VISA",
@@ -79,12 +82,13 @@ class OneClickControllerTest {
         runBlocking(Dispatchers.IO) {
             assertTrue(createSecureCardStore(context, config).save(card, consentGiven = true))
         }
-        val controller = HiPayCardEntryController(config)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
         controller.bindPresentationContext(context)
         try {
-            val cards = runBlocking { controller.savedCards() }
-            assertEquals(1, cards.size)
-            assertEquals("411111xxxxxx1111", cards.first().maskedPan)
+            runBlocking { controller.refreshSavedCards() }
+            assertEquals(1, controller.savedCards.size)
+            assertEquals("411111xxxxxx1111", controller.savedCards.first().maskedPan)
+            assertEquals(controller.savedCards.first(), controller.selectedSavedCard)
             // Sanity: same namespace derivation as the store factory.
             secureCardStoreNamespace(config)
         } finally {
