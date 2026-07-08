@@ -33,6 +33,26 @@ class CmpOneClickControllerTest {
         assertTrue(createSecureCardStore(config).save(card, consentGiven = true))
     }
 
+    /** Seeds 3 distinct cards in order, so the store's MRU-first list is [3333, 2222, 1111]. */
+    private fun seedCards() {
+        val store = createSecureCardStore(config)
+        listOf(
+            Triple("411111xxxxxx1111", "VISA", "CARD ONE"),
+            Triple("510510xxxxxx2222", "MASTERCARD", "CARD TWO"),
+            Triple("411111xxxxxx3333", "VISA", "CARD THREE"),
+        ).forEachIndexed { i, (pan, net, holder) ->
+            assertTrue(
+                store.save(
+                    SavedCard(
+                        token = i.toString().repeat(64), maskedPan = pan, network = net,
+                        holder = holder, expiryMonth = "12", expiryYear = "2031",
+                    ),
+                    consentGiven = true,
+                ),
+            )
+        }
+    }
+
     @Test
     fun refresh_loadsAndPreselectsTheSavedCard() = runBlocking {
         seedCard()
@@ -49,6 +69,35 @@ class CmpOneClickControllerTest {
         c.refreshSavedCards()
         kotlin.test.assertNull(c.selectedSavedCard)
         assertFalse(c.canPay)
+    }
+
+    @Test
+    fun refresh_loadsMultipleCardsMruFirst_andSelectingAnotherMovesSelection() = runBlocking {
+        seedCards()
+        val c = CmpCardController(config, oneClickEnabled = true)
+        c.refreshSavedCards()
+        assertEquals(3, c.savedCards.size)
+        // MRU-first: the last saved card (3333) is index 0 and pre-selected.
+        assertEquals("411111xxxxxx3333", c.savedCards.first().maskedPan)
+        assertEquals(c.savedCards.first(), c.selectedSavedCard)
+        // Selecting another card moves the selection to it.
+        c.selectSavedCard(c.savedCards[1])
+        assertEquals(c.savedCards[1], c.selectedSavedCard)
+        assertTrue(c.canPay)
+    }
+
+    @Test
+    fun selectSavedCard_ignoresACardNotInTheList() = runBlocking {
+        seedCards()
+        val c = CmpCardController(config, oneClickEnabled = true)
+        c.refreshSavedCards()
+        val preselected = c.selectedSavedCard
+        val foreign = SavedCard(
+            token = "z".repeat(64), maskedPan = "400000xxxxxx9999", network = "VISA",
+            holder = "NOT SAVED", expiryMonth = "12", expiryYear = "2031",
+        )
+        c.selectSavedCard(foreign)
+        assertEquals(preselected, c.selectedSavedCard) // unchanged — foreign card rejected
     }
 
     @Test

@@ -34,6 +34,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,6 +62,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.hipay.card.HiPayCardEntryController.Field
+import com.hipay.card.store.SavedCard
 import com.hipay.card.store.savedCardDisplay
 import com.hipay.card.validation.CardEntryStringKey
 import java.util.Locale
@@ -73,10 +75,12 @@ public object HiPayCardEntryTags {
     public const val CVC: String = "hipay.card.cvc"
     public const val CVC_INFO: String = "hipay.card.cvc.info"
     public const val CVC_TOOLTIP: String = "hipay.card.cvc.tooltip"
-    public const val SAVED_CARD: String = "hipay.card.savedcard"
+    public const val SAVED_CARDS_HEADER: String = "hipay.card.savedcards.header"
     public const val NEW_CARD: String = "hipay.card.newcard"
     public const val SAVE_SWITCH: String = "hipay.card.saveswitch"
     public const val CONSENT: String = "hipay.card.consent"
+    /** One tag per saved-card cell (0 = most-recent) — never a single duplicated id across cells. */
+    public fun savedCard(index: Int): String = "hipay.card.savedcard.$index"
     public fun network(code: String): String = "hipay.card.network.$code"
     public fun error(field: String): String = "hipay.card.error.$field"
 }
@@ -285,16 +289,53 @@ private fun CardEntryContent(
 }
 
 /**
- * The two one-click zones, sharing one section-header treatment: "Saved cards" (header + the
- * saved-card cell) and "New card" (an actionable header whose chevron shows the expanded state).
- * Both selectables form a single-selection group — exactly one is selected at all times; the
- * system announces the selection state (no visual radio indicator by design).
+ * The two one-click zones sharing one section-header treatment: "Saved cards" (the list of ≤3
+ * saved cards, most-recent first) and "New card" (an actionable header whose chevron shows the
+ * expanded state). The cells form a single-selection group — exactly one selection at all times
+ * (a card, or "New card"); no visual radio indicator by design.
+ *
+ * While the new-card branch is active the list collapses to just the most-recent card, and the
+ * "Saved cards" header gains its own chevron to re-expand the full list (so the payer can switch
+ * card without losing what they typed). With a single saved card there is no collapse affordance.
  */
 @Composable
 private fun SavedCardsSections(controller: HiPayCardEntryController, enabled: Boolean) {
-    // Render the SELECTED card if one is picked, else the most-recent (the cell then reads as
-    // not-selected while the new-card branch is active).
-    val card = controller.selectedSavedCard ?: controller.savedCards.firstOrNull() ?: return
+    val cards = controller.savedCards
+    if (cards.isEmpty()) return
+    // Second, independent expand/collapse axis for the LIST itself (distinct from the "New card"
+    // fields expand): only meaningful in the new-card branch with more than one card.
+    var savedCardsExpanded by rememberSaveable { mutableStateOf(false) }
+    val newCardBranch = controller.selectedSavedCard == null
+    val collapsible = newCardBranch && cards.size > 1
+    val showAllCards = !newCardBranch || savedCardsExpanded
+    val visibleCards = if (showAllCards) cards else cards.take(1)
+
+    Column(
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.fillMaxWidth().selectableGroup(),
+    ) {
+        if (collapsible) {
+            SavedCardsCollapsibleHeader(expanded = savedCardsExpanded, enabled = enabled) {
+                savedCardsExpanded = !savedCardsExpanded
+            }
+        } else {
+            SectionHeader(cardString(CardEntryStringKey.LABEL_SAVED_CARDS))
+        }
+        visibleCards.forEachIndexed { index, card ->
+            SavedCardCell(controller, card, index, enabled)
+        }
+        NewCardHeader(controller, enabled)
+    }
+}
+
+/** One saved-card cell: 2-line masked display, border-only selection (no radio), merged a11y node. */
+@Composable
+private fun SavedCardCell(
+    controller: HiPayCardEntryController,
+    card: SavedCard,
+    index: Int,
+    enabled: Boolean,
+) {
     val display = remember(card) { savedCardDisplay(card) }
     val platformNetwork = display.network?.let { HiPayCardNetwork.from(it) }
     val a11yLabel = stringResource(
@@ -304,77 +345,104 @@ private fun SavedCardsSections(controller: HiPayCardEntryController, enabled: Bo
         display.displayExpiry,
     )
     val selected = controller.selectedSavedCard == card
-    Column(
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxWidth().selectableGroup(),
+    val border =
+        if (selected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+        else BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .border(border, RoundedCornerShape(10.dp))
+            .background(
+                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                else MaterialTheme.colorScheme.surface,
+                RoundedCornerShape(10.dp),
+            )
+            .selectable(selected = selected, enabled = enabled) { controller.selectSavedCard(card) }
+            .testTag(HiPayCardEntryTags.savedCard(index))
+            // One merged node: "<Network> finishing 1111, expires MM / YYYY, selected" —
+            // the bullet glyphs are never announced.
+            .semantics(mergeDescendants = true) { contentDescription = a11yLabel }
+            .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
-        SectionHeader(cardString(CardEntryStringKey.LABEL_SAVED_CARDS))
-        val border =
-            if (selected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-            else BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .border(border, RoundedCornerShape(10.dp))
-                .background(
-                    if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                    else MaterialTheme.colorScheme.surface,
-                    RoundedCornerShape(10.dp),
-                )
-                .selectable(selected = selected, enabled = enabled) { controller.selectSavedCard(card) }
-                .testTag(HiPayCardEntryTags.SAVED_CARD)
-                // One merged node: "<Network> finishing 1111, expires MM / YYYY, selected" —
-                // the bullet glyphs are never announced.
-                .semantics(mergeDescendants = true) { contentDescription = a11yLabel }
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        ) {
-            Image(
-                painter = painterResource(platformNetwork?.drawableRes ?: R.drawable.hp_card_neutral),
-                contentDescription = null, // described by the merged cell node
-                modifier = Modifier.size(width = 32.dp, height = 20.dp),
-            )
-            Column {
-                Text(display.maskedNumber, style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    text = "${card.holder}  ·  ${display.displayExpiry}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        // "New card": same header treatment, an actionable BUTTON whose expanded/collapsed state
-        // (not a radio selection) carries the meaning; the chevron mirrors it (decorative).
-        val expanded = !selected
-        val expandState = cardString(
-            if (expanded) CardEntryStringKey.A11Y_EXPANDED else CardEntryStringKey.A11Y_COLLAPSED,
+        Image(
+            painter = painterResource(platformNetwork?.drawableRes ?: R.drawable.hp_card_neutral),
+            contentDescription = null, // described by the merged cell node
+            modifier = Modifier.size(width = 32.dp, height = 20.dp),
         )
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .clickable(enabled = enabled, role = Role.Button) { controller.selectNewCard() }
-                .testTag(HiPayCardEntryTags.NEW_CARD)
-                .semantics(mergeDescendants = true) { stateDescription = expandState },
-        ) {
-            SectionHeader(
-                text = cardString(CardEntryStringKey.LABEL_NEW_CARD),
-                modifier = Modifier.weight(1f),
-            )
+        Column {
+            Text(display.maskedNumber, style = MaterialTheme.typography.bodyLarge)
             Text(
-                text = if (selected) "▸" else "▾",
-                style = MaterialTheme.typography.bodyMedium,
-                color = if (selected) MaterialTheme.colorScheme.onSurfaceVariant
-                else MaterialTheme.colorScheme.primary,
-                modifier = Modifier.clearAndSetSemantics {}, // decorative: the row state carries the meaning
+                text = "${card.holder}  ·  ${display.displayExpiry}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
+}
+
+/** "New card": an actionable BUTTON whose expanded/collapsed state (not a radio selection) carries
+ *  the meaning; the chevron mirrors it (decorative). */
+@Composable
+private fun NewCardHeader(controller: HiPayCardEntryController, enabled: Boolean) {
+    val expanded = controller.selectedSavedCard == null
+    val expandState = cardString(
+        if (expanded) CardEntryStringKey.A11Y_EXPANDED else CardEntryStringKey.A11Y_COLLAPSED,
+    )
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clickable(enabled = enabled, role = Role.Button) { controller.selectNewCard() }
+            .testTag(HiPayCardEntryTags.NEW_CARD)
+            .semantics(mergeDescendants = true) { stateDescription = expandState },
+    ) {
+        SectionHeader(
+            text = cardString(CardEntryStringKey.LABEL_NEW_CARD),
+            modifier = Modifier.weight(1f),
+        )
+        ChevronGlyph(expanded)
+    }
+}
+
+/** "Saved cards" header, collapsible in the new-card branch: a button re-expanding the full list. */
+@Composable
+private fun SavedCardsCollapsibleHeader(expanded: Boolean, enabled: Boolean, onToggle: () -> Unit) {
+    val expandState = cardString(
+        if (expanded) CardEntryStringKey.A11Y_EXPANDED else CardEntryStringKey.A11Y_COLLAPSED,
+    )
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clickable(enabled = enabled, role = Role.Button) { onToggle() }
+            .testTag(HiPayCardEntryTags.SAVED_CARDS_HEADER)
+            .semantics(mergeDescendants = true) { stateDescription = expandState },
+    ) {
+        SectionHeader(
+            text = cardString(CardEntryStringKey.LABEL_SAVED_CARDS),
+            modifier = Modifier.weight(1f),
+        )
+        ChevronGlyph(expanded)
+    }
+}
+
+/** Decorative expand/collapse chevron (the row's state description carries the meaning for a11y). */
+@Composable
+private fun ChevronGlyph(expanded: Boolean) {
+    Text(
+        text = if (expanded) "▾" else "▸",
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (expanded) MaterialTheme.colorScheme.primary
+        else MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.clearAndSetSemantics {},
+    )
 }
 
 /** The shared one-click section-header treatment. */
