@@ -306,6 +306,9 @@ private fun SavedCardsSections(controller: HiPayCardEntryController, enabled: Bo
     // fields expand): only meaningful in the new-card branch with more than one card.
     var savedCardsExpanded by rememberSaveable { mutableStateOf(false) }
     val newCardBranch = controller.selectedSavedCard == null
+    // Each fresh new-card entry starts collapsed: forget a manual re-expand once the branch is left,
+    // so the collapse-to-MRU behaviour never silently stops after the payer expands the list once.
+    LaunchedEffect(newCardBranch) { if (!newCardBranch) savedCardsExpanded = false }
     val collapsible = newCardBranch && cards.size > 1
     val showAllCards = !newCardBranch || savedCardsExpanded
     val visibleCards = if (showAllCards) cards else cards.take(1)

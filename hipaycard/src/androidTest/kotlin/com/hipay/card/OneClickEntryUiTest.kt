@@ -107,7 +107,7 @@ class OneClickEntryUiTest {
         // "New card" is a button that reads its expanded/collapsed state (no radio selection).
         composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "collapsed"))
-        // A single card has no collapsible "Saved cards" header (identical to the 12-3 layout).
+        // A single card has no collapsible "Saved cards" header (identical to the single-card layout).
         assertEquals(0, countTag(HiPayCardEntryTags.SAVED_CARDS_HEADER))
         // Bullet-masked display, last4 only — the BIN never shows.
         composeRule.onNodeWithText("•••• •••• •••• 1111").assertIsDisplayed()
@@ -203,6 +203,24 @@ class OneClickEntryUiTest {
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "expanded"))
         assertEquals(1, countTag(HiPayCardEntryTags.savedCard(1)))
         assertEquals(1, countTag(HiPayCardEntryTags.savedCard(2)))
+    }
+
+    @Test
+    fun reenteringNewCard_afterAManualReexpand_collapsesTheListAgain() {
+        seedCards()
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
+        awaitSections()
+        // Enter new-card, manually re-expand the list, then pick a card (leaves the new-card branch).
+        composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD).performClick()
+        composeRule.onNodeWithTag(HiPayCardEntryTags.SAVED_CARDS_HEADER).performClick() // expand
+        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(1)))
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(1)).performClick() // → saved-card branch
+        // Re-enter new-card: the list must collapse again (the manual expand was forgotten).
+        composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD).performClick()
+        assertEquals(0, countTag(HiPayCardEntryTags.savedCard(1)))
+        composeRule.onNodeWithTag(HiPayCardEntryTags.SAVED_CARDS_HEADER)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "collapsed"))
     }
 
     @Test
