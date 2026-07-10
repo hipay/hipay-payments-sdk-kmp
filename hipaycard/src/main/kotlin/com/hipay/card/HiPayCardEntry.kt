@@ -8,6 +8,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,15 +19,16 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -34,6 +36,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -50,8 +53,10 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.isTraversalGroup
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
@@ -66,6 +71,7 @@ import com.hipay.card.store.SavedCard
 import com.hipay.card.store.savedCardDisplay
 import com.hipay.card.validation.CardEntryStringKey
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 /** Stable test/semantics tags shared with the UI-test harness (story 7.1/7.2). */
 public object HiPayCardEntryTags {
@@ -79,6 +85,8 @@ public object HiPayCardEntryTags {
     public const val NEW_CARD: String = "hipay.card.newcard"
     public const val SAVE_SWITCH: String = "hipay.card.saveswitch"
     public const val CONSENT: String = "hipay.card.consent"
+    public const val CONFIRM_DELETE: String = "hipay.card.delete.confirm"
+    public const val CONFIRM_CANCEL: String = "hipay.card.delete.cancel"
     /** One tag per saved-card cell (0 = most-recent) — never a single duplicated id across cells. */
     public fun savedCard(index: Int): String = "hipay.card.savedcard.$index"
     public fun network(code: String): String = "hipay.card.network.$code"
@@ -313,6 +321,11 @@ private fun SavedCardsSections(controller: HiPayCardEntryController, enabled: Bo
     val showAllCards = !newCardBranch || savedCardsExpanded
     val visibleCards = if (showAllCards) cards else cards.take(1)
 
+    // Delete is a gesture (long-press) / a11y-action affordance — no visible button. The pending
+    // card drives the confirmation dialog; it lives in the UI, not the controller.
+    var cardPendingDelete by remember { mutableStateOf<SavedCard?>(null) }
+    val scope = rememberCoroutineScope()
+
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth().selectableGroup(),
@@ -325,9 +338,31 @@ private fun SavedCardsSections(controller: HiPayCardEntryController, enabled: Bo
             SectionHeader(cardString(CardEntryStringKey.LABEL_SAVED_CARDS))
         }
         visibleCards.forEachIndexed { index, card ->
-            SavedCardCell(controller, card, index, enabled)
+            SavedCardCell(controller, card, index, enabled) { cardPendingDelete = it }
         }
         NewCardHeader(controller, enabled)
+    }
+
+    cardPendingDelete?.let { pending ->
+        AlertDialog(
+            onDismissRequest = { cardPendingDelete = null },
+            text = { Text(cardString(CardEntryStringKey.CONFIRM_DELETE_CARD)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch { controller.deleteSavedCard(pending) }
+                        cardPendingDelete = null
+                    },
+                    modifier = Modifier.testTag(HiPayCardEntryTags.CONFIRM_DELETE),
+                ) { Text(cardString(CardEntryStringKey.LABEL_DELETE_CARD)) }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { cardPendingDelete = null },
+                    modifier = Modifier.testTag(HiPayCardEntryTags.CONFIRM_CANCEL),
+                ) { Text(cardString(CardEntryStringKey.LABEL_CANCEL)) }
+            },
+        )
     }
 }
 
@@ -338,6 +373,7 @@ private fun SavedCardCell(
     card: SavedCard,
     index: Int,
     enabled: Boolean,
+    onRequestDelete: (SavedCard) -> Unit,
 ) {
     val display = remember(card) { savedCardDisplay(card) }
     val platformNetwork = display.network?.let { HiPayCardNetwork.from(it) }
@@ -347,9 +383,10 @@ private fun SavedCardCell(
         display.last4,
         display.displayExpiry,
     )
-    val selected = controller.selectedSavedCard == card
+    val deleteLabel = cardString(CardEntryStringKey.LABEL_DELETE_CARD)
+    val isSelected = controller.selectedSavedCard == card
     val border =
-        if (selected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+        if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
         else BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -359,15 +396,27 @@ private fun SavedCardCell(
             .heightIn(min = 48.dp)
             .border(border, RoundedCornerShape(10.dp))
             .background(
-                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
                 else MaterialTheme.colorScheme.surface,
                 RoundedCornerShape(10.dp),
             )
-            .selectable(selected = selected, enabled = enabled) { controller.selectSavedCard(card) }
+            // Tap selects; long-press requests delete (no visible delete button, PM decision).
+            .combinedClickable(
+                enabled = enabled,
+                onClick = { controller.selectSavedCard(card) },
+                onLongClick = { onRequestDelete(card) },
+            )
             .testTag(HiPayCardEntryTags.savedCard(index))
             // One merged node: "<Network> finishing 1111, expires MM / YYYY, selected" —
-            // the bullet glyphs are never announced.
-            .semantics(mergeDescendants = true) { contentDescription = a11yLabel }
+            // the bullet glyphs are never announced. The mandatory "Delete" custom action makes
+            // deletion reachable to TalkBack (the long-press gesture is invisible to it).
+            .semantics(mergeDescendants = true) {
+                contentDescription = a11yLabel
+                selected = isSelected
+                customActions = listOf(
+                    CustomAccessibilityAction(deleteLabel) { onRequestDelete(card); true },
+                )
+            }
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         Image(

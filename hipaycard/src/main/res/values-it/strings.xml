@@ -32,4 +32,8 @@
     <string name="A11Y_SAVED_CARD">%1$s che termina con %2$s, scade %3$s</string>
     <string name="A11Y_EXPANDED">espanso</string>
     <string name="A11Y_COLLAPSED">compresso</string>
+    <!-- PROVISIONAL delete copy — NOT yet legally/UX approved; finalized in a later release. -->
+    <string name="LABEL_DELETE_CARD">Elimina carta</string>
+    <string name="CONFIRM_DELETE_CARD">Rimuovere questa carta salvata? Potrai salvarla di nuovo al prossimo pagamento.</string>
+    <string name="LABEL_CANCEL">Annulla</string>
 </resources>

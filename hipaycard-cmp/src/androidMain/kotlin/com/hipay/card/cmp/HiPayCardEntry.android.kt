@@ -41,6 +41,7 @@ actual class HiPayCardController actual constructor(
     actual fun selectNewCard() = delegate.selectNewCard()
     actual fun onSaveCardOptInChange(optIn: Boolean) = delegate.onSaveCardOptInChange(optIn)
     actual suspend fun refreshSavedCards() = delegate.refreshSavedCards()
+    actual suspend fun deleteSavedCard(card: SavedCard) = delegate.deleteSavedCard(card)
 
     actual suspend fun pay(
         orderId: String,

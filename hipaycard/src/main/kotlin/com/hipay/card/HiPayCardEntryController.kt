@@ -217,6 +217,26 @@ public class HiPayCardEntryController(
     }
 
     /**
+     * Removes [card] from the saved-card store (in-component delete, driven by the gesture +
+     * confirmation), then refreshes: a deleted **selected** card drops the selection to the
+     * new-card branch, a **non-selected** one is preserved, the **last** one yields the no-card
+     * state. Fail-visible — if the store delete does not take effect the refreshed list still
+     * shows the card. No-op unless [oneClickEnabled] with a bound presentation context.
+     */
+    public suspend fun deleteSavedCard(card: SavedCard) {
+        if (!oneClickEnabled) return
+        val context = presentationContext?.applicationContext ?: return
+        try {
+            withContext(storeDispatcher) { obtainStore(context).delete(card) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Fail-soft: the reload below reveals whether the card is still present.
+        }
+        reload(reselectMostRecent = false)
+    }
+
+    /**
      * Persist the tokenized card after a COMPLETED payment; never throws (the payment already
      * settled). Records the outcome in [lastSaveOutcome]. [applicationContext] is captured by the
      * caller BEFORE the (possibly backgrounding) 3DS window, so a component leaving composition

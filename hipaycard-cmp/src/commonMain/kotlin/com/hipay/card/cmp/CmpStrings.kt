@@ -38,6 +38,10 @@ internal fun cmpString(key: CardEntryStringKey): String = when (key) {
     CardEntryStringKey.A11Y_SAVED_CARD -> "%1\$s finishing %2\$s, expires %3\$s"
     CardEntryStringKey.A11Y_EXPANDED -> "expanded"
     CardEntryStringKey.A11Y_COLLAPSED -> "collapsed"
+    // PROVISIONAL delete copy — NOT yet legally/UX approved; finalized in a later release.
+    CardEntryStringKey.LABEL_DELETE_CARD -> "Delete card"
+    CardEntryStringKey.CONFIRM_DELETE_CARD -> "Remove this saved card? You can save it again next time you pay."
+    CardEntryStringKey.LABEL_CANCEL -> "Cancel"
 }
 
 /** Positional `%n$s` substitution for the slice-A templates (compose-resources handles it in slice B). */

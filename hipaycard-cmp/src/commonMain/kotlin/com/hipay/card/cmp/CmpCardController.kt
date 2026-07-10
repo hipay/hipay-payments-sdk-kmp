@@ -189,6 +189,25 @@ public class CmpCardController(
         }
     }
 
+    /**
+     * Removes [card] from the saved-card store (in-component delete, driven by the gesture +
+     * confirmation), then refreshes: a deleted **selected** card drops the selection to the
+     * new-card branch, a **non-selected** one is preserved, the **last** one yields the no-card
+     * state. Fail-visible — a failed store delete leaves the card in the refreshed list. No-op
+     * unless [oneClickEnabled].
+     */
+    public suspend fun deleteSavedCard(card: SavedCard) {
+        if (!oneClickEnabled) return
+        try {
+            withStore { it.delete(card) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Fail-soft: the reload below reveals whether the card is still present.
+        }
+        reload(reselectMostRecent = false)
+    }
+
     private var userSelectedNetwork = false
     private var lastDetected: CardNetwork = CardNetwork.UNKNOWN
 

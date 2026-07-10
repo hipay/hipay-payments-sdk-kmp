@@ -35,6 +35,7 @@ actual class HiPayCardController actual constructor(
     actual fun selectNewCard() = impl.selectNewCard()
     actual fun onSaveCardOptInChange(optIn: Boolean) = impl.onSaveCardOptInChange(optIn)
     actual suspend fun refreshSavedCards() = impl.refreshSavedCards()
+    actual suspend fun deleteSavedCard(card: SavedCard) = impl.deleteSavedCard(card)
 
     actual suspend fun pay(
         orderId: String,

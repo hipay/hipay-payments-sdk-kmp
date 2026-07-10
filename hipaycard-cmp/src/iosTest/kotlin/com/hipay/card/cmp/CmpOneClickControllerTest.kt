@@ -111,4 +111,24 @@ class CmpOneClickControllerTest {
         assertNotNull(c.selectedSavedCard)
         assertEquals("MARIE MARTIN", c.holder) // preserved (and uppercased by the handler)
     }
+
+    @Test
+    fun deleteSavedCard_removesIt_withSelectionFallbacks() = runBlocking {
+        seedCards()
+        val c = CmpCardController(config, oneClickEnabled = true)
+        c.refreshSavedCards()
+        val mru = assertNotNull(c.selectedSavedCard) // pre-selected MRU (3333)
+        // Deleting a NON-selected card preserves the current selection.
+        c.deleteSavedCard(c.savedCards[1])
+        assertEquals(2, c.savedCards.size)
+        assertEquals(mru, c.selectedSavedCard)
+        // Deleting the SELECTED card drops the selection to the new-card branch (not the next card).
+        c.deleteSavedCard(mru)
+        assertEquals(1, c.savedCards.size)
+        kotlin.test.assertNull(c.selectedSavedCard)
+        // Deleting the last card yields the no-card state.
+        c.deleteSavedCard(c.savedCards.first())
+        assertTrue(c.savedCards.isEmpty())
+        kotlin.test.assertNull(c.selectedSavedCard)
+    }
 }

@@ -51,6 +51,10 @@ expect class HiPayCardController(
     /** (Re)loads [savedCards] and resets the selection (no-op unless one-click opted in). */
     suspend fun refreshSavedCards()
 
+    /** Deletes [card] from the store then refreshes (a deleted selected card falls to the new-card
+     *  branch; the last card yields the no-card state). No-op unless one-click opted in. */
+    suspend fun deleteSavedCard(card: SavedCard)
+
     /** True while a [pay] is in flight (set by the SDK, story 11.14); the card UI locks its fields
      *  on this and the host disables its Pay button with `!canPay || isProcessing`. */
     val isProcessing: Boolean

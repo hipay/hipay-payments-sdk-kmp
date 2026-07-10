@@ -1,0 +1,157 @@
+package com.hipay.card
+
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import com.hipay.card.store.SavedCard
+import com.hipay.card.store.createSecureCardStore
+import com.hipay.core.Environment
+import com.hipay.core.HiPayConfig
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+
+/**
+ * One-click delete on the card component — long-press gesture → confirmation, the mandatory
+ * a11y custom action, and the selection fallbacks. Real store, no network.
+ */
+@RunWith(AndroidJUnit4::class)
+class OneClickDeleteUiTest {
+
+    @get:Rule
+    val composeRule = createComposeRule()
+
+    private val config = HiPayConfig("oneclick-delete-test-user", "pw", Environment.STAGE)
+    private val context = InstrumentationRegistry.getInstrumentation().targetContext
+
+    private fun seedCard() = runBlocking(Dispatchers.IO) {
+        assertTrue(
+            createSecureCardStore(context, config).save(
+                SavedCard(
+                    token = "t".repeat(64), maskedPan = "411111xxxxxx1111", network = "VISA",
+                    holder = "JANE DOE", expiryMonth = "12", expiryYear = "2031",
+                ),
+                consentGiven = true,
+            ),
+        )
+    }
+
+    /** Seeds 3 cards in order → MRU-first list [3333, 2222, 1111]. */
+    private fun seedCards() = runBlocking(Dispatchers.IO) {
+        val store = createSecureCardStore(context, config)
+        listOf(
+            Triple("411111xxxxxx1111", "VISA", "CARD ONE"),
+            Triple("510510xxxxxx2222", "MASTERCARD", "CARD TWO"),
+            Triple("411111xxxxxx3333", "VISA", "CARD THREE"),
+        ).forEachIndexed { i, (pan, net, holder) ->
+            assertTrue(
+                store.save(
+                    SavedCard(
+                        token = i.toString().repeat(64), maskedPan = pan, network = net,
+                        holder = holder, expiryMonth = "12", expiryYear = "2031",
+                    ),
+                    consentGiven = true,
+                ),
+            )
+        }
+    }
+
+    @After
+    fun clearStore() {
+        runBlocking(Dispatchers.IO) { createSecureCardStore(context, config).clearAll() }
+    }
+
+    private fun awaitSections() {
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodes(hasTestTag(HiPayCardEntryTags.savedCard(0)))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    private fun countTag(tag: String): Int =
+        composeRule.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().size
+
+    @Test
+    fun longPressThenConfirm_deletesTheCard() {
+        seedCards()
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
+        awaitSections()
+        // Long-press the 2nd cell (CARD TWO / 2222) → confirmation appears.
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(1)).performTouchInput { longClick() }
+        composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_DELETE).assertIsDisplayed()
+        composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_DELETE).performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) { controller.savedCards.size == 2 }
+        assertEquals(2, controller.savedCards.size)
+        assertTrue(controller.savedCards.none { it.maskedPan == "510510xxxxxx2222" })
+    }
+
+    @Test
+    fun longPressThenCancel_keepsTheCard() {
+        seedCards()
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
+        awaitSections()
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(1)).performTouchInput { longClick() }
+        composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_CANCEL).performClick()
+        composeRule.waitForIdle()
+        assertEquals(3, controller.savedCards.size) // nothing removed
+        assertEquals(0, countTag(HiPayCardEntryTags.CONFIRM_DELETE)) // dialog dismissed
+    }
+
+    @Test
+    fun deletingTheSelectedCard_fallsBackToNewCardBranch() {
+        seedCards()
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
+        awaitSections()
+        // savedCard(0) is the pre-selected MRU. Deleting it must drop the selection to new-card.
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).performTouchInput { longClick() }
+        composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_DELETE).performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) { controller.savedCards.size == 2 }
+        assertNull(controller.selectedSavedCard) // new-card branch, not the next card
+        composeRule.onNodeWithTag(HiPayCardEntryTags.HOLDER).assertIsDisplayed() // fields shown
+    }
+
+    @Test
+    fun deletingTheLastCard_yieldsNoCardState() {
+        seedCard()
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
+        awaitSections()
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).performTouchInput { longClick() }
+        composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_DELETE).performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) { controller.savedCards.isEmpty() }
+        // No-card state: no cells, fields + save switch only.
+        assertEquals(0, countTag(HiPayCardEntryTags.savedCard(0)))
+        composeRule.onNodeWithTag(HiPayCardEntryTags.HOLDER).assertIsDisplayed()
+        composeRule.onNodeWithTag(HiPayCardEntryTags.SAVE_SWITCH).assertIsDisplayed()
+    }
+
+    @Test
+    fun cellExposesDeleteCustomAction_whichOpensTheConfirmation() {
+        seedCard()
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
+        awaitSections()
+        // The mandatory a11y custom action exists (the only delete path for screen readers)…
+        val node = composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).fetchSemanticsNode()
+        val delete = node.config[SemanticsActions.CustomActions].first { it.label == "Delete card" }
+        // …and invoking it opens the same confirmation.
+        composeRule.runOnUiThread { delete.action?.invoke() }
+        composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_DELETE).assertIsDisplayed()
+    }
+}

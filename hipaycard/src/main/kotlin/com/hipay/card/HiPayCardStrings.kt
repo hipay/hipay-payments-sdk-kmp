@@ -41,6 +41,9 @@ internal object HiPayCardStrings {
         CardEntryStringKey.A11Y_SAVED_CARD -> R.string.A11Y_SAVED_CARD
         CardEntryStringKey.A11Y_EXPANDED -> R.string.A11Y_EXPANDED
         CardEntryStringKey.A11Y_COLLAPSED -> R.string.A11Y_COLLAPSED
+        CardEntryStringKey.LABEL_DELETE_CARD -> R.string.LABEL_DELETE_CARD
+        CardEntryStringKey.CONFIRM_DELETE_CARD -> R.string.CONFIRM_DELETE_CARD
+        CardEntryStringKey.LABEL_CANCEL -> R.string.LABEL_CANCEL
     }
 }
 

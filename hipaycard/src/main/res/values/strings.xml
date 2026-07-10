@@ -33,4 +33,8 @@
     <string name="A11Y_SAVED_CARD">%1$s finishing %2$s, expires %3$s</string>
     <string name="A11Y_EXPANDED">expanded</string>
     <string name="A11Y_COLLAPSED">collapsed</string>
+    <!-- PROVISIONAL delete copy — NOT yet legally/UX approved; finalized in a later release. -->
+    <string name="LABEL_DELETE_CARD">Delete card</string>
+    <string name="CONFIRM_DELETE_CARD">Remove this saved card? You can save it again next time you pay.</string>
+    <string name="LABEL_CANCEL">Cancel</string>
 </resources>
