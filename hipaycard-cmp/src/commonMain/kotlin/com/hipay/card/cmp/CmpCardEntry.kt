@@ -43,16 +43,22 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.hipay.card.store.OneClickError
+import com.hipay.card.store.OneClickErrorSurface
 import com.hipay.card.store.SavedCard
+import com.hipay.card.store.messageKey
+import com.hipay.card.store.oneClickErrorSurface
 import com.hipay.card.store.savedCardDisplay
 import com.hipay.card.validation.CardEntryStringKey
 import com.hipay.card.validation.CardNetwork
@@ -115,7 +121,14 @@ internal fun CmpCardEntry(
             .then(if (controller.oneClickEnabled) Modifier.animateContentSize() else Modifier),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        if (controller.oneClickEnabled && controller.savedCards.isNotEmpty()) {
+        // Also composed when the list just emptied with a section-level one-click error to show
+        // (the last card was purged as no longer valid) — the payer must learn why it vanished.
+        val showSavedSections = controller.oneClickEnabled && (
+            controller.savedCards.isNotEmpty() ||
+                oneClickErrorSurface(controller.lastOneClickError, controller.savedCards) ==
+                OneClickErrorSurface.SECTION
+            )
+        if (showSavedSections) {
             CmpSavedCardsSections(controller, enabled, savedCardsScope)
         }
         if (showEntryFields) {
@@ -226,7 +239,18 @@ private fun CmpSavedCardsSections(
     scope: CoroutineScope,
 ) {
     val cards = controller.savedCards
-    if (cards.isEmpty()) return
+    // The shared policy point decides where (and whether) the one-click error surfaces:
+    // inline on the affected cell while listed, section-level when purged as no longer valid.
+    val oneClickError = controller.lastOneClickError
+    val errorSurface = oneClickErrorSurface(oneClickError, cards)
+    if (cards.isEmpty()) {
+        // The last card vanished as no longer valid mid-checkout: the list is gone but the
+        // payer still needs to know why — the section message alone, above the open fields.
+        if (errorSurface == OneClickErrorSurface.SECTION && oneClickError != null) {
+            OneClickErrorText(oneClickError.reason.messageKey())
+        }
+        return
+    }
     var savedCardsExpanded by rememberSaveable { mutableStateOf(false) }
     val newCardBranch = controller.selectedSavedCard == null
     // Each fresh new-card entry starts collapsed: forget a manual re-expand once the branch is left,
@@ -255,8 +279,18 @@ private fun CmpSavedCardsSections(
         } else {
             CmpSectionHeader(cmpString(CardEntryStringKey.LABEL_SAVED_CARDS))
         }
+        if (errorSurface == OneClickErrorSurface.SECTION && oneClickError != null) {
+            OneClickErrorText(oneClickError.reason.messageKey())
+        }
         visibleCards.forEach { card ->
-            CmpSavedCardCell(controller, card, enabled) { cardPendingDelete = it }
+            CmpSavedCardCell(
+                controller,
+                card,
+                enabled,
+                error = oneClickError?.takeIf {
+                    errorSurface == OneClickErrorSurface.INLINE_CARD && it.matches(card)
+                },
+            ) { cardPendingDelete = it }
         }
         CmpNewCardHeader(controller, enabled)
     }
@@ -280,77 +314,86 @@ private fun CmpSavedCardsSections(
     }
 }
 
-/** One saved-card cell: 2-line masked display, border-only selection (no radio), merged a11y node. */
+/** One saved-card cell: 2-line masked display, border-only selection (no radio), merged a11y node.
+ *  With a one-click [error] targeting this card, an inline error renders under the cell (icon +
+ *  text, polite announce) and joins the cell's merged description. */
 @Composable
 private fun CmpSavedCardCell(
     controller: CmpCardController,
     card: SavedCard,
     enabled: Boolean,
+    error: OneClickError? = null,
     onRequestDelete: (SavedCard) -> Unit,
 ) {
     val display = remember(card) { savedCardDisplay(card) }
-    val a11yLabel = cmpFormat(
+    val baseA11yLabel = cmpFormat(
         cmpString(CardEntryStringKey.A11Y_SAVED_CARD),
         display.network?.displayName() ?: card.network,
         display.last4,
         display.displayExpiry,
     )
+    // The error is part of the merged cell node: focusing the cell reads why it failed.
+    val a11yLabel = error?.let { "$baseA11yLabel, ${cmpString(it.reason.messageKey())}" } ?: baseA11yLabel
     val deleteLabel = cmpString(CardEntryStringKey.LABEL_DELETE_CARD)
     val isSelected = controller.selectedSavedCard == card
     val border =
         if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
         else BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 48.dp)
-            .border(border, RoundedCornerShape(10.dp))
-            .background(
-                if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                else MaterialTheme.colorScheme.surface,
-                RoundedCornerShape(10.dp),
+    // The cell + its inline error travel as one visual unit (the field error spacing).
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .border(border, RoundedCornerShape(10.dp))
+                .background(
+                    if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                    else MaterialTheme.colorScheme.surface,
+                    RoundedCornerShape(10.dp),
+                )
+                // Tap selects; long-press requests delete (no visible delete button, PM decision).
+                .combinedClickable(
+                    enabled = enabled,
+                    onClick = { controller.selectSavedCard(card) },
+                    onLongClick = { onRequestDelete(card) },
+                )
+                // One merged node: "<Network> finishing 1111, expires MM / YYYY, selected" —
+                // the bullet glyphs are never announced. The mandatory "Delete" custom action makes
+                // deletion reachable to screen readers (the long-press gesture is invisible to them).
+                .semantics(mergeDescendants = true) {
+                    contentDescription = a11yLabel
+                    selected = isSelected
+                    // Gated on enabled: while a payment is in flight the delete must be unreachable to
+                    // screen readers too — the long-press is already gated via combinedClickable, and
+                    // this custom action is the only other delete entry point.
+                    customActions =
+                        if (enabled) {
+                            listOf(CustomAccessibilityAction(deleteLabel) { onRequestDelete(card); true })
+                        } else {
+                            emptyList()
+                        }
+                }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        ) {
+            Image(
+                painter = painterResource(display.network?.iconResource() ?: neutralCardIcon),
+                contentDescription = null, // described by the merged cell node
+                modifier = Modifier.size(width = 32.dp, height = 20.dp),
             )
-            // Tap selects; long-press requests delete (no visible delete button, PM decision).
-            .combinedClickable(
-                enabled = enabled,
-                onClick = { controller.selectSavedCard(card) },
-                onLongClick = { onRequestDelete(card) },
-            )
-            // One merged node: "<Network> finishing 1111, expires MM / YYYY, selected" —
-            // the bullet glyphs are never announced. The mandatory "Delete" custom action makes
-            // deletion reachable to screen readers (the long-press gesture is invisible to them).
-            .semantics(mergeDescendants = true) {
-                contentDescription = a11yLabel
-                selected = isSelected
-                // Gated on enabled: while a payment is in flight the delete must be unreachable to
-                // screen readers too — the long-press is already gated via combinedClickable, and
-                // this custom action is the only other delete entry point.
-                customActions =
-                    if (enabled) {
-                        listOf(CustomAccessibilityAction(deleteLabel) { onRequestDelete(card); true })
-                    } else {
-                        emptyList()
-                    }
+            Column {
+                Text(display.maskedNumber, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = "${card.holder}  ·  ${display.displayExpiry}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-    ) {
-        Image(
-            painter = painterResource(display.network?.iconResource() ?: neutralCardIcon),
-            contentDescription = null, // described by the merged cell node
-            modifier = Modifier.size(width = 32.dp, height = 20.dp),
-        )
-        Column {
-            Text(display.maskedNumber, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                text = "${card.holder}  ·  ${display.displayExpiry}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
+        error?.let { OneClickErrorText(it.reason.messageKey()) }
     }
 }
 
@@ -517,5 +560,26 @@ private fun NetworkChips(controller: CmpCardController) {
 private fun ErrorText(key: CardEntryStringKey?) {
     if (key != null) {
         Text(text = cmpString(key), color = MaterialTheme.colorScheme.error)
+    }
+}
+
+/** One-click error: a glyph (not colour) carries the meaning (WCAG 1.4.1) and the appearance is
+ *  announced politely — the CMP mirror of the Android `ErrorSlot` / iOS `errorSlot` pattern. */
+@Composable
+private fun OneClickErrorText(key: CardEntryStringKey) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        modifier = Modifier
+            .padding(start = 4.dp)
+            .semantics { liveRegion = LiveRegionMode.Polite },
+    ) {
+        Text("⚠", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        Text(
+            text = cmpString(key),
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall,
+            maxLines = 2,
+        )
     }
 }

@@ -42,6 +42,11 @@ internal fun cmpString(key: CardEntryStringKey): String = when (key) {
     CardEntryStringKey.LABEL_DELETE_CARD -> "Delete card"
     CardEntryStringKey.CONFIRM_DELETE_CARD -> "Remove this saved card? You can save it again next time you pay."
     CardEntryStringKey.LABEL_CANCEL -> "Cancel"
+    CardEntryStringKey.ERROR_ONE_CLICK_DECLINED -> "Payment declined. Try another card or enter a new one."
+    CardEntryStringKey.ERROR_ONE_CLICK_CARD_REMOVED -> "This card can no longer be used and was removed. Pay with a new card."
+    CardEntryStringKey.ERROR_ONE_CLICK_3DS -> "Authentication failed or was cancelled. Try again or use another card."
+    CardEntryStringKey.ERROR_ONE_CLICK_EXPIRED -> "This card has expired. Pay with another card."
+    CardEntryStringKey.ERROR_ONE_CLICK_GENERIC -> "The payment could not be completed. Try again or use another card."
 }
 
 /** Positional `%n$s` substitution for the slice-A templates (compose-resources handles it in slice B). */

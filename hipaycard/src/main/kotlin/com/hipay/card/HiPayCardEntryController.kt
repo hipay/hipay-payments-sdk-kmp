@@ -22,11 +22,15 @@ import com.hipay.card.validation.CardValidators
 import com.hipay.card.validation.ValidationReason
 import com.hipay.card.validation.AllowedNetworks
 import com.hipay.card.model.CardToken
+import com.hipay.card.store.OneClickError
+import com.hipay.card.store.OneClickErrorReason
 import com.hipay.card.store.SavedCard
 import com.hipay.card.store.SavedCardOutcome
 import com.hipay.card.store.SecureCardStore
 import com.hipay.card.store.cardNoLongerValidOrNull
 import com.hipay.card.store.createSecureCardStore
+import com.hipay.card.store.oneClickReasonForOutcome
+import com.hipay.card.store.savedCardExpiredNow
 import com.hipay.card.store.savedCardFromToken
 import com.hipay.card.store.savedCardPaymentProduct
 import com.hipay.core.HiPayConfig
@@ -131,6 +135,18 @@ public class HiPayCardEntryController(
      */
     public var lastSaveOutcome: SavedCardOutcome? by mutableStateOf(null); private set
 
+    /**
+     * The most recent one-click failure, as a transient observable outcome (the sibling of
+     * [lastSaveOutcome] for the pay path): the affected card's masked identity plus a reason.
+     * Set inside [payWithSavedCard] — the call still throws/returns exactly as before; this is
+     * additive. Cleared at the start of the next attempt, on any selection change, on a new-card
+     * field edit, and by a [refreshSavedCards] that no longer lists the affected card. The
+     * component renders it via the shared `oneClickErrorSurface` policy; hosts may read it too.
+     * Setter internal (not private): the in-module UI harness drives outcomes the tests cannot
+     * obtain without a gateway stub (declined / token-invalid); never written by the component.
+     */
+    public var lastOneClickError: OneClickError? by mutableStateOf(null); internal set
+
     // ---- One-click UI state (rendered by HiPayCardEntry only when oneClickEnabled) ----
 
     /** The saved cards offered for one-click, most recently used/saved first (expired cards
@@ -148,12 +164,16 @@ public class HiPayCardEntryController(
     /** Select [card] (collapses the entry fields — their values are preserved). Ignored when the
      *  card is not one of [savedCards]. */
     public fun selectSavedCard(card: SavedCard) {
-        if (card in savedCards) selectedSavedCard = card
+        if (card in savedCards) {
+            selectedSavedCard = card
+            lastOneClickError = null // a new intent supersedes the previous failure
+        }
     }
 
     /** Select the new-card branch (expands the entry fields). */
     public fun selectNewCard() {
         selectedSavedCard = null
+        lastOneClickError = null // a new intent supersedes the previous failure
     }
 
     /** Save-switch handler (called from the component's toggle). */
@@ -176,6 +196,10 @@ public class HiPayCardEntryController(
      */
     public suspend fun refreshSavedCards() {
         reload(reselectMostRecent = false)
+        // An app-foreground refresh drops a stale one-click error unless the affected card is
+        // still listed (then it is still the last failure and keeps its inline surface).
+        val error = lastOneClickError
+        if (error != null && savedCards.none(error::matches)) lastOneClickError = null
     }
 
     /**
@@ -234,6 +258,12 @@ public class HiPayCardEntryController(
             // Fail-soft: the reload below reveals whether the card is still present.
         }
         reload(reselectMostRecent = false)
+        // Deleting the card an error pointed at is an intent too — once the card is really
+        // gone there is nothing left to recover, so don't keep a stale outcome observable.
+        val error = lastOneClickError
+        if (error != null && error.matches(card) && savedCards.none(error::matches)) {
+            lastOneClickError = null
+        }
     }
 
     /**
@@ -357,7 +387,9 @@ public class HiPayCardEntryController(
         get() = networkErrorKey ?: numberErrorKey
 
     // ---- Field handlers (called from the Composable onValueChange) ----
+    // Each edit is a fresh payment intent → it supersedes a showing one-click error.
     public fun onHolderChange(input: String) {
+        lastOneClickError = null
         holder = input.uppercase().take(60)
     }
 
@@ -367,6 +399,7 @@ public class HiPayCardEntryController(
         // Cap to the DETECTED network's complete length (story 11.7): Visa 16 / Amex 15 / etc.,
         // 19 while UNKNOWN so early typing is never blocked. Detect on the new digits.
         val digits = input.filter { it in '0'..'9' }
+        lastOneClickError = null
         cardNumber = digits.take(CardNetworks.completionLength(CardNetworks.detect(digits)))
         recomputeNetworks()
     }
@@ -374,10 +407,12 @@ public class HiPayCardEntryController(
     public fun onExpiryChange(input: String) {
         // Store RAW digits (story 11.8) — HiPayCardEntry renders the "/" via an
         // ExpiryVisualTransformation, so the caret never breaks on the separator.
+        lastOneClickError = null
         expiry = input.filter { it in '0'..'9' }.take(4)
     }
 
     public fun onCvcChange(input: String) {
+        lastOneClickError = null
         cvc = input.filter { it in '0'..'9' }.take(cvcMaxLength)
     }
 
@@ -600,11 +635,7 @@ public class HiPayCardEntryController(
     ): Transaction {
         val context = presentationContext
         val forwardUrl = transaction.forwardUrl
-        if (!autoPresent3DS ||
-            transaction.state != TransactionState.FORWARDING ||
-            forwardUrl.isNullOrBlank() ||
-            context == null
-        ) {
+        if (context == null || forwardUrl.isNullOrBlank() || !willPresent3DS(transaction, autoPresent3DS)) {
             return transaction
         }
         val deferred = CompletableDeferred<Transaction>()
@@ -614,6 +645,14 @@ public class HiPayCardEntryController(
         CustomTabsIntent.Builder().build().launchUrl(context, Uri.parse(forwardUrl))
         return deferred.await()
     }
+
+    /** The single decides-a-challenge-is-presented guard for [present3DSAndAwait] — also feeds
+     *  the one-click `challenged` flag, so the two can never drift. */
+    private fun willPresent3DS(transaction: Transaction, autoPresent3DS: Boolean): Boolean =
+        autoPresent3DS &&
+            transaction.state == TransactionState.FORWARDING &&
+            !transaction.forwardUrl.isNullOrBlank() &&
+            presentationContext != null
 
     /**
      * One-click payment with a previously saved card: the order is created directly
@@ -626,6 +665,10 @@ public class HiPayCardEntryController(
      * from local storage and a [HiPayException] with
      * `HiPayErrorCode.CARD_NO_LONGER_VALID` is thrown — fall back to card entry.
      * A declined payment is returned as a normal `DECLINED` transaction.
+     *
+     * Any failure outcome is ALSO reflected in [lastOneClickError] (additive — the
+     * throw/return behavior above is unchanged) so the component can guide the
+     * payer to another card or re-entry.
      */
     public suspend fun payWithSavedCard(
         card: SavedCard,
@@ -642,6 +685,10 @@ public class HiPayCardEntryController(
         autoPresent3DS: Boolean = true,
     ): Transaction {
         val storeContext = requireOneClickContext()
+        lastOneClickError = null // a fresh attempt supersedes the previous outcome
+        // Sampled before the (possibly long) 3DS round-trip: the reason must reflect the
+        // card as it was when the payer tapped Pay.
+        val expiredAtAttempt = savedCardExpiredNow(card)
         isProcessing = true
         try {
             val base = "$redirectScheme://hipay-fullservice/gateway/orders/$orderId"
@@ -669,15 +716,26 @@ public class HiPayCardEntryController(
             } catch (e: HiPayException) {
                 val cnlv = cardNoLongerValidOrNull(e)
                 if (cnlv != null) {
+                    // Set BEFORE the purge+reload so the error survives the card vanishing
+                    // (the component then shows its section-level notice).
+                    lastOneClickError = OneClickError(card, OneClickErrorReason.TOKEN_INVALID)
                     purgeQuietly(storeContext, card)
                     // Refresh inside the processing lock, so the purged card is gone and the
                     // selection has fallen back to the new-card branch before the host unlocks.
                     reloadQuietly(reselectMostRecent = false)
                     throw cnlv
                 }
+                lastOneClickError = OneClickError(card, OneClickErrorReason.GENERIC)
                 throw e
             }
+            val challenged = willPresent3DS(transaction, autoPresent3DS)
             val final = present3DSAndAwait(transaction, signature, autoPresent3DS)
+            oneClickReasonForOutcome(
+                finalState = final.state,
+                challenged = challenged,
+                authenticationStatus = final.threeDSecure?.authenticationStatus,
+                cardExpiredAtAttempt = expiredAtAttempt,
+            )?.let { lastOneClickError = OneClickError(card, it) }
             if (final.state == TransactionState.COMPLETED) {
                 touchQuietly(storeContext, card)
                 // Refresh inside the lock (the touched card is now MRU and re-selected) so there

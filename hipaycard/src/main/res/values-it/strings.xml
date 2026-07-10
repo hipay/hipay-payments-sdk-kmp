@@ -36,4 +36,9 @@
     <string name="LABEL_DELETE_CARD">Elimina carta</string>
     <string name="CONFIRM_DELETE_CARD">Rimuovere questa carta salvata? Potrai salvarla di nuovo al prossimo pagamento.</string>
     <string name="LABEL_CANCEL">Annulla</string>
+    <string name="ERROR_ONE_CLICK_DECLINED">Pagamento rifiutato. Prova un\'altra carta o inseriscine una nuova.</string>
+    <string name="ERROR_ONE_CLICK_CARD_REMOVED">Questa carta non può più essere utilizzata ed è stata rimossa. Paga con una nuova carta.</string>
+    <string name="ERROR_ONE_CLICK_3DS">L\'autenticazione non è riuscita o è stata annullata. Riprova o usa un\'altra carta.</string>
+    <string name="ERROR_ONE_CLICK_EXPIRED">Questa carta è scaduta. Paga con un\'altra carta.</string>
+    <string name="ERROR_ONE_CLICK_GENERIC">Impossibile completare il pagamento. Riprova o usa un\'altra carta.</string>
 </resources>

@@ -1,15 +1,20 @@
 package com.hipay.card.cmp
 
+import com.hipay.card.store.OneClickError
+import com.hipay.card.store.OneClickErrorReason
 import com.hipay.card.store.SavedCard
 import com.hipay.card.store.createSecureCardStore
 import com.hipay.core.Environment
 import com.hipay.core.HiPayConfig
+import com.hipay.core.HiPayException
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.test.fail
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -110,6 +115,95 @@ class CmpOneClickControllerTest {
         c.selectSavedCard(c.savedCards.first())
         assertNotNull(c.selectedSavedCard)
         assertEquals("MARIE MARTIN", c.holder) // preserved (and uppercased by the handler)
+    }
+
+    // ---- One-click decline recovery: the transient observable error ----
+    // Failure states that would need a gateway stub (declined / token-invalid) are driven
+    // through the controller's internal outcome seam; the real payWithSavedCard failure
+    // wiring is covered by the unauthenticated-gateway test at the end.
+
+    @Test
+    fun oneClickError_isClearedOnAnySelectionChange() = runBlocking {
+        seedCards()
+        val c = CmpCardController(config, oneClickEnabled = true)
+        c.refreshSavedCards()
+        c.lastOneClickError = OneClickError(c.savedCards.first(), OneClickErrorReason.DECLINED)
+        c.selectSavedCard(c.savedCards[1]) // switching card = a fresh intent
+        assertNull(c.lastOneClickError)
+
+        c.lastOneClickError = OneClickError(c.savedCards.first(), OneClickErrorReason.THREE_DS_FAILED)
+        c.selectNewCard()
+        assertNull(c.lastOneClickError)
+    }
+
+    @Test
+    fun oneClickError_isClearedOnANewCardFieldEdit() = runBlocking {
+        seedCard()
+        val c = CmpCardController(config, oneClickEnabled = true)
+        c.refreshSavedCards()
+        listOf<(String) -> Unit>(
+            c::onHolderChange, c::onNumberChange, c::onExpiryChange, c::onCvcChange,
+        ).forEach { edit ->
+            c.lastOneClickError = OneClickError(c.savedCards.first(), OneClickErrorReason.GENERIC)
+            edit("4")
+            assertNull(c.lastOneClickError)
+        }
+    }
+
+    @Test
+    fun oneClickError_survivesARefreshWhileTheCardIsListed_dropsWhenItIsGone() = runBlocking {
+        seedCard()
+        val c = CmpCardController(config, oneClickEnabled = true)
+        c.refreshSavedCards()
+        val card = c.savedCards.first()
+        c.lastOneClickError = OneClickError(card, OneClickErrorReason.DECLINED)
+        // Still listed → still the last failure: an app-foreground refresh keeps it.
+        c.refreshSavedCards()
+        assertEquals(OneClickErrorReason.DECLINED, c.lastOneClickError?.reason)
+        // Gone from the store (e.g. purged elsewhere) → the refresh drops the stale error.
+        createSecureCardStore(config).delete(card)
+        c.refreshSavedCards()
+        assertNull(c.lastOneClickError)
+    }
+
+    @Test
+    fun deletingTheErroredCard_clearsTheError() = runBlocking {
+        seedCard()
+        val c = CmpCardController(config, oneClickEnabled = true)
+        c.refreshSavedCards()
+        val card = c.savedCards.first()
+        c.lastOneClickError = OneClickError(card, OneClickErrorReason.DECLINED)
+        c.deleteSavedCard(card)
+        assertNull(c.lastOneClickError) // nothing left to recover — no stale observable
+    }
+
+    @Test
+    fun realPayFailure_setsGenericError_keepsTheCard_andRethrows() = runBlocking {
+        seedCard()
+        val c = CmpCardController(config, oneClickEnabled = true)
+        c.refreshSavedCards()
+        val card = c.savedCards.first()
+        // The REAL pay path against the gateway with unauthenticated credentials: whatever the
+        // failure class (auth rejection or no network), it is a non-token-invalid HiPayException —
+        // the contract is one observable outcome: GENERIC, card kept, exception rethrown unchanged.
+        try {
+            c.payWithSavedCard(
+                card = card,
+                orderId = "TEST-DECLINE-CMP",
+                amount = "1.00",
+                description = "decline recovery harness",
+                redirectScheme = "hipaytest",
+            )
+            fail("expected the unauthenticated order to throw")
+        } catch (e: HiPayException) {
+            // rethrown unchanged — the host contract is intact
+        }
+        val error = c.lastOneClickError
+        assertEquals(OneClickErrorReason.GENERIC, error?.reason)
+        assertTrue(assertNotNull(error).matches(card))
+        assertTrue(card in c.savedCards) // a transient failure never purges
+        assertEquals(card, c.selectedSavedCard) // still selected for a retry
+        assertFalse(c.isProcessing) // the lock is released on the failure path
     }
 
     @Test

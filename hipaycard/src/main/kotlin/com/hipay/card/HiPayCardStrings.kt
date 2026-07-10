@@ -44,6 +44,11 @@ internal object HiPayCardStrings {
         CardEntryStringKey.LABEL_DELETE_CARD -> R.string.LABEL_DELETE_CARD
         CardEntryStringKey.CONFIRM_DELETE_CARD -> R.string.CONFIRM_DELETE_CARD
         CardEntryStringKey.LABEL_CANCEL -> R.string.LABEL_CANCEL
+        CardEntryStringKey.ERROR_ONE_CLICK_DECLINED -> R.string.ERROR_ONE_CLICK_DECLINED
+        CardEntryStringKey.ERROR_ONE_CLICK_CARD_REMOVED -> R.string.ERROR_ONE_CLICK_CARD_REMOVED
+        CardEntryStringKey.ERROR_ONE_CLICK_3DS -> R.string.ERROR_ONE_CLICK_3DS
+        CardEntryStringKey.ERROR_ONE_CLICK_EXPIRED -> R.string.ERROR_ONE_CLICK_EXPIRED
+        CardEntryStringKey.ERROR_ONE_CLICK_GENERIC -> R.string.ERROR_ONE_CLICK_GENERIC
     }
 }
 

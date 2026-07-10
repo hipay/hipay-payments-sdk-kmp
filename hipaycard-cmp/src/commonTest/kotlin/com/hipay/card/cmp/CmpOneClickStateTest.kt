@@ -57,4 +57,27 @@ class CmpOneClickStateTest {
         assertNull(c.selectedSavedCard)
         assertFalse(c.canPay) // empty fields
     }
+
+    @Test
+    fun oneClickError_isTransient_clearedByFieldEditsAndSelectionIntent() {
+        val c = controller(oneClickEnabled = true)
+        val card = SavedCard(
+            token = "t".repeat(64), maskedPan = "411111xxxxxx1111", network = "VISA",
+            holder = "J", expiryMonth = "12", expiryYear = "2031",
+        )
+        listOf<(CmpCardController) -> Unit>(
+            { it.onHolderChange("J") },
+            { it.onNumberChange("4") },
+            { it.onExpiryChange("1") },
+            { it.onCvcChange("1") },
+            { it.selectNewCard() },
+        ).forEach { intent ->
+            c.lastOneClickError = com.hipay.card.store.OneClickError(
+                card,
+                com.hipay.card.store.OneClickErrorReason.GENERIC,
+            )
+            intent(c)
+            assertNull(c.lastOneClickError) // a new intent supersedes the previous failure
+        }
+    }
 }
