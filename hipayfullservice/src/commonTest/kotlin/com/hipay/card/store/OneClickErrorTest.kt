@@ -108,10 +108,21 @@ class OneClickErrorTest {
     // --- oneClickReasonForOutcome (transaction path) ---
 
     @Test
-    fun successAndIndeterminateOutcomesRaiseNoError() {
+    fun completedOutcomeRaisesNoError() {
         for (challenged in listOf(true, false)) {
             assertNull(oneClickReasonForOutcome(TransactionState.COMPLETED, challenged, null, false))
-            assertNull(oneClickReasonForOutcome(TransactionState.PENDING, challenged, null, false))
+        }
+    }
+
+    @Test
+    fun pendingOutcomeIsASoftPendingHint() {
+        // Indeterminate (verification pending / server unreachable): not a failure, but surfaced
+        // as a soft hint so the payer is not left on a silently-cleared spinner.
+        for (challenged in listOf(true, false)) {
+            assertEquals(
+                OneClickErrorReason.PENDING,
+                oneClickReasonForOutcome(TransactionState.PENDING, challenged, null, false),
+            )
         }
     }
 

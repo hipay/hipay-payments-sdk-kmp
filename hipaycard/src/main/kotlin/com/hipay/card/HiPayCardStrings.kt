@@ -49,6 +49,7 @@ internal object HiPayCardStrings {
         CardEntryStringKey.ERROR_ONE_CLICK_3DS -> R.string.ERROR_ONE_CLICK_3DS
         CardEntryStringKey.ERROR_ONE_CLICK_EXPIRED -> R.string.ERROR_ONE_CLICK_EXPIRED
         CardEntryStringKey.ERROR_ONE_CLICK_GENERIC -> R.string.ERROR_ONE_CLICK_GENERIC
+        CardEntryStringKey.ERROR_ONE_CLICK_PENDING -> R.string.ERROR_ONE_CLICK_PENDING
     }
 }
 

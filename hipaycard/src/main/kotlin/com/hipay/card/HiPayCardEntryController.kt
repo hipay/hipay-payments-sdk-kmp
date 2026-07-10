@@ -198,8 +198,10 @@ public class HiPayCardEntryController(
         reload(reselectMostRecent = false)
         // An app-foreground refresh drops a stale one-click error unless the affected card is
         // still listed (then it is still the last failure and keeps its inline surface).
+        // Never while a pay is in flight: that path sets and manages the error under its own lock
+        // (e.g. TOKEN_INVALID set just before its purge+reload) — a concurrent refresh must not wipe it.
         val error = lastOneClickError
-        if (error != null && savedCards.none(error::matches)) lastOneClickError = null
+        if (!isProcessing && error != null && savedCards.none(error::matches)) lastOneClickError = null
     }
 
     /**
@@ -729,7 +731,14 @@ public class HiPayCardEntryController(
                 throw e
             }
             val challenged = willPresent3DS(transaction, autoPresent3DS)
-            val final = present3DSAndAwait(transaction, signature, autoPresent3DS)
+            val final = try {
+                present3DSAndAwait(transaction, signature, autoPresent3DS)
+            } catch (e: HiPayException) {
+                // A failure during the 3DS round-trip (e.g. the confirm call) must be observable
+                // too — mirror the order-creation GENERIC path; the host still gets the rethrow.
+                lastOneClickError = OneClickError(card, OneClickErrorReason.GENERIC)
+                throw e
+            }
             oneClickReasonForOutcome(
                 finalState = final.state,
                 challenged = challenged,

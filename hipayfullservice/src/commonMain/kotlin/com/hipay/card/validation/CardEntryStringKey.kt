@@ -41,6 +41,7 @@ public enum class CardEntryStringKey {
     ERROR_ONE_CLICK_3DS,
     ERROR_ONE_CLICK_EXPIRED,
     ERROR_ONE_CLICK_GENERIC,
+    ERROR_ONE_CLICK_PENDING,
 }
 
 /**

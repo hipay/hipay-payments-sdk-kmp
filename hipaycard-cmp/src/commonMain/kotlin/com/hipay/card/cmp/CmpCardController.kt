@@ -172,8 +172,10 @@ public class CmpCardController(
         reload(reselectMostRecent = false)
         // An app-foreground refresh drops a stale one-click error unless the affected card is
         // still listed (then it is still the last failure and keeps its inline surface).
+        // Never while a pay is in flight: that path sets and manages the error under its own lock
+        // (e.g. TOKEN_INVALID set just before its purge+reload) — a concurrent refresh must not wipe it.
         val error = lastOneClickError
-        if (error != null && savedCards.none(error::matches)) lastOneClickError = null
+        if (!isProcessing && error != null && savedCards.none(error::matches)) lastOneClickError = null
     }
 
     /**
@@ -543,7 +545,14 @@ public class CmpCardController(
                 throw e
             }
             val challenged = willPresent3DS(transaction)
-            val final = resolve3DS(transaction, redirectScheme, signature, threeDS)
+            val final = try {
+                resolve3DS(transaction, redirectScheme, signature, threeDS)
+            } catch (e: HiPayException) {
+                // A failure during the 3DS round-trip (e.g. the confirm call) must be observable
+                // too — mirror the order-creation GENERIC path; the host still gets the rethrow.
+                lastOneClickError = OneClickError(card, OneClickErrorReason.GENERIC)
+                throw e
+            }
             oneClickReasonForOutcome(
                 finalState = final.state,
                 challenged = challenged,
@@ -655,7 +664,7 @@ public class CmpCardController(
     /** The single decides-a-challenge-is-presented guard for [resolve3DS] — also feeds the
      *  one-click `challenged` flag, so the two can never drift. */
     private fun willPresent3DS(transaction: Transaction): Boolean =
-        transaction.state == TransactionState.FORWARDING && transaction.forwardUrl != null
+        transaction.state == TransactionState.FORWARDING && !transaction.forwardUrl.isNullOrBlank()
 
     /** FR9 confirmation: prefer the captured reference, else the callback's; never trust redirect params. */
     private suspend fun confirm3DS(callbackUrl: String, reference: String?, signature: String?): Transaction {

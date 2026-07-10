@@ -32,6 +32,15 @@ public enum class OneClickErrorReason {
 
     /** Any other transient failure (network/server/client) — the card stays usable. */
     GENERIC,
+
+    /**
+     * Not a failure: the attempt is still being confirmed (verification pending, or the
+     * server was momentarily unreachable during 3DS reconciliation). Surfaced as a soft,
+     * non-blocking hint so the payer is not left on a silently-cleared spinner; the card
+     * stays usable and the host still receives the PENDING transaction to reconcile.
+     * PROVISIONAL copy — final wording pending UX/compliance sign-off.
+     */
+    PENDING,
 }
 
 /**
@@ -76,6 +85,7 @@ public fun OneClickErrorReason.messageKey(): CardEntryStringKey = when (this) {
     OneClickErrorReason.THREE_DS_FAILED -> CardEntryStringKey.ERROR_ONE_CLICK_3DS
     OneClickErrorReason.EXPIRED -> CardEntryStringKey.ERROR_ONE_CLICK_EXPIRED
     OneClickErrorReason.GENERIC -> CardEntryStringKey.ERROR_ONE_CLICK_GENERIC
+    OneClickErrorReason.PENDING -> CardEntryStringKey.ERROR_ONE_CLICK_PENDING
 }
 
 /** Where the component surfaces a one-click error — decided by [oneClickErrorSurface]. */
@@ -114,8 +124,10 @@ public fun oneClickErrorSurface(
  *
  * Exact statuses:
  * - `COMPLETED` → null (success — the caller clears any previous error).
- * - `PENDING` → null: indeterminate (verification pending / server unreachable),
- *   never reported as a failure the payer should act on.
+ * - `PENDING` → [OneClickErrorReason.PENDING]: indeterminate (verification pending /
+ *   server unreachable). Not a failure, but surfaced as a soft, non-blocking hint so the
+ *   payer is not left on a silently-cleared spinner; the host still receives the PENDING
+ *   transaction to reconcile.
  * - `FORWARDING` → [OneClickErrorReason.THREE_DS_FAILED] only when a challenge
  *   was actually presented ([challenged]): the server-confirmed still-FORWARDING
  *   state after a presented challenge is the genuine-abandon verdict. Without a
@@ -132,7 +144,12 @@ public fun oneClickErrorSurface(
  *   not a confirmed decline).
  *
  * @param challenged a 3DS challenge was presented and awaited by the SDK for
- *   this attempt (not merely a FORWARDING state returned to the host).
+ *   this attempt (not merely a FORWARDING state returned to the host). Each platform
+ *   derives this from its own presentation guard (a blank/absent forward URL is never a
+ *   challenge). The guards are not identical across platforms: only the Android entry
+ *   point exposes an `autoPresent3DS` opt-out, so when a host opts out there, the SDK
+ *   hands the FORWARDING transaction back and `challenged` is false — a path that has no
+ *   equivalent on the platforms that always present.
  * @param authenticationStatus the final transaction's
  *   `threeDSecure.authenticationStatus`, when present.
  * @param cardExpiredAtAttempt the saved card's expiry had passed at the moment
@@ -147,7 +164,8 @@ public fun oneClickReasonForOutcome(
     val challengeFailed = challenged &&
         authenticationStatus?.trim()?.uppercase() !in listOf("Y", "A")
     return when (finalState) {
-        TransactionState.COMPLETED, TransactionState.PENDING -> null
+        TransactionState.COMPLETED -> null
+        TransactionState.PENDING -> OneClickErrorReason.PENDING
         TransactionState.FORWARDING -> if (challenged) OneClickErrorReason.THREE_DS_FAILED else null
         TransactionState.DECLINED -> when {
             challengeFailed -> OneClickErrorReason.THREE_DS_FAILED

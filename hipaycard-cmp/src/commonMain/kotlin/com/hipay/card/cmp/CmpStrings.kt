@@ -47,6 +47,8 @@ internal fun cmpString(key: CardEntryStringKey): String = when (key) {
     CardEntryStringKey.ERROR_ONE_CLICK_3DS -> "Authentication failed or was cancelled. Try again or use another card."
     CardEntryStringKey.ERROR_ONE_CLICK_EXPIRED -> "This card has expired. Pay with another card."
     CardEntryStringKey.ERROR_ONE_CLICK_GENERIC -> "The payment could not be completed. Try again or use another card."
+    // PROVISIONAL copy (soft pending hint) — final wording pending UX/compliance sign-off.
+    CardEntryStringKey.ERROR_ONE_CLICK_PENDING -> "Your payment is still being confirmed. Please wait a moment before trying again."
 }
 
 /** Positional `%n$s` substitution for the slice-A templates (compose-resources handles it in slice B). */
