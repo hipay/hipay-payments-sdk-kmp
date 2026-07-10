@@ -71,6 +71,7 @@ import com.hipay.card.store.SavedCard
 import com.hipay.card.store.savedCardDisplay
 import com.hipay.card.validation.CardEntryStringKey
 import java.util.Locale
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 /** Stable test/semantics tags shared with the UI-test harness (story 7.1/7.2). */
@@ -174,6 +175,10 @@ private fun CardEntryContent(
     val expiryFocus = remember { FocusRequester() }
     val cvcFocus = remember { FocusRequester() }
     val focusManager = LocalFocusManager.current
+    // Scope for the saved-card delete: hoisted here (this composable outlives the saved-cards
+    // subtree) so deleting the LAST card — which drops the list to empty and removes that subtree
+    // — does not cancel the in-flight delete/reload mid-way.
+    val savedCardsScope = rememberCoroutineScope()
     LaunchedEffect(controller.isNumberComplete) {
         if (showEntryFields && controller.isNumberComplete) expiryFocus.requestFocus()
     }
@@ -202,7 +207,7 @@ private fun CardEntryContent(
     ) {
         if (controller.oneClickEnabled && controller.savedCards.isNotEmpty()) {
             FieldGroup(setsAccessibilityOrder, -1f) {
-                SavedCardsSections(controller, enabled)
+                SavedCardsSections(controller, enabled, savedCardsScope)
             }
         }
         if (showEntryFields) {
@@ -307,7 +312,11 @@ private fun CardEntryContent(
  * card without losing what they typed). With a single saved card there is no collapse affordance.
  */
 @Composable
-private fun SavedCardsSections(controller: HiPayCardEntryController, enabled: Boolean) {
+private fun SavedCardsSections(
+    controller: HiPayCardEntryController,
+    enabled: Boolean,
+    scope: CoroutineScope,
+) {
     val cards = controller.savedCards
     if (cards.isEmpty()) return
     // Second, independent expand/collapse axis for the LIST itself (distinct from the "New card"
@@ -324,7 +333,10 @@ private fun SavedCardsSections(controller: HiPayCardEntryController, enabled: Bo
     // Delete is a gesture (long-press) / a11y-action affordance — no visible button. The pending
     // card drives the confirmation dialog; it lives in the UI, not the controller.
     var cardPendingDelete by remember { mutableStateOf<SavedCard?>(null) }
-    val scope = rememberCoroutineScope()
+    // Drop a pending confirmation if its card vanishes from the list underneath the open dialog
+    // (a concurrent refresh on app-foreground, or an expiry purge) — otherwise the payer would
+    // confirm deleting a card they can no longer see.
+    LaunchedEffect(cards) { cardPendingDelete?.let { if (it !in cards) cardPendingDelete = null } }
 
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -413,9 +425,15 @@ private fun SavedCardCell(
             .semantics(mergeDescendants = true) {
                 contentDescription = a11yLabel
                 selected = isSelected
-                customActions = listOf(
-                    CustomAccessibilityAction(deleteLabel) { onRequestDelete(card); true },
-                )
+                // Gated on enabled: while a payment is in flight the delete must be unreachable to
+                // screen readers too — the long-press is already gated via combinedClickable, and
+                // this custom action is the only other delete entry point.
+                customActions =
+                    if (enabled) {
+                        listOf(CustomAccessibilityAction(deleteLabel) { onRequestDelete(card); true })
+                    } else {
+                        emptyList()
+                    }
             }
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
