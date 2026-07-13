@@ -24,6 +24,10 @@ Co-branding (CB/BCMC): since 0.3.0 all three card components — Android
 — resolve the offered network set through the backend, so a co-branded card
 offers both networks with the domestic one default-selected.
 
+i18n (fr/en/it): since 0.3.0 all three card components follow the device
+locale, or the `localeOverride` parameter to force a language; English is the
+fallback for unsupported languages.
+
 ## Build & test
 
 ```sh

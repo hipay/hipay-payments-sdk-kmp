@@ -2,8 +2,8 @@
 #
 # i18n key-parity gate (story 5.2): every CardEntryStringKey constant (the
 # commonMain key authority from story 5.1) must have a value in each locale
-# catalog. Today: iOS Localizable.strings for en/fr/it. Story 7.3 adds the
-# Android strings.xml source (see the marked extension point below).
+# catalog. Sources: iOS Localizable.strings (en/fr/it), Android strings.xml,
+# and the CMP locale-keyed Kotlin catalog in CmpStrings.kt.
 #
 # Wired into the Gradle `check` task — a missing or unknown key fails the build.
 # Reports KEY NAMES only (consistent with the value-free convention).
@@ -16,6 +16,7 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENUM_FILE="$ROOT/hipayfullservice/src/commonMain/kotlin/com/hipay/card/validation/CardEntryStringKey.kt"
 IOS_RES="$ROOT/swift/Sources/HiPayCard/Resources"
 ANDROID_RES="$ROOT/hipaycard/src/main/res"
+CMP_STRINGS="$ROOT/hipaycard-cmp/src/commonMain/kotlin/com/hipay/card/cmp/CmpStrings.kt"
 LOCALES=(en fr it)
 platforms="iOS"
 
@@ -109,6 +110,48 @@ check_android() {
   fi
 }
 
+# Each CMP catalog (a `cmpStrings<Loc>` map in CmpStrings.kt, one
+# `CardEntryStringKey.KEY to "value",` per line) must contain EXACTLY the enum key set.
+cmp_var_for() { case "$1" in en) echo "cmpStringsEn";; fr) echo "cmpStringsFr";; it) echo "cmpStringsIt";; esac; }
+
+check_cmp() {
+  local loc="$1" varname="$2"
+  local cat_keys missing extra empty
+  cat_keys=$(awk -v v="$varname" '
+    index($0, "val " v ":") { inblock = 1; next }
+    inblock && /^\)/ { inblock = 0 }
+    inblock {
+      if (match($0, /CardEntryStringKey\.[A-Z][A-Z0-9_]*/))
+        print substr($0, RSTART + 19, RLENGTH - 19)
+    }
+  ' "$CMP_STRINGS" | sort -u)
+  missing=$(comm -23 <(printf '%s\n' "$keys") <(printf '%s\n' "$cat_keys"))
+  extra=$(comm -13 <(printf '%s\n' "$keys") <(printf '%s\n' "$cat_keys"))
+  if [ -n "$missing" ]; then
+    echo "i18n PARITY ERROR [cmp:$loc] — missing keys:"
+    printf '  %s\n' $missing
+    FAIL=1
+  fi
+  if [ -n "$extra" ]; then
+    echo "i18n PARITY ERROR [cmp:$loc] — unknown keys (not in CardEntryStringKey):"
+    printf '  %s\n' $extra
+    FAIL=1
+  fi
+  empty=$(awk -v v="$varname" '
+    index($0, "val " v ":") { inblock = 1; next }
+    inblock && /^\)/ { inblock = 0 }
+    inblock && /to[[:space:]]*"",?[[:space:]]*$/ {
+      if (match($0, /CardEntryStringKey\.[A-Z][A-Z0-9_]*/))
+        print substr($0, RSTART + 19, RLENGTH - 19)
+    }
+  ' "$CMP_STRINGS" | sort -u)
+  if [ -n "$empty" ]; then
+    echo "i18n PARITY ERROR [cmp:$loc] — empty values for keys:"
+    printf '  %s\n' $empty
+    FAIL=1
+  fi
+}
+
 for loc in "${LOCALES[@]}"; do
   check_strings "$loc" "$IOS_RES/$loc.lproj/Localizable.strings"
 done
@@ -121,6 +164,18 @@ if [ -d "$ANDROID_RES" ]; then
     check_android "$loc" "$ANDROID_RES/$(android_dir_for "$loc")/strings.xml"
   done
   platforms="iOS+Android"
+fi
+# -------------------------------------------------------------------------
+
+# --- CMP catalog (hipaycard-cmp, locale-keyed Kotlin maps) ----------------
+if [ -f "$CMP_STRINGS" ]; then
+  for loc in "${LOCALES[@]}"; do
+    check_cmp "$loc" "$(cmp_var_for "$loc")"
+  done
+  platforms="$platforms+CMP"
+else
+  echo "i18n PARITY ERROR [cmp] — missing catalog source: $CMP_STRINGS"
+  FAIL=1
 fi
 # -------------------------------------------------------------------------
 

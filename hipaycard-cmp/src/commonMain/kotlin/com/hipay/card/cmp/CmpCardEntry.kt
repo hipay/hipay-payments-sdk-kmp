@@ -28,6 +28,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -72,16 +73,19 @@ import org.jetbrains.compose.resources.painterResource
  * fields-only contract: it renders the entry fields + inline errors; the host owns the pay
  * button and calls [CmpCardController.pay].
  *
- * Slice-A: functional fields, local network chips (text), inline errors on blur, CVC shown-
- * disabled when not required. Strings are EN ([cmpString]); FR/EN/IT + a11y/tooltip = slice B.
+ * Strings resolve per locale ([cmpString], fr/en/it): [localeOverride] when given, else the
+ * device locale — parity with the native components' `values-*` / `.lproj` behaviour.
  */
 @Composable
 internal fun CmpCardEntry(
     controller: CmpCardController,
     modifier: Modifier = Modifier,
     @Suppress("UNUSED_PARAMETER") setsAccessibilityOrder: Boolean = true,
-    @Suppress("UNUSED_PARAMETER") localeOverride: String? = null,
+    localeOverride: String? = null,
 ) {
+    // Resolved once per override change; the system locale effectively cannot change under a
+    // live composition on either target (an iOS language switch relaunches the app).
+    val cardLanguage = remember(localeOverride) { resolvedCardEntryLanguage(localeOverride) }
     // Lock all fields while a payment is in flight — driven by the SDK (story 11.14); no host param.
     val enabled = !controller.isProcessing
     // With a saved card selected, the entry fields are not rendered — their values stay in the
@@ -114,6 +118,7 @@ internal fun CmpCardEntry(
         LaunchedEffect(controller) { controller.refreshSavedCards() }
     }
 
+    CompositionLocalProvider(LocalHiPayCardLanguage provides cardLanguage) {
     Column(
         // Animate the expand/collapse only when one-click is on — an opted-out integrator must
         // see no new animation of pre-existing size changes (errors, tooltip).
@@ -220,6 +225,7 @@ internal fun CmpCardEntry(
         if (controller.oneClickEnabled) CmpSaveCardSwitch(controller, enabled)
         } // showEntryFields
     }
+    } // LocalHiPayCardLanguage
 }
 
 /**

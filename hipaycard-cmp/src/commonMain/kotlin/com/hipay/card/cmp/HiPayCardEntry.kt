@@ -128,7 +128,10 @@ expect class HiPayCardController(
 /**
  * Shared card-entry composable. Call from your CMP `commonMain`.
  *
- * @param localeOverride optional ISO language ("fr"/"en"/"it"); null → device locale (D11).
+ * @param localeOverride optional ISO language ("fr"/"en"/"it"); null → device locale. Note:
+ * before 0.3.0 the iOS target ignored this and always rendered English — from 0.3.0 the
+ * component follows the device locale (or this override) on both targets, like the native
+ * Android/iOS components.
  */
 @Composable
 expect fun HiPayCardEntry(

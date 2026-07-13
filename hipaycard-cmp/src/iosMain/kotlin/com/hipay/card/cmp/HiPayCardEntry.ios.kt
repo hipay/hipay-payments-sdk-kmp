@@ -15,8 +15,8 @@ import com.hipay.core.gateway.model.Transaction
  * `HiPayCard`, so the card is rendered in Compose-MP. (The native SwiftUI `HiPayCard` stays
  * for native iOS merchants.)
  *
- * Slice A: working entry + tokenize/pay over the headless core; EN strings; basic UI.
- * i18n FR/EN/IT + full a11y/tooltip = slice B. PAN/token never leave the controller (PCI/NFR2).
+ * Entry + tokenize/pay over the headless core; strings follow the device locale or
+ * `localeOverride` (fr/en/it). PAN/token never leave the controller (PCI boundary).
  */
 actual class HiPayCardController actual constructor(
     config: HiPayConfig,

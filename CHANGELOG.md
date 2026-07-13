@@ -17,6 +17,15 @@ module + the iOS SPM/xcframework).
   `CmpCardController` gains an optional `scope` constructor parameter (defaulted) and
   `dispose()` now cancels the controller-owned scope.
 
+- **CMP `hipaycard-cmp`: locale-aware strings (fr/en/it).** The shared card component now
+  resolves its labels/placeholders/messages per locale — the device language, or the
+  `localeOverride` parameter of `HiPayCardEntry`, which existed but was ignored on the iOS
+  target (always English). Wording is copied verbatim from the validated native Android/iOS
+  catalogs; English stays the baseline and the fallback for unsupported languages.
+  **Behavioural change to be aware of:** an app running in French or Italian now shows the CMP
+  card component in that language instead of English. No API change — `localeOverride` keeps
+  its exact signature; pass `localeOverride = "en"` to keep the previous English-only rendering.
+
 ## 0.2.0 — SDK-managed 3DS
 
 ### ⚠️ BREAKING CHANGES (vs the tagged 0.1.0)
