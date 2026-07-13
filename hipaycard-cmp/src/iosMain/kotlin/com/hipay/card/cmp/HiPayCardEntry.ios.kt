@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.hipay.card.store.SavedCard
 import com.hipay.card.store.SavedCardOutcome
+import com.hipay.card.style.HiPayCardEntryStyle
 import com.hipay.card.validation.CardNetwork
 import com.hipay.core.HiPayConfig
 import com.hipay.core.gateway.model.CustomerInfo
@@ -107,11 +108,13 @@ actual fun HiPayCardEntry(
     modifier: Modifier,
     setsAccessibilityOrder: Boolean,
     localeOverride: String?,
+    style: HiPayCardEntryStyle,
 ) {
     CmpCardEntry(
         controller = controller.impl,
         modifier = modifier,
         setsAccessibilityOrder = setsAccessibilityOrder,
         localeOverride = localeOverride,
+        style = style,
     )
 }

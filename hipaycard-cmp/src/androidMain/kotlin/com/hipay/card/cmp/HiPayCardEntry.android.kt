@@ -5,6 +5,7 @@ import androidx.compose.ui.Modifier
 import com.hipay.card.HiPayCardNetwork
 import com.hipay.card.store.SavedCard
 import com.hipay.card.store.SavedCardOutcome
+import com.hipay.card.style.HiPayCardEntryStyle
 import com.hipay.card.validation.CardNetwork
 import com.hipay.core.HiPayConfig
 import com.hipay.core.gateway.model.CustomerInfo
@@ -115,6 +116,10 @@ actual fun HiPayCardEntry(
     modifier: Modifier,
     setsAccessibilityOrder: Boolean,
     localeOverride: String?,
+    // Not forwarded yet: the native :hipaycard renderer this actual delegates to gains its
+    // style parameter in the native-styling release; the shared contract lands here first so
+    // integrator call sites are source-stable across both targets.
+    @Suppress("UNUSED_PARAMETER") style: HiPayCardEntryStyle,
 ) {
     NativeCardEntry(
         controller = controller.delegate,

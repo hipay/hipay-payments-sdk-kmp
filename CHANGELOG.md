@@ -6,6 +6,19 @@ module + the iOS SPM/xcframework).
 
 ## 0.3.0 — unreleased
 
+### Added
+
+- **Card-field styling: `HiPayCardEntryStyle`** (`com.hipay.card.style`, core module — exported
+  to Swift as `HiPayCardEntryStyle`). One shared, platform-neutral contract (ARGB `Long`
+  colors, `Float` metrics, font enums, `fontFamily` reserved/null = system font) with
+  `HiPayCardEntryStyle.hipayDefault` as the default look. New optional `style` parameter on the
+  CMP `HiPayCardEntry` — additive with a default, so existing call sites are source-compatible.
+  Applied by the shared renderer on CMP-iOS in this release; CMP-Android delegates to the
+  native Android component and applies it when native styling ships (same for iOS-native).
+  Note: `hipayDefault` deliberately unifies small historical per-platform visual differences
+  (corner radius, system-derived border/label colors) into one cross-platform baseline —
+  expect minor visual normalization, no behavioural change.
+
 ### Fixed
 
 - **CMP `hipaycard-cmp`: co-branding by backend network detection.** `CmpCardController` now

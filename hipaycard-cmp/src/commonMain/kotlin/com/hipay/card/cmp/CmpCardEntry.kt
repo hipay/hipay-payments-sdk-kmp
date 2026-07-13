@@ -23,7 +23,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -41,7 +40,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -61,6 +60,7 @@ import com.hipay.card.store.SavedCard
 import com.hipay.card.store.messageKey
 import com.hipay.card.store.oneClickErrorSurface
 import com.hipay.card.store.savedCardDisplay
+import com.hipay.card.style.HiPayCardEntryStyle
 import com.hipay.card.validation.CardEntryStringKey
 import com.hipay.card.validation.CardNetwork
 import kotlinx.coroutines.CoroutineScope
@@ -75,6 +75,8 @@ import org.jetbrains.compose.resources.painterResource
  *
  * Strings resolve per locale ([cmpString], fr/en/it): [localeOverride] when given, else the
  * device locale — parity with the native components' `values-*` / `.lproj` behaviour.
+ * Appearance comes from [style] ([LocalHiPayCardStyle]); colors/typography/metrics only —
+ * behaviours (formatting, focus, one-click, a11y) are untouched by styling.
  */
 @Composable
 internal fun CmpCardEntry(
@@ -82,6 +84,7 @@ internal fun CmpCardEntry(
     modifier: Modifier = Modifier,
     @Suppress("UNUSED_PARAMETER") setsAccessibilityOrder: Boolean = true,
     localeOverride: String? = null,
+    style: HiPayCardEntryStyle = HiPayCardEntryStyle.hipayDefault,
 ) {
     // Deliberately not remember-ed: resolution is a cheap string scan, and re-resolving on
     // every recomposition lets a host that opts out of activity recreation on locale changes
@@ -119,7 +122,10 @@ internal fun CmpCardEntry(
         LaunchedEffect(controller) { controller.refreshSavedCards() }
     }
 
-    CompositionLocalProvider(LocalHiPayCardLanguage provides cardLanguage) {
+    CompositionLocalProvider(
+        LocalHiPayCardLanguage provides cardLanguage,
+        LocalHiPayCardStyle provides style,
+    ) {
     Column(
         // Animate the expand/collapse only when one-click is on — an opted-out integrator must
         // see no new animation of pre-existing size changes (errors, tooltip).
@@ -139,12 +145,11 @@ internal fun CmpCardEntry(
         }
         if (showEntryFields) {
         // Holder
-        OutlinedTextField(
+        HiPayStyledField(
             value = controller.holder,
             onValueChange = controller::onHolderChange,
             label = { FieldLabel(cmpString(CardEntryStringKey.LABEL_HOLDER)) },
             placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_HOLDER)) },
-            singleLine = true,
             enabled = enabled,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -152,12 +157,11 @@ internal fun CmpCardEntry(
 
         // Card number — the network chips sit INSIDE the field as the trailing icon (right-aligned),
         // matching native Android/iOS (parity); not stacked below the field.
-        OutlinedTextField(
+        HiPayStyledField(
             value = controller.cardNumber,
             onValueChange = controller::onNumberChange,
             label = { FieldLabel(cmpString(CardEntryStringKey.LABEL_NUMBER)) },
             placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_NUMBER)) },
-            singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             enabled = enabled,
             // Raw digits as value; spaces rendered by the transformation → caret stays correct (11.1).
@@ -175,12 +179,11 @@ internal fun CmpCardEntry(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             // Expiry
             Column(modifier = Modifier.weight(1f)) {
-                OutlinedTextField(
+                HiPayStyledField(
                     value = controller.expiry,
                     onValueChange = controller::onExpiryChange,
                     label = { FieldLabel(cmpString(CardEntryStringKey.LABEL_EXPIRY)) },
                     placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_EXPIRY)) },
-                    singleLine = true,
                     enabled = enabled,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     // Raw digits as value; "/" rendered by the transformation → caret stays correct (11.8).
@@ -190,18 +193,18 @@ internal fun CmpCardEntry(
             }
             // CVC — shown-disabled when not required; "ⓘ" toggles the full-width info text (11.2).
             Column(modifier = Modifier.weight(1f)) {
-                OutlinedTextField(
+                HiPayStyledField(
                     value = controller.cvc,
                     onValueChange = controller::onCvcChange,
                     enabled = enabled && controller.isCvcRequired,
                     label = { FieldLabel(cmpString(CardEntryStringKey.LABEL_CVV)) },
                     placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_CVV)) },
-                    singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     trailingIcon = if (controller.isCvcRequired) ({
                         val cvvHelp = cmpString(CardEntryStringKey.CVV_TOOLTIP)
                         Text(
                             "ⓘ",
+                            color = cmpColor(LocalHiPayCardStyle.current.iconColor),
                             modifier = Modifier
                                 .semantics { contentDescription = cvvHelp }
                                 .clickable { showCvvInfo = !showCvvInfo },
@@ -219,6 +222,7 @@ internal fun CmpCardEntry(
             Text(
                 text = cmpString(CardEntryStringKey.CVV_TOOLTIP),
                 style = MaterialTheme.typography.bodySmall,
+                color = cmpColor(LocalHiPayCardStyle.current.textColor),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
@@ -343,9 +347,12 @@ private fun CmpSavedCardCell(
     val a11yLabel = error?.let { "$baseA11yLabel, ${cmpString(it.reason.messageKey())}" } ?: baseA11yLabel
     val deleteLabel = cmpString(CardEntryStringKey.LABEL_DELETE_CARD)
     val isSelected = controller.selectedSavedCard == card
+    // Unselected cells take the style's border/background; the SELECTED cell keeps the
+    // platform accent as the selection affordance (no accent slot in the style contract yet).
+    val style = LocalHiPayCardStyle.current
     val border =
         if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-        else BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+        else BorderStroke(1.dp, cmpColor(style.borderColor))
     // The cell + its inline error travel as one visual unit (the field error spacing).
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(
@@ -357,7 +364,7 @@ private fun CmpSavedCardCell(
                 .border(border, RoundedCornerShape(10.dp))
                 .background(
                     if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                    else MaterialTheme.colorScheme.surface,
+                    else cmpColor(style.backgroundColor),
                     RoundedCornerShape(10.dp),
                 )
                 // Tap selects; long-press requests delete (no visible delete button, PM decision).
@@ -387,14 +394,24 @@ private fun CmpSavedCardCell(
             Image(
                 painter = painterResource(display.network?.iconResource() ?: neutralCardIcon),
                 contentDescription = null, // described by the merged cell node
+                // Brand marks stay full-color; only the neutral fallback glyph takes iconColor.
+                colorFilter = if (display.network == null) {
+                    ColorFilter.tint(cmpColor(style.iconColor))
+                } else {
+                    null
+                },
                 modifier = Modifier.size(width = 32.dp, height = 20.dp),
             )
             Column {
-                Text(display.maskedNumber, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    display.maskedNumber,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = cmpColor(style.textColor),
+                )
                 Text(
                     text = "${card.holder}  ·  ${display.displayExpiry}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = cmpColor(style.placeholderColor),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -456,7 +473,7 @@ private fun CmpChevronGlyph(expanded: Boolean) {
         text = if (expanded) "▾" else "▸",
         style = MaterialTheme.typography.bodyMedium,
         color = if (expanded) MaterialTheme.colorScheme.primary
-        else MaterialTheme.colorScheme.onSurfaceVariant,
+        else cmpColor(LocalHiPayCardStyle.current.iconColor),
         modifier = Modifier.clearAndSetSemantics {},
     )
 }
@@ -467,15 +484,18 @@ private fun CmpSectionHeader(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text.uppercase(),
         style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = cmpColor(LocalHiPayCardStyle.current.placeholderColor),
         maxLines = 1,
         modifier = modifier,
     )
 }
 
-/** In-frame "save this card" switch (consent, default OFF) + one-line consent text. */
+/** In-frame "save this card" switch (consent, default OFF) + one-line consent text. The switch
+ *  track/thumb keep the platform accent (the style contract has no accent slot yet) — the
+ *  style drives the label and consent text. */
 @Composable
 private fun CmpSaveCardSwitch(controller: CmpCardController, enabled: Boolean) {
+    val style = LocalHiPayCardStyle.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -492,6 +512,7 @@ private fun CmpSaveCardSwitch(controller: CmpCardController, enabled: Boolean) {
         Text(
             text = cmpString(CardEntryStringKey.LABEL_SAVE_CARD),
             style = MaterialTheme.typography.bodyMedium,
+            color = cmpColor(style.textColor),
             modifier = Modifier.weight(1f),
         )
         Switch(
@@ -503,7 +524,7 @@ private fun CmpSaveCardSwitch(controller: CmpCardController, enabled: Boolean) {
     Text(
         text = cmpString(CardEntryStringKey.CONSENT_SAVE_CARD),
         style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = cmpColor(style.placeholderColor),
         modifier = Modifier.fillMaxWidth(),
     )
 }
@@ -526,16 +547,21 @@ private fun FieldLabel(text: String) {
 
 @Composable
 private fun NetworkChips(controller: CmpCardController) {
-    // Show a brand icon whenever a network is offered — including a single one (11.4); a dimmed
-    // neutral card when none. Mirrors the Android `:hipaycard` NetworkChips (icons, 48dp tap,
-    // selected full / others 0.35, merged semantics).
+    // Show a brand icon whenever a network is offered — including a single one (11.4); a
+    // neutral card glyph when none. Mirrors the Android `:hipaycard` NetworkChips (icons, 48dp
+    // tap, merged semantics). Selection treatment: the SELECTED chip keeps its full-color
+    // brand mark (network logos are never re-tinted); unselected chips and the neutral glyph
+    // are tinted with the style's iconColor — the monochrome-vs-color contrast replaces the
+    // former opacity-only dimming, and the selected state stays announced via semantics.
+    val iconTint = ColorFilter.tint(cmpColor(LocalHiPayCardStyle.current.iconColor))
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         val nets: List<CardNetwork> = controller.networks
         if (nets.isEmpty()) {
             Image(
                 painter = painterResource(neutralCardIcon),
                 contentDescription = null, // decorative
-                modifier = Modifier.size(width = 32.dp, height = 20.dp).alpha(0.35f),
+                colorFilter = iconTint,
+                modifier = Modifier.size(width = 32.dp, height = 20.dp),
             )
         } else {
             nets.forEach { net ->
@@ -554,8 +580,8 @@ private fun NetworkChips(controller: CmpCardController) {
                     Image(
                         painter = painterResource(net.iconResource()),
                         contentDescription = null, // described by the parent node
-                        modifier = Modifier.size(width = 32.dp, height = 20.dp)
-                            .alpha(if (isSel) 1f else 0.35f),
+                        colorFilter = if (isSel) null else iconTint,
+                        modifier = Modifier.size(width = 32.dp, height = 20.dp),
                     )
                 }
             }
@@ -566,7 +592,7 @@ private fun NetworkChips(controller: CmpCardController) {
 @Composable
 private fun ErrorText(key: CardEntryStringKey?) {
     if (key != null) {
-        Text(text = cmpString(key), color = MaterialTheme.colorScheme.error)
+        Text(text = cmpString(key), color = cmpColor(LocalHiPayCardStyle.current.invalidTextColor))
     }
 }
 
@@ -574,6 +600,7 @@ private fun ErrorText(key: CardEntryStringKey?) {
  *  announced politely — the CMP mirror of the Android `ErrorSlot` / iOS `errorSlot` pattern. */
 @Composable
 private fun OneClickErrorText(key: CardEntryStringKey) {
+    val errorColor = cmpColor(LocalHiPayCardStyle.current.invalidTextColor)
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -581,10 +608,10 @@ private fun OneClickErrorText(key: CardEntryStringKey) {
             .padding(start = 4.dp)
             .semantics { liveRegion = LiveRegionMode.Polite },
     ) {
-        Text("⚠", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        Text("⚠", color = errorColor, style = MaterialTheme.typography.bodySmall)
         Text(
             text = cmpString(key),
-            color = MaterialTheme.colorScheme.error,
+            color = errorColor,
             style = MaterialTheme.typography.bodySmall,
             maxLines = 2,
         )

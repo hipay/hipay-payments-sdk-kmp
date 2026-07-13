@@ -28,6 +28,11 @@ i18n (fr/en/it): since 0.3.0 all three card components follow the device
 locale, or the `localeOverride` parameter to force a language; English is the
 fallback for unsupported languages.
 
+Styling: since 0.3.0 the card component accepts an optional
+`HiPayCardEntryStyle` (shared platform-neutral contract: colors, typography,
+field metrics) via the `style` parameter — CMP-iOS renders it today, native
+renderers follow.
+
 ## Build & test
 
 ```sh
