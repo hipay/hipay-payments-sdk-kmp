@@ -112,15 +112,29 @@ check_android() {
 
 # Each CMP catalog (a `cmpStrings<Loc>` map in CmpStrings.kt, one
 # `CardEntryStringKey.KEY to "value",` per line) must contain EXACTLY the enum key set.
-cmp_var_for() { case "$1" in en) echo "cmpStringsEn";; fr) echo "cmpStringsFr";; it) echo "cmpStringsIt";; esac; }
+# Extraction is anchored to entry-syntax lines (leading `CardEntryStringKey.`) so a comment
+# mentioning a key inside a map block can never count as a catalog entry.
+cmp_var_for() {
+  case "$1" in
+    en) echo "cmpStringsEn";;
+    fr) echo "cmpStringsFr";;
+    it) echo "cmpStringsIt";;
+    *) echo "";;
+  esac
+}
 
 check_cmp() {
   local loc="$1" varname="$2"
+  if [ -z "$varname" ]; then
+    echo "i18n PARITY ERROR [cmp:$loc] — no CMP catalog map registered for this locale (update cmp_var_for)"
+    FAIL=1
+    return
+  fi
   local cat_keys missing extra empty
   cat_keys=$(awk -v v="$varname" '
     index($0, "val " v ":") { inblock = 1; next }
-    inblock && /^\)/ { inblock = 0 }
-    inblock {
+    inblock && /^[[:space:]]*\)[[:space:]]*$/ { inblock = 0 }
+    inblock && /^[[:space:]]*CardEntryStringKey\./ {
       if (match($0, /CardEntryStringKey\.[A-Z][A-Z0-9_]*/))
         print substr($0, RSTART + 19, RLENGTH - 19)
     }
@@ -137,10 +151,11 @@ check_cmp() {
     printf '  %s\n' $extra
     FAIL=1
   fi
+  # Empty = an entry line whose value is "", tolerating a trailing comma and/or line comment.
   empty=$(awk -v v="$varname" '
     index($0, "val " v ":") { inblock = 1; next }
-    inblock && /^\)/ { inblock = 0 }
-    inblock && /to[[:space:]]*"",?[[:space:]]*$/ {
+    inblock && /^[[:space:]]*\)[[:space:]]*$/ { inblock = 0 }
+    inblock && /^[[:space:]]*CardEntryStringKey\.[A-Z][A-Z0-9_]*[[:space:]]+to[[:space:]]*"",?[[:space:]]*(\/\/.*)?$/ {
       if (match($0, /CardEntryStringKey\.[A-Z][A-Z0-9_]*/))
         print substr($0, RSTART + 19, RLENGTH - 19)
     }

@@ -83,9 +83,10 @@ internal fun CmpCardEntry(
     @Suppress("UNUSED_PARAMETER") setsAccessibilityOrder: Boolean = true,
     localeOverride: String? = null,
 ) {
-    // Resolved once per override change; the system locale effectively cannot change under a
-    // live composition on either target (an iOS language switch relaunches the app).
-    val cardLanguage = remember(localeOverride) { resolvedCardEntryLanguage(localeOverride) }
+    // Deliberately not remember-ed: resolution is a cheap string scan, and re-resolving on
+    // every recomposition lets a host that opts out of activity recreation on locale changes
+    // still pick up the new language on its next recomposition.
+    val cardLanguage = resolvedCardEntryLanguage(localeOverride)
     // Lock all fields while a payment is in flight — driven by the SDK (story 11.14); no host param.
     val enabled = !controller.isProcessing
     // With a saved card selected, the entry fields are not rendered — their values stay in the

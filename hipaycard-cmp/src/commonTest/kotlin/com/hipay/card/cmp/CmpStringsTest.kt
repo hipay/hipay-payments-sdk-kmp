@@ -148,9 +148,20 @@ class CmpStringsTest {
         assertEquals("fr", resolvedCardEntryLanguage("fr"))
         assertEquals("it", resolvedCardEntryLanguage("it-CH"))
         assertEquals("en", resolvedCardEntryLanguage("de")) // unsupported override → EN, not system
-        val system = cardEntryLanguage(systemLocaleLanguage())
+        val system = firstSupportedLanguage(systemLocaleLanguages())
         assertEquals(system, resolvedCardEntryLanguage(null))
         assertEquals(system, resolvedCardEntryLanguage("   "))
+    }
+
+    @Test
+    fun system_resolution_walks_the_preference_list_for_the_first_supported_language() {
+        // A device preferring an unsupported language first must land on the next supported
+        // one — like native resource resolution — not on the English fallback.
+        assertEquals("fr", firstSupportedLanguage(listOf("de-DE", "fr-CA", "en")))
+        assertEquals("it", firstSupportedLanguage(listOf("pt-BR", "it-CH", "fr")))
+        assertEquals("en", firstSupportedLanguage(listOf("en-GB", "fr")))
+        assertEquals("en", firstSupportedLanguage(listOf("de", "es")))
+        assertEquals("en", firstSupportedLanguage(emptyList()))
     }
 
     @Test

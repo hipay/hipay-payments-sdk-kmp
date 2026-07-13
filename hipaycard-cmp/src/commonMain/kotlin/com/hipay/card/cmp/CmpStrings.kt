@@ -30,9 +30,10 @@ internal fun cmpString(key: CardEntryStringKey): String =
 
 /**
  * Resolves [key] for a raw [languageTag] ("fr" — any case, with or without a region, either
- * separator); any language outside
- * the catalog (or null) falls back to English. A language catalog missing an individual key
- * degrades to the English value rather than failing the composition.
+ * separator); any language outside the catalog (or null) falls back to English. A French or
+ * Italian catalog missing an individual key degrades to the English value; the English catalog
+ * is the authority and must stay complete — `getValue` fails composition on an incomplete
+ * English catalog, which the parity script and the golden test prevent from ever shipping.
  */
 internal fun cmpString(key: CardEntryStringKey, languageTag: String?): String =
     when (cardEntryLanguage(languageTag)) {
@@ -41,20 +42,35 @@ internal fun cmpString(key: CardEntryStringKey, languageTag: String?): String =
         else -> null
     } ?: cmpStringsEn.getValue(key)
 
-/** Normalizes a language tag to a supported catalog language: "fr", "it", else "en". */
-internal fun cardEntryLanguage(languageTag: String?): String =
+/** The catalog language a tag's primary subtag selects, or null when unsupported. */
+private fun cardEntryLanguageOrNull(languageTag: String?): String? =
     when (languageTag?.trim()?.split('-', '_')?.first()?.lowercase()) {
         "fr" -> "fr"
         "it" -> "it"
-        else -> "en"
+        "en" -> "en"
+        else -> null
     }
+
+/** Normalizes a language tag to a supported catalog language: "fr", "it", else "en". */
+internal fun cardEntryLanguage(languageTag: String?): String =
+    cardEntryLanguageOrNull(languageTag) ?: "en"
+
+/**
+ * The first catalog-supported language in a preference-ordered tag list, English when none —
+ * the same walk the native platforms do (an unsupported first language falls through to the
+ * next preference instead of forcing English).
+ */
+internal fun firstSupportedLanguage(languageTags: List<String>): String =
+    languageTags.firstNotNullOfOrNull(::cardEntryLanguageOrNull) ?: "en"
 
 /**
  * The language the component renders in: the integrator's [localeOverride] when provided
- * (non-blank), else the device/system locale.
+ * (non-blank; an unsupported language falls back to English, deterministically), else the
+ * first supported entry of the device's preferred-language list.
  */
 internal fun resolvedCardEntryLanguage(localeOverride: String?): String =
-    cardEntryLanguage(localeOverride?.takeIf { it.isNotBlank() } ?: systemLocaleLanguage())
+    localeOverride?.takeIf { it.isNotBlank() }?.let(::cardEntryLanguage)
+        ?: firstSupportedLanguage(systemLocaleLanguages())
 
 /** Positional `%n$s` substitution for the catalog templates (e.g. the saved-card a11y label). */
 internal fun cmpFormat(template: String, vararg args: String): String {
@@ -64,9 +80,11 @@ internal fun cmpFormat(template: String, vararg args: String): String {
 }
 
 // The three catalogs below mirror hipaycard/src/main/res/values{,-fr,-it}/strings.xml (and the
-// iOS .lproj equivalents) VERBATIM — never edit wording here without changing the native
-// catalogs identically. One `CardEntryStringKey.X to "…"` per line: check-i18n-parity.sh
-// parses these blocks for key-set parity and non-empty values.
+// iOS .lproj equivalents) VERBATIM in wording — never edit wording here without changing the
+// native catalogs identically. Placeholders use the Android `%n$s` form; the iOS catalogs use
+// `%n$@` for the same slots (platform format syntax, not a wording difference). One
+// `CardEntryStringKey.X to "…"` per line: check-i18n-parity.sh parses these blocks for
+// key-set parity and non-empty values.
 
 private val cmpStringsEn: Map<CardEntryStringKey, String> = mapOf(
     CardEntryStringKey.LABEL_HOLDER to "Cardholder name",
