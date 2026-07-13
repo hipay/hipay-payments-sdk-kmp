@@ -1,8 +1,11 @@
 package com.hipay.card.cmp
 
+import com.hipay.card.model.CardInfo
 import com.hipay.card.validation.CardNetwork
 import com.hipay.core.Environment
 import com.hipay.core.HiPayConfig
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -21,7 +24,10 @@ class CmpCardControllerTest {
         CmpCardController(
             HiPayConfig(username = "u", password = "p", environment = Environment.STAGE),
             allowed,
-        )
+            // Synchronous scope + empty backend verdict: these tests exercise the LOCAL entry
+            // contract only — the co-brand refinement has its own suite (CmpCoBrandResolutionTest).
+            scope = CoroutineScope(Dispatchers.Unconfined),
+        ).apply { cardInfoResolver = { CardInfo() } }
 
     @Test
     fun startsNotPayable() {

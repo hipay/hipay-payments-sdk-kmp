@@ -4,6 +4,19 @@ Pre-1.0: the API may still move; per SemVer pre-1.0 a **minor** bump (0.1.0 → 
 breaking changes. `version` is the single source of truth in `gradle.properties` (inherited by every
 module + the iOS SPM/xcframework).
 
+## 0.3.0 — unreleased
+
+### Fixed
+
+- **CMP `hipaycard-cmp`: co-branding by backend network detection.** `CmpCardController` now
+  resolves the network set through the backend (`resolveCardInfo`) once the entered number is
+  complete and Luhn-valid — exactly like the native Android/iOS components — so a co-branded
+  card (CB+Visa, CB+Mastercard…) offers both networks with the domestic CB/BCMC chip
+  default-selected, as it always should have on CMP. Resolution failures degrade to the
+  locally-detected network and never block entry. No integrator change required:
+  `CmpCardController` gains an optional `scope` constructor parameter (defaulted) and
+  `dispose()` now cancels the controller-owned scope.
+
 ## 0.2.0 — SDK-managed 3DS
 
 ### ⚠️ BREAKING CHANGES (vs the tagged 0.1.0)

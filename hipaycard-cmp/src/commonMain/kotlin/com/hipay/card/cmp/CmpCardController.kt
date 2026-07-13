@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.hipay.card.CardTokenizer
+import com.hipay.card.model.CardInfo
 import com.hipay.card.model.CardToken
 import com.hipay.card.store.OneClickError
 import com.hipay.card.store.OneClickErrorReason
@@ -35,7 +36,11 @@ import com.hipay.core.gateway.model.Transaction
 import com.hipay.core.gateway.model.TransactionState
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlin.coroutines.resume
@@ -49,9 +54,12 @@ import kotlin.coroutines.resume
  * Uses the shared [CardNetwork] directly (no Android `HiPayCardNetwork`). The raw PAN never
  * leaves the holder and the vault token is consumed internally by [pay] (PCI/NFR2).
  *
- * Slice-A scope: LOCAL network detection only. The async backend co-branding refinement
- * (`resolveCardInfo`) is intentionally deferred (it needs a multiplatform clock + scope) —
- * tracked for slice B / a follow-up; chips here come from local BIN detection.
+ * Network detection is two-stage: local BIN detection drives the trailing icon per keystroke,
+ * then — once the number is complete and Luhn-valid — the backend `resolveCardInfo` verdict
+ * refines the offered set with any domestic co-brand (CB/BCMC) that local detection cannot see,
+ * so a co-branded card offers BOTH networks, CB/BCMC default-selected (parity with the native
+ * Android/iOS components, fixed in 0.3.0). Failures degrade to the local icon and never block
+ * entry.
  */
 public class CmpCardController(
     private val config: HiPayConfig,
@@ -61,8 +69,20 @@ public class CmpCardController(
      *  Headless-host note: once [refreshSavedCards] has pre-selected a saved card, a plain [pay]
      *  call routes to that stored token (no CVV) — call [selectNewCard] first to force card entry. */
     public val oneClickEnabled: Boolean = false,
+    /** Optional host scope for the async backend network resolution (@since 0.3.0); when null
+     *  the controller owns one (main-immediate) and cancels it in [dispose]. */
+    scope: CoroutineScope? = null,
 ) {
     public enum class Field { HOLDER, NUMBER, EXPIRY, CVC }
+
+    // The owned scope is created LAZILY (on the first resolve): construction must not touch
+    // Dispatchers.Main — absent on the host-test JVM, and needless until a resolve fires.
+    private val hostScope = scope
+    private var ownedScope: CoroutineScope? = null
+    private val scope: CoroutineScope
+        get() = hostScope
+            ?: ownedScope
+            ?: CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).also { ownedScope = it }
 
     private val tokenizer = CardTokenizer(config)
     private val gateway = GatewayClient(config)
@@ -242,6 +262,8 @@ public class CmpCardController(
 
     private var userSelectedNetwork = false
     private var lastDetected: CardNetwork = CardNetwork.UNKNOWN
+    // Last PAN sent to the backend resolution — one resolve per distinct valid PAN.
+    private var lastResolvedDigits: String? = null
 
     private val panDigits: String get() = cardNumber.filter { it in '0'..'9' }
     private val expiryDigits: String get() = expiry.filter { it in '0'..'9' }
@@ -314,6 +336,16 @@ public class CmpCardController(
         lastOneClickError = null
         cardNumber = digits.take(CardNetworks.completionLength(CardNetworks.detect(digits)))
         recomputeNetworks()
+        // Backend co-brand refinement: once per distinct valid PAN, launched AFTER the local
+        // applyOffered so the immediate icon never waits on the network. Partial/invalid input
+        // re-arms the next resolve.
+        val pan = panDigits
+        if (CardValidators.isCardNumberValid(pan) && pan != lastResolvedDigits) {
+            lastResolvedDigits = pan
+            scope.launch { resolve(pan) }
+        } else if (!CardValidators.isCardNumberValid(pan)) {
+            lastResolvedDigits = null
+        }
     }
 
     public fun onExpiryChange(input: String) {
@@ -357,7 +389,7 @@ public class CmpCardController(
             // AUTHORITATIVE co-brand-aware clear. Not the CVC policy source (story 11.5 review).
             cvc = if (!CardNetworks.isCvcRequired(detected)) "" else cvc.take(CardNetworks.cvcLength(detected))
         }
-        // Local offered set (backend refinement deferred — slice A).
+        // Local offered set (immediate); the backend verdict in [resolve] refines it once available.
         val offered = AllowedNetworks.offered(listOfNotNull(detected.takeIf { it != CardNetwork.UNKNOWN }), allowed)
         applyOffered(offered)
     }
@@ -371,6 +403,35 @@ public class CmpCardController(
         if (selectedNetwork !in offered) userSelectedNetwork = false
         cvc = if (isCvcRequired) cvc.take(cvcMaxLength) else ""
     }
+
+    /** In-module test: common tests fake the backend co-brand verdict through this
+     *  (no network, no tokenizer stub); null in production — [resolve] then calls the real
+     *  [tokenizer]. Same spirit as the [lastOneClickError] internal setter. */
+    internal var cardInfoResolver: (suspend (digits: String) -> CardInfo)? = null
+
+    /** Backend co-brand refinement (mirrors the native controllers): the Secure Vault is the
+     *  only source that can see a domestic co-brand (CB/BCMC), so the offered set is re-derived
+     *  from its verdict. A stale verdict (the payer kept typing) is dropped; a failure degrades
+     *  to the locally detected icon and re-arms a retry on the next edit — entry is never
+     *  blocked and no error surfaces. */
+    private suspend fun resolve(digits: String) {
+        try {
+            val info = cardInfoResolver?.invoke(digits)
+                ?: tokenizer.resolveCardInfo(digits, "12", nextYear())
+            if (digits != panDigits) return // user kept typing — drop the stale result
+            val offered = AllowedNetworks.offered(info.resolvedNetworks(), allowed)
+            if (offered.isNotEmpty()) applyOffered(offered)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Degrade: keep the locally detected icon; allow a retry on the next edit.
+            if (digits == panDigits) lastResolvedDigits = null
+        }
+    }
+
+    // The resolution expiry is required-but-non-authoritative (the backend resolves on the BIN);
+    // a plausible near-future year is enough — same contract as the native controllers.
+    private fun nextYear(): String = (currentYear() + 1).toString()
 
     /**
      * Tokenizes the card and creates the order. The vault token is consumed here and never
@@ -459,7 +520,7 @@ public class CmpCardController(
         // Clear sensitive/derived state after a successful order (parity with :hipaycard).
         holder = ""; cardNumber = ""; expiry = ""; cvc = ""
         networks = emptyList(); selectedNetwork = null
-        userSelectedNetwork = false; lastDetected = CardNetwork.UNKNOWN
+        userSelectedNetwork = false; lastDetected = CardNetwork.UNKNOWN; lastResolvedDigits = null
         holderBlurred = false; numberBlurred = false; expiryBlurred = false; cvcBlurred = false
 
         val final = resolve3DS(transaction, redirectScheme, signature, threeDS)
@@ -696,8 +757,11 @@ public class CmpCardController(
         cont.resume(url)
     }
 
-    /** No owned coroutine scope (slice A: synchronous local detection); kept for API parity. */
-    public fun dispose() {}
+    /** Cancel the owned coroutine scope (if one was created). No-op when the host supplied its own. */
+    public fun dispose() {
+        ownedScope?.cancel()
+        ownedScope = null
+    }
 }
 
 /** Wire payment_product code for the order (mirrors the Android HiPayCardNetwork codes). */

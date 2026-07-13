@@ -19,6 +19,11 @@ consumed on iOS through a local Swift package.
   package (see its header for the edit-Kotlin → run-demo loop)
 - Demo app: separate repo `../HiPay-SDK-ios-Demo`
 
+Co-branding (CB/BCMC): since 0.3.0 all three card components — Android
+(`:hipaycard`), iOS (`HiPayCard`) and Compose Multiplatform (`:hipaycard-cmp`)
+— resolve the offered network set through the backend, so a co-branded card
+offers both networks with the domestic one default-selected.
+
 ## Build & test
 
 ```sh
