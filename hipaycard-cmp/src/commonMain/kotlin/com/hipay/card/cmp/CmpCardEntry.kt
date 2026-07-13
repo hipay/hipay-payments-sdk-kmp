@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.selection.selectableGroup
@@ -202,13 +203,20 @@ internal fun CmpCardEntry(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     trailingIcon = if (controller.isCvcRequired) ({
                         val cvvHelp = cmpString(CardEntryStringKey.CVV_TOOLTIP)
-                        Text(
-                            "ⓘ",
-                            color = cmpColor(LocalHiPayCardStyle.current.iconColor),
-                            modifier = Modifier
-                                .semantics { contentDescription = cvvHelp }
-                                .clickable { showCvvInfo = !showCvvInfo },
-                        )
+                        // 24dp reported slot so a compact fieldHeight keeps its geometry; the
+                        // 48dp a11y touch target overflows it (centered, unclipped) instead of
+                        // growing the decoration box.
+                        Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .requiredSize(48.dp)
+                                    .semantics { contentDescription = cvvHelp }
+                                    .clickable { showCvvInfo = !showCvvInfo },
+                            ) {
+                                Text("ⓘ", color = cmpColor(LocalHiPayCardStyle.current.iconColor))
+                            }
+                        }
                     }) else null,
                     modifier = Modifier.fillMaxWidth().focusRequester(cvcFocus),
                 )
@@ -347,12 +355,15 @@ private fun CmpSavedCardCell(
     val a11yLabel = error?.let { "$baseA11yLabel, ${cmpString(it.reason.messageKey())}" } ?: baseA11yLabel
     val deleteLabel = cmpString(CardEntryStringKey.LABEL_DELETE_CARD)
     val isSelected = controller.selectedSavedCard == card
-    // Unselected cells take the style's border/background; the SELECTED cell keeps the
-    // platform accent as the selection affordance (no accent slot in the style contract yet).
+    // Cells follow the style's metrics (corner radius, border width) so they agree with the
+    // entry fields; the SELECTED cell keeps the platform accent — a thicker accent border
+    // (borderWidth + 1, the fields' focus treatment) and an accent tint layered OVER the
+    // style's background — as the selection affordance (no accent slot in the contract yet).
     val style = LocalHiPayCardStyle.current
+    val cellShape = RoundedCornerShape(style.cornerRadius.dp)
     val border =
-        if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-        else BorderStroke(1.dp, cmpColor(style.borderColor))
+        if (isSelected) BorderStroke((style.borderWidth + 1f).dp, MaterialTheme.colorScheme.primary)
+        else BorderStroke(style.borderWidth.dp, cmpColor(style.borderColor))
     // The cell + its inline error travel as one visual unit (the field error spacing).
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(
@@ -361,11 +372,17 @@ private fun CmpSavedCardCell(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 48.dp)
-                .border(border, RoundedCornerShape(10.dp))
-                .background(
-                    if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                    else cmpColor(style.backgroundColor),
-                    RoundedCornerShape(10.dp),
+                .border(border, cellShape)
+                .background(cmpColor(style.backgroundColor), cellShape)
+                .then(
+                    if (isSelected) {
+                        Modifier.background(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                            cellShape,
+                        )
+                    } else {
+                        Modifier
+                    },
                 )
                 // Tap selects; long-press requests delete (no visible delete button, PM decision).
                 .combinedClickable(
@@ -553,7 +570,8 @@ private fun NetworkChips(controller: CmpCardController) {
     // brand mark (network logos are never re-tinted); unselected chips and the neutral glyph
     // are tinted with the style's iconColor — the monochrome-vs-color contrast replaces the
     // former opacity-only dimming, and the selected state stays announced via semantics.
-    val iconTint = ColorFilter.tint(cmpColor(LocalHiPayCardStyle.current.iconColor))
+    val iconColor = LocalHiPayCardStyle.current.iconColor
+    val iconTint = remember(iconColor) { ColorFilter.tint(cmpColor(iconColor)) }
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         val nets: List<CardNetwork> = controller.networks
         if (nets.isEmpty()) {

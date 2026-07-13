@@ -15,9 +15,15 @@ module + the iOS SPM/xcframework).
   CMP `HiPayCardEntry` — additive with a default, so existing call sites are source-compatible.
   Applied by the shared renderer on CMP-iOS in this release; CMP-Android delegates to the
   native Android component and applies it when native styling ships (same for iOS-native).
+  Style values are validated at construction (`IllegalArgumentException` on out-of-range
+  colors/metrics) rather than rendered wrong. From Swift, construct styles starting from
+  `hipayDefault` — Kotlin default arguments are not exported; a Swift-side per-property
+  override API ships with the iOS-native styling release.
   Note: `hipayDefault` deliberately unifies small historical per-platform visual differences
-  (corner radius, system-derived border/label colors) into one cross-platform baseline —
-  expect minor visual normalization, no behavioural change.
+  into one cross-platform baseline — no behavioural change, but expect visual normalization:
+  corner radius and border/label colors are unified, unselected network chips render as
+  monochrome (`iconColor`-tinted) silhouettes instead of alpha-dimmed brand logos, and the
+  text cursor follows `textColor` instead of the theme accent.
 
 ### Fixed
 

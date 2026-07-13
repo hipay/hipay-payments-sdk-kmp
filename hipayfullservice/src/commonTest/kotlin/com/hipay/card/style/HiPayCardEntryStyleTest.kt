@@ -2,6 +2,7 @@ package com.hipay.card.style
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 
@@ -43,7 +44,6 @@ class HiPayCardEntryStyleTest {
             base.copy(placeholderColor = 0xFF000000),
             base.copy(iconColor = 0xFF000000),
             base.copy(invalidTextColor = 0xFF000000),
-            base.copy(fontFamily = "Serif"),
             base.copy(fontSize = 18f),
             base.copy(fontStyle = HiPayFontStyle.ITALIC),
             base.copy(fontWeight = HiPayFontWeight.BOLD),
@@ -59,6 +59,30 @@ class HiPayCardEntryStyleTest {
         // And an identical copy stays equal (value semantics, usable as a remember/state key).
         assertEquals(base, base.copy())
         assertEquals(base.hashCode(), base.copy().hashCode())
+    }
+
+    @Test
+    fun construction_fails_closed_on_out_of_contract_values() {
+        // Colors: 32-bit ARGB only — sign-extended or overflowing Longs are rejected, and the
+        // text the cardholder must read cannot be fully transparent (the 0x112233 alpha trap).
+        assertFailsWith<IllegalArgumentException> { HiPayCardEntryStyle(textColor = -1L) }
+        assertFailsWith<IllegalArgumentException> { HiPayCardEntryStyle(borderColor = 0x1FF112233) }
+        assertFailsWith<IllegalArgumentException> { HiPayCardEntryStyle(textColor = 0x112233) }
+        assertFailsWith<IllegalArgumentException> { HiPayCardEntryStyle(invalidTextColor = 0x00D32F2F) }
+        // A transparent background stays a legal design choice.
+        HiPayCardEntryStyle(backgroundColor = 0x00000000)
+        // Reserved slot: any non-null font family is refused until resolution ships.
+        assertFailsWith<IllegalArgumentException> { HiPayCardEntryStyle(fontFamily = "Serif") }
+        // Metrics: finite, positive where a zero would collapse the form.
+        assertFailsWith<IllegalArgumentException> { HiPayCardEntryStyle(fontSize = 0f) }
+        assertFailsWith<IllegalArgumentException> { HiPayCardEntryStyle(fontSize = -1f) }
+        assertFailsWith<IllegalArgumentException> { HiPayCardEntryStyle(fieldHeight = 0f) }
+        assertFailsWith<IllegalArgumentException> { HiPayCardEntryStyle(fieldHeight = Float.NaN) }
+        assertFailsWith<IllegalArgumentException> { HiPayCardEntryStyle(fieldHeight = Float.POSITIVE_INFINITY) }
+        assertFailsWith<IllegalArgumentException> { HiPayCardEntryStyle(borderWidth = -1f) }
+        assertFailsWith<IllegalArgumentException> { HiPayCardEntryStyle(cornerRadius = -4f) }
+        // Zero border and zero radius stay legal (borderless / square fields).
+        HiPayCardEntryStyle(borderWidth = 0f, cornerRadius = 0f)
     }
 
     @Test

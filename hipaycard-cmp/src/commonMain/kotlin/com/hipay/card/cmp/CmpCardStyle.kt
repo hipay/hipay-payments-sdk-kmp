@@ -2,7 +2,7 @@
 package com.hipay.card.cmp
 
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -63,44 +63,64 @@ internal fun HiPayCardEntryStyle.entryTextStyle(colorArgb: Long = textColor): Te
 /** M3 disabled-content alpha, applied to style colors for the disabled field states. */
 private const val DISABLED_ALPHA = 0.38f
 
+/** Disabled variant of a style color — multiplies the existing alpha (a semi-transparent
+ *  style color must get dimmer when disabled, never more opaque). */
+internal fun Color.dimmedDisabled(): Color = copy(alpha = alpha * DISABLED_ALPHA)
+
+/**
+ * Vertical content padding centering the (~1.5 × fontSize) text line in the field — at
+ * Material3's 56/16 geometry this yields exactly its 16dp padding, and it scales with both
+ * knobs, flooring at 0 when the line outgrows the field. Units mix by design (dp height,
+ * sp font): under large accessibility font scales the line consumes more than 1.5×fontSize
+ * dp — the field's min-height constraint (not this padding) is what lets it grow unclipped.
+ */
+internal fun fieldVerticalPadding(fieldHeight: Float, fontSize: Float): Float =
+    ((fieldHeight - fontSize * 1.5f) / 2f).coerceAtLeast(0f)
+
 /**
  * The style's color set for the field decoration. Border colors are real here — the border
  * line itself (with its custom thickness) is drawn by `OutlinedTextFieldDefaults.Container`
- * in [HiPayStyledField].
+ * in [HiPayStyledField]. Remembered per (style, theme defaults): the card fields recompose
+ * on every keystroke and the color set is a flat value object.
  */
 @Composable
 internal fun HiPayCardEntryStyle.fieldColors(): TextFieldColors {
-    val text = cmpColor(textColor)
-    val hint = cmpColor(placeholderColor)
-    val border = cmpColor(borderColor)
-    val container = cmpColor(backgroundColor)
-    return OutlinedTextFieldDefaults.colors(
-        focusedTextColor = text,
-        unfocusedTextColor = text,
-        disabledTextColor = text.copy(alpha = DISABLED_ALPHA),
-        cursorColor = text,
-        focusedBorderColor = border,
-        unfocusedBorderColor = border,
-        disabledBorderColor = border.copy(alpha = DISABLED_ALPHA),
-        focusedContainerColor = container,
-        unfocusedContainerColor = container,
-        disabledContainerColor = container,
-        focusedPlaceholderColor = hint,
-        unfocusedPlaceholderColor = hint,
-        disabledPlaceholderColor = hint.copy(alpha = DISABLED_ALPHA),
-        focusedLabelColor = hint,
-        unfocusedLabelColor = hint,
-        disabledLabelColor = hint.copy(alpha = DISABLED_ALPHA),
-    )
+    val defaults = OutlinedTextFieldDefaults.colors()
+    return remember(this, defaults) {
+        val text = cmpColor(textColor)
+        val hint = cmpColor(placeholderColor)
+        val border = cmpColor(borderColor)
+        val container = cmpColor(backgroundColor)
+        defaults.copy(
+            focusedTextColor = text,
+            unfocusedTextColor = text,
+            disabledTextColor = text.dimmedDisabled(),
+            cursorColor = text,
+            focusedIndicatorColor = border,
+            unfocusedIndicatorColor = border,
+            disabledIndicatorColor = border.dimmedDisabled(),
+            focusedContainerColor = container,
+            unfocusedContainerColor = container,
+            disabledContainerColor = container,
+            focusedPlaceholderColor = hint,
+            unfocusedPlaceholderColor = hint,
+            disabledPlaceholderColor = hint.dimmedDisabled(),
+            focusedLabelColor = hint,
+            unfocusedLabelColor = hint,
+            disabledLabelColor = hint.dimmedDisabled(),
+        )
+    }
 }
 
 /**
  * The styled card field: `BasicTextField` + `OutlinedTextFieldDefaults.DecorationBox`/
- * `Container` — the documented Material3 route to a custom border thickness and a fixed
+ * `Container` — the documented Material3 route to a custom border thickness and a custom
  * height while keeping the outlined floating-label cutout, focus handling and accessibility
  * semantics that the high-level `OutlinedTextField` does not expose. The focused border
  * thickens by 1dp over [HiPayCardEntryStyle.borderWidth], mirroring Material3's 1dp→2dp
- * focus cue with the style's own border color.
+ * focus cue with the style's own border color. `fieldHeight` is applied as a minimum: the
+ * field grows when content needs more room (large accessibility font scales must never clip
+ * the entered card data).
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -118,27 +138,30 @@ internal fun HiPayStyledField(
     val style = LocalHiPayCardStyle.current
     val interactionSource = remember { MutableInteractionSource() }
     val colors = style.fieldColors()
+    // Remembered per (style, enabled): these are rebuilt on every keystroke otherwise.
     // DecorationBox colors only the decorations; the input text itself is drawn by
     // BasicTextField, so the disabled dim is applied to its TextStyle here.
-    val textStyle = style.entryTextStyle().let {
-        if (enabled) it else it.copy(color = cmpColor(style.textColor).copy(alpha = DISABLED_ALPHA))
+    val textStyle = remember(style, enabled) {
+        style.entryTextStyle().let {
+            if (enabled) it else it.copy(color = cmpColor(style.textColor).dimmedDisabled())
+        }
     }
+    val shape = remember(style) { style.fieldShape() }
+    val cursorBrush = remember(style) { SolidColor(cmpColor(style.textColor)) }
     // Material3's default 16dp vertical content padding assumes the 56dp field: with a smaller
-    // fieldHeight the input line gets clipped. Center the (~1.5 × fontSize) text line in the
-    // field instead — at 56/16 this yields exactly M3's 16dp, and it scales with both knobs.
-    // Very large a11y font scales can still outgrow a deliberately small fieldHeight.
-    val verticalPadding = ((style.fieldHeight - style.fontSize * 1.5f) / 2f).coerceAtLeast(0f).dp
+    // fieldHeight the input line gets clipped — see [fieldVerticalPadding].
+    val verticalPadding = fieldVerticalPadding(style.fieldHeight, style.fontSize).dp
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = modifier.height(style.fieldHeight.dp),
+        modifier = modifier.heightIn(min = style.fieldHeight.dp),
         enabled = enabled,
         textStyle = textStyle,
         keyboardOptions = keyboardOptions,
         singleLine = true,
         visualTransformation = visualTransformation,
         interactionSource = interactionSource,
-        cursorBrush = SolidColor(cmpColor(style.textColor)),
+        cursorBrush = cursorBrush,
     ) { innerTextField ->
         OutlinedTextFieldDefaults.DecorationBox(
             value = value,
@@ -161,7 +184,7 @@ internal fun HiPayStyledField(
                     isError = false,
                     interactionSource = interactionSource,
                     colors = colors,
-                    shape = style.fieldShape(),
+                    shape = shape,
                     focusedBorderThickness = (style.borderWidth + 1f).dp,
                     unfocusedBorderThickness = style.borderWidth.dp,
                 )
