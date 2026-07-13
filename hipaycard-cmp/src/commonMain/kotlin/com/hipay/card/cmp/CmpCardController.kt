@@ -77,8 +77,11 @@ public class CmpCardController(
 
     // The owned scope is created LAZILY (on the first resolve): construction must not touch
     // Dispatchers.Main — absent on the host-test JVM, and needless until a resolve fires.
+    // Once disposed the owned scope is never re-created (a launch after dispose would otherwise
+    // leak a fresh, never-cancelled SupervisorJob); the host scope, if supplied, is left as-is.
     private val hostScope = scope
     private var ownedScope: CoroutineScope? = null
+    private var disposed = false
     private val scope: CoroutineScope
         get() = hostScope
             ?: ownedScope
@@ -340,7 +343,7 @@ public class CmpCardController(
         // applyOffered so the immediate icon never waits on the network. Partial/invalid input
         // re-arms the next resolve.
         val pan = panDigits
-        if (CardValidators.isCardNumberValid(pan) && pan != lastResolvedDigits) {
+        if (!disposed && CardValidators.isCardNumberValid(pan) && pan != lastResolvedDigits) {
             lastResolvedDigits = pan
             scope.launch { resolve(pan) }
         } else if (!CardValidators.isCardNumberValid(pan)) {
@@ -757,8 +760,10 @@ public class CmpCardController(
         cont.resume(url)
     }
 
-    /** Cancel the owned coroutine scope (if one was created). No-op when the host supplied its own. */
+    /** Cancel the owned coroutine scope (if one was created) and block any later resolve from
+     *  re-creating one. No-op on the scope itself when the host supplied its own. */
     public fun dispose() {
+        disposed = true
         ownedScope?.cancel()
         ownedScope = null
     }
