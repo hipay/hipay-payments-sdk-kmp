@@ -116,15 +116,15 @@ actual fun HiPayCardEntry(
     modifier: Modifier,
     setsAccessibilityOrder: Boolean,
     localeOverride: String?,
-    // Not forwarded yet: the native :hipaycard renderer this actual delegates to gains its
-    // style parameter in the native-styling release; the shared contract lands here first so
-    // integrator call sites are source-stable across both targets.
-    @Suppress("UNUSED_PARAMETER") style: HiPayCardEntryStyle,
+    style: HiPayCardEntryStyle,
 ) {
+    // The native :hipaycard renderer applies the shared style directly — CMP-Android inherits the
+    // same styled look through this delegation (no CMP-side re-implementation).
     NativeCardEntry(
         controller = controller.delegate,
         modifier = modifier,
         setsAccessibilityOrder = setsAccessibilityOrder,
         localeOverride = localeOverride,
+        style = style,
     )
 }

@@ -1,5 +1,5 @@
-// PCI: com.hipay.card path — never log card data here.
-package com.hipay.card.cmp
+// PCI (NFR2): com.hipay.card anti-logging path — never log card data here.
+package com.hipay.card
 
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.heightIn
@@ -25,19 +25,21 @@ import com.hipay.card.style.HiPayCardEntryStyle
 import com.hipay.card.style.HiPayFontStyle
 import com.hipay.card.style.HiPayFontWeight
 
-// LOCKSTEP: :hipaycard's CardEntryStyleMapper.kt is a deliberate source mirror of this file (the
-// two renderers must map the shared HiPayCardEntryStyle with identical math, and the mapper cannot
-// be hoisted to a module both depend on). Any edit here must be mirrored there, and vice versa.
+// Deliberate source mirror of :hipaycard-cmp's CmpCardStyle.kt. The two renderers must map the
+// shared HiPayCardEntryStyle contract with identical math so Android-native and CMP stay
+// pixel-consistent, but the mapper cannot be hoisted to a common module: the shared home would be
+// the headless core (:hipayfullservice), which is intentionally Compose/UI-free, and :hipaycard
+// must not depend on the CMP wrapper (:hipaycard-cmp). Keep this file and CmpCardStyle.kt in lockstep.
 
 /**
- * The style the card component renders with — provided by [CmpCardEntry] from its `style`
+ * The style the card component renders with — provided by [HiPayCardEntry] from its `style`
  * parameter. Default [HiPayCardEntryStyle.hipayDefault] so any out-of-component composition
  * (tests, previews) renders the SDK look deterministically.
  */
 internal val LocalHiPayCardStyle = staticCompositionLocalOf { HiPayCardEntryStyle.hipayDefault }
 
 /** ARGB `Long` (the platform-neutral contract encoding) → Compose [Color]. */
-internal fun cmpColor(argb: Long): Color = Color(argb)
+internal fun styleColor(argb: Long): Color = Color(argb)
 
 /** The field container shape from the style's corner radius. */
 internal fun HiPayCardEntryStyle.fieldShape(): RoundedCornerShape =
@@ -50,7 +52,7 @@ internal fun HiPayCardEntryStyle.fieldShape(): RoundedCornerShape =
  */
 internal fun HiPayCardEntryStyle.entryTextStyle(colorArgb: Long = textColor): TextStyle =
     TextStyle(
-        color = cmpColor(colorArgb),
+        color = styleColor(colorArgb),
         fontSize = fontSize.sp,
         fontStyle = when (fontStyle) {
             HiPayFontStyle.NORMAL -> FontStyle.Normal
@@ -91,10 +93,10 @@ internal fun fieldVerticalPadding(fieldHeight: Float, fontSize: Float): Float =
 internal fun HiPayCardEntryStyle.fieldColors(): TextFieldColors {
     val defaults = OutlinedTextFieldDefaults.colors()
     return remember(this, defaults) {
-        val text = cmpColor(textColor)
-        val hint = cmpColor(placeholderColor)
-        val border = cmpColor(borderColor)
-        val container = cmpColor(backgroundColor)
+        val text = styleColor(textColor)
+        val hint = styleColor(placeholderColor)
+        val border = styleColor(borderColor)
+        val container = styleColor(backgroundColor)
         defaults.copy(
             focusedTextColor = text,
             unfocusedTextColor = text,
@@ -147,11 +149,11 @@ internal fun HiPayStyledField(
     // BasicTextField, so the disabled dim is applied to its TextStyle here.
     val textStyle = remember(style, enabled) {
         style.entryTextStyle().let {
-            if (enabled) it else it.copy(color = cmpColor(style.textColor).dimmedDisabled())
+            if (enabled) it else it.copy(color = styleColor(style.textColor).dimmedDisabled())
         }
     }
     val shape = remember(style) { style.fieldShape() }
-    val cursorBrush = remember(style) { SolidColor(cmpColor(style.textColor)) }
+    val cursorBrush = remember(style) { SolidColor(styleColor(style.textColor)) }
     // Material3's default 16dp vertical content padding assumes the 56dp field: with a smaller
     // fieldHeight the input line gets clipped — see [fieldVerticalPadding].
     val verticalPadding = fieldVerticalPadding(style.fieldHeight, style.fontSize).dp

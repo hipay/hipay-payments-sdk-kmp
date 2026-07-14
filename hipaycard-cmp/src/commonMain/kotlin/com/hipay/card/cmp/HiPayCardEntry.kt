@@ -136,9 +136,8 @@ expect class HiPayCardController(
  * native Android/iOS components.
  * @param style visual customization (colors, typography, field metrics); defaults to the SDK
  * look ([HiPayCardEntryStyle.hipayDefault]). Applied by the shared renderer on the iOS target
- * today; the Android target delegates to the native Android component and applies the style
- * once that component's styling ships — passing a custom style is already source-stable on
- * both. @since 0.3.0
+ * and, on the Android target, by the native Android component this delegates to — the same
+ * style values render the same look on both. @since 0.3.0
  */
 @Composable
 expect fun HiPayCardEntry(

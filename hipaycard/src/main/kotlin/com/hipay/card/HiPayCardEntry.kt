@@ -25,7 +25,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -45,6 +44,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -73,6 +73,7 @@ import com.hipay.card.store.SavedCard
 import com.hipay.card.store.messageKey
 import com.hipay.card.store.oneClickErrorSurface
 import com.hipay.card.store.savedCardDisplay
+import com.hipay.card.style.HiPayCardEntryStyle
 import com.hipay.card.validation.CardEntryStringKey
 import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
@@ -130,6 +131,9 @@ public fun HiPayCardEntry(
     setsAccessibilityOrder: Boolean = true,
     /** Optional ISO language override ("fr"/"en"/"it"); null → device locale (D11). */
     localeOverride: String? = null,
+    /** Visual customization — colors/typography/metrics only; behaviours are untouched.
+     *  Defaults to the SDK look ([HiPayCardEntryStyle.hipayDefault]). @since 0.3.0 */
+    style: HiPayCardEntryStyle = HiPayCardEntryStyle.hipayDefault,
 ) {
     // Bind the host Activity context so the controller can present 3DS in Custom Tabs (story 11.13).
     // Captured here from the REAL LocalContext (before any locale-override wrapper below) and cleared
@@ -140,7 +144,7 @@ public fun HiPayCardEntry(
         onDispose { controller.bindPresentationContext(null) }
     }
     if (localeOverride == null) {
-        CardEntryContent(controller, modifier, setsAccessibilityOrder)
+        CardEntryContent(controller, modifier, setsAccessibilityOrder, style)
         return
     }
     val base = LocalContext.current
@@ -155,7 +159,7 @@ public fun HiPayCardEntry(
         LocalContext provides localized,
         LocalConfiguration provides localized.resources.configuration,
     ) {
-        CardEntryContent(controller, modifier, setsAccessibilityOrder)
+        CardEntryContent(controller, modifier, setsAccessibilityOrder, style)
     }
 }
 
@@ -164,6 +168,7 @@ private fun CardEntryContent(
     controller: HiPayCardEntryController,
     modifier: Modifier,
     setsAccessibilityOrder: Boolean,
+    style: HiPayCardEntryStyle,
 ) {
     // Lock all fields while a payment is in flight — driven by the SDK itself (story 11.14): the
     // controller sets isProcessing across pay() (incl. the 3DS round-trip), no host wiring needed.
@@ -199,6 +204,7 @@ private fun CardEntryContent(
         LaunchedEffect(controller) { controller.refreshSavedCards() }
     }
 
+    CompositionLocalProvider(LocalHiPayCardStyle provides style) {
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -224,12 +230,11 @@ private fun CardEntryContent(
         if (showEntryFields) {
         // Holder
         FieldGroup(setsAccessibilityOrder, 0f) {
-            OutlinedTextField(
+            HiPayStyledField(
                 value = controller.holder,
                 onValueChange = controller::onHolderChange,
                 label = { FieldLabel(cardString(CardEntryStringKey.LABEL_HOLDER)) },
                 placeholder = { Text(cardString(CardEntryStringKey.PLACEHOLDER_HOLDER)) },
-                singleLine = true,
                 enabled = enabled,
                 modifier = Modifier.fillMaxWidth().testTag(HiPayCardEntryTags.HOLDER)
                     .blurring(controller, Field.HOLDER),
@@ -239,12 +244,11 @@ private fun CardEntryContent(
 
         // Card number (+ network chips)
         FieldGroup(setsAccessibilityOrder, 1f) {
-            OutlinedTextField(
+            HiPayStyledField(
                 value = controller.cardNumber,
                 onValueChange = controller::onNumberChange,
                 label = { FieldLabel(cardString(CardEntryStringKey.LABEL_NUMBER)) },
                 placeholder = { Text(cardString(CardEntryStringKey.PLACEHOLDER_NUMBER)) },
-                singleLine = true,
                 enabled = enabled,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 trailingIcon = { NetworkChips(controller) },
@@ -264,12 +268,11 @@ private fun CardEntryContent(
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             // Expiry
             FieldGroup(setsAccessibilityOrder, 2f, Modifier.weight(1f)) {
-                OutlinedTextField(
+                HiPayStyledField(
                     value = controller.expiry,
                     onValueChange = controller::onExpiryChange,
                     label = { FieldLabel(cardString(CardEntryStringKey.LABEL_EXPIRY)) },
                     placeholder = { Text(cardString(CardEntryStringKey.PLACEHOLDER_EXPIRY)) },
-                    singleLine = true,
                     enabled = enabled,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     // Raw digits as value; "/" rendered by the transformation → caret stays correct (11.8).
@@ -285,12 +288,11 @@ private fun CardEntryContent(
                 // CVC is required (enabled) or not-applicable (disabled) — never a true "optional"
                 // enterable state — so the label stays the short "Security code" with no suffix
                 // (story 11.3 review): keeps it one line and avoids the half-width overflow.
-                OutlinedTextField(
+                HiPayStyledField(
                     value = controller.cvc,
                     onValueChange = controller::onCvcChange,
                     label = { FieldLabel(cardString(CardEntryStringKey.LABEL_CVV)) },
                     placeholder = { Text(cardString(CardEntryStringKey.PLACEHOLDER_CVV)) },
-                    singleLine = true,
                     enabled = enabled && controller.isCvcRequired,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     // Info affordance only when the CVC is required (no overlay on a disabled field).
@@ -310,6 +312,7 @@ private fun CardEntryContent(
         if (controller.oneClickEnabled) SaveCardSwitch(controller, enabled)
         } // showEntryFields
     }
+    } // LocalHiPayCardStyle
 }
 
 /**
@@ -435,9 +438,15 @@ private fun SavedCardCell(
     val a11yLabel = error?.let { "$baseA11yLabel, ${cardString(it.reason.messageKey())}" } ?: baseA11yLabel
     val deleteLabel = cardString(CardEntryStringKey.LABEL_DELETE_CARD)
     val isSelected = controller.selectedSavedCard == card
+    // Cells follow the style's metrics (corner radius, border width) so they agree with the
+    // entry fields; the SELECTED cell keeps the platform accent — a thicker accent border
+    // (borderWidth + 1, the fields' focus treatment) and an accent tint layered OVER the
+    // style's background — as the selection affordance (no accent slot in the contract yet).
+    val style = LocalHiPayCardStyle.current
+    val cellShape = RoundedCornerShape(style.cornerRadius.dp)
     val border =
-        if (isSelected) BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
-        else BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+        if (isSelected) BorderStroke((style.borderWidth + 1f).dp, MaterialTheme.colorScheme.primary)
+        else BorderStroke(style.borderWidth.dp, styleColor(style.borderColor))
     // The cell + its inline error travel as one visual unit (the field errorSlot spacing).
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Row(
@@ -446,11 +455,17 @@ private fun SavedCardCell(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = 48.dp)
-                .border(border, RoundedCornerShape(10.dp))
-                .background(
-                    if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-                    else MaterialTheme.colorScheme.surface,
-                    RoundedCornerShape(10.dp),
+                .border(border, cellShape)
+                .background(styleColor(style.backgroundColor), cellShape)
+                .then(
+                    if (isSelected) {
+                        Modifier.background(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                            cellShape,
+                        )
+                    } else {
+                        Modifier
+                    },
                 )
                 // Tap selects; long-press requests delete (no visible delete button, PM decision).
                 .combinedClickable(
@@ -480,14 +495,24 @@ private fun SavedCardCell(
             Image(
                 painter = painterResource(platformNetwork?.drawableRes ?: R.drawable.hp_card_neutral),
                 contentDescription = null, // described by the merged cell node
+                // Brand marks stay full-color; only the neutral fallback glyph takes iconColor.
+                colorFilter = if (platformNetwork == null) {
+                    ColorFilter.tint(styleColor(style.iconColor))
+                } else {
+                    null
+                },
                 modifier = Modifier.size(width = 32.dp, height = 20.dp),
             )
             Column {
-                Text(display.maskedNumber, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    display.maskedNumber,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = styleColor(style.textColor),
+                )
                 Text(
                     text = "${card.holder}  ·  ${display.displayExpiry}",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = styleColor(style.placeholderColor),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -552,7 +577,7 @@ private fun ChevronGlyph(expanded: Boolean) {
         text = if (expanded) "▾" else "▸",
         style = MaterialTheme.typography.bodyMedium,
         color = if (expanded) MaterialTheme.colorScheme.primary
-        else MaterialTheme.colorScheme.onSurfaceVariant,
+        else styleColor(LocalHiPayCardStyle.current.iconColor),
         modifier = Modifier.clearAndSetSemantics {},
     )
 }
@@ -563,7 +588,7 @@ private fun SectionHeader(text: String, modifier: Modifier = Modifier) {
     Text(
         text = text.uppercase(),
         style = MaterialTheme.typography.labelMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = styleColor(LocalHiPayCardStyle.current.placeholderColor),
         maxLines = 1,
         modifier = modifier,
     )
@@ -572,6 +597,9 @@ private fun SectionHeader(text: String, modifier: Modifier = Modifier) {
 /** In-frame "save this card" switch (consent, default OFF) + one-line consent text. */
 @Composable
 private fun SaveCardSwitch(controller: HiPayCardEntryController, enabled: Boolean) {
+    // Style drives the label + consent text; the switch track/thumb keep the platform accent
+    // (the contract has no accent slot yet) — mirrors CMP.
+    val style = LocalHiPayCardStyle.current
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -589,6 +617,7 @@ private fun SaveCardSwitch(controller: HiPayCardEntryController, enabled: Boolea
         Text(
             text = cardString(CardEntryStringKey.LABEL_SAVE_CARD),
             style = MaterialTheme.typography.bodyMedium,
+            color = styleColor(style.textColor),
             modifier = Modifier.weight(1f),
         )
         Switch(
@@ -600,7 +629,7 @@ private fun SaveCardSwitch(controller: HiPayCardEntryController, enabled: Boolea
     Text(
         text = cardString(CardEntryStringKey.CONSENT_SAVE_CARD),
         style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = styleColor(style.placeholderColor),
         modifier = Modifier.fillMaxWidth().testTag(HiPayCardEntryTags.CONSENT),
     )
 }
@@ -662,10 +691,11 @@ private fun ErrorSlot(key: CardEntryStringKey?, tag: String) {
             .semantics { liveRegion = LiveRegionMode.Polite },
     ) {
         // A glyph (not colour) carries the error meaning for non-colour accessibility (WCAG 1.4.1).
-        Text("⚠", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        val errorColor = styleColor(LocalHiPayCardStyle.current.invalidTextColor)
+        Text("⚠", color = errorColor, style = MaterialTheme.typography.bodySmall)
         Text(
             text = cardString(key),
-            color = MaterialTheme.colorScheme.error,
+            color = errorColor,
             style = MaterialTheme.typography.bodySmall,
             maxLines = 2,
         )
@@ -676,14 +706,25 @@ private fun ErrorSlot(key: CardEntryStringKey?, tag: String) {
 @Composable
 private fun CvvInfoIcon(onToggle: () -> Unit) {
     val tooltip = cardString(CardEntryStringKey.CVV_TOOLTIP)
-    Text(
-        text = "ⓘ", // circled "i"
-        style = MaterialTheme.typography.titleMedium,
+    val iconColor = styleColor(LocalHiPayCardStyle.current.iconColor)
+    // ≥48dp touch target for the "ⓘ" affordance (the old text-only hit area was ~glyph sized).
+    // sizeIn, not a `requiredSize` overflow (which leaks into the decoration's measured height on
+    // Android, unlike the CMP/iOS renderer): the trailing slot already floors the field at 48dp,
+    // so a 48dp minimum fits without growing the field — the network chips use the same technique.
+    Box(
         modifier = Modifier
-            .clickable { onToggle() }
+            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+            .clickable(role = Role.Button) { onToggle() }
             .testTag(HiPayCardEntryTags.CVC_INFO)
             .semantics { contentDescription = tooltip },
-    )
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "ⓘ", // circled "i"
+            style = MaterialTheme.typography.titleMedium,
+            color = iconColor,
+        )
+    }
 }
 
 /** CVV help as a full-width inline text under the expiry/CVV row (story 11.2), announced when shown. */
@@ -692,6 +733,7 @@ private fun CvvInfoText() {
     Text(
         text = cardString(CardEntryStringKey.CVV_TOOLTIP),
         style = MaterialTheme.typography.bodySmall,
+        color = styleColor(LocalHiPayCardStyle.current.textColor),
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = 4.dp)
@@ -703,13 +745,19 @@ private fun CvvInfoText() {
 /** Tappable network/co-brand chips. Each is one focusable a11y node: "<brand>, selected". */
 @Composable
 private fun NetworkChips(controller: HiPayCardEntryController) {
+    // Unselected brand chips dim to 0.35 alpha (never tinted — several brand marks sit on an
+    // OPAQUE plate: tinting them monochrome flattens the plate into an unreadable block). Only the
+    // neutral glyph (a true silhouette) takes the style's iconColor. Mirrors CMP.
+    val iconColor = LocalHiPayCardStyle.current.iconColor
+    val iconTint = remember(iconColor) { ColorFilter.tint(styleColor(iconColor)) }
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         val nets = controller.networks
         if (nets.isEmpty()) {
             Image(
                 painter = painterResource(R.drawable.hp_card_neutral),
                 contentDescription = null, // decorative
-                modifier = Modifier.size(width = 32.dp, height = 20.dp).alpha(0.35f),
+                colorFilter = iconTint,
+                modifier = Modifier.size(width = 32.dp, height = 20.dp),
             )
         } else {
             nets.forEach { net ->
