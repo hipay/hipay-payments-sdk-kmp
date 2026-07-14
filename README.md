@@ -30,8 +30,9 @@ fallback for unsupported languages.
 
 Styling: since 0.3.0 the card component accepts an optional
 `HiPayCardEntryStyle` (shared platform-neutral contract: colors, typography,
-field metrics) via the `style` parameter — CMP-iOS renders it today, native
-renderers follow.
+field metrics) via the `style` parameter — rendered on CMP-iOS and on
+iOS-native (`HiPayCardTheme(style:)` bridges it to SwiftUI); Android-native
+follows.
 
 ## Build & test
 

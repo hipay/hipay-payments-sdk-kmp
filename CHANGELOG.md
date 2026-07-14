@@ -13,12 +13,14 @@ module + the iOS SPM/xcframework).
   colors, `Float` metrics, font enums, `fontFamily` reserved/null = system font) with
   `HiPayCardEntryStyle.hipayDefault` as the default look. New optional `style` parameter on the
   CMP `HiPayCardEntry` — additive with a default, so existing call sites are source-compatible.
-  Applied by the shared renderer on CMP-iOS in this release; CMP-Android delegates to the
-  native Android component and applies it when native styling ships (same for iOS-native).
-  Style values are validated at construction (`IllegalArgumentException` on out-of-range
-  colors/metrics) rather than rendered wrong. From Swift, construct styles starting from
-  `hipayDefault` — Kotlin default arguments are not exported; a Swift-side per-property
-  override API ships with the iOS-native styling release.
+  Applied by the shared renderer on CMP-iOS and by the iOS-native SwiftUI component in this
+  release; CMP-Android delegates to the native Android component and applies it when native
+  Android styling ships. Style values are validated at construction
+  (`IllegalArgumentException` on out-of-range colors/metrics) rather than rendered wrong.
+  iOS-native: `HiPayCardEntryView`'s `theme` parameter is now a real appearance —
+  `HiPayCardTheme(style:)` bridges the shared contract to SwiftUI (`.default` still names
+  the default look), and the theme's mutable properties give Swift per-property overrides
+  (Kotlin default arguments are not exported, so from Swift start from `hipayDefault`).
   Note: `hipayDefault` deliberately unifies small historical per-platform visual differences
   into one cross-platform baseline — no behavioural change, but expect visual normalization:
   corner radius and border/label colors are unified, unselected network chips render as
