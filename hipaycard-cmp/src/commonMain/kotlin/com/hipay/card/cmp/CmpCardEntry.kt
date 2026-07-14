@@ -41,6 +41,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.CustomAccessibilityAction
@@ -566,10 +567,11 @@ private fun FieldLabel(text: String) {
 private fun NetworkChips(controller: CmpCardController) {
     // Show a brand icon whenever a network is offered — including a single one (11.4); a
     // neutral card glyph when none. Mirrors the Android `:hipaycard` NetworkChips (icons, 48dp
-    // tap, merged semantics). Selection treatment: the SELECTED chip keeps its full-color
-    // brand mark (network logos are never re-tinted); unselected chips and the neutral glyph
-    // are tinted with the style's iconColor — the monochrome-vs-color contrast replaces the
-    // former opacity-only dimming, and the selected state stays announced via semantics.
+    // tap, merged semantics). Selection treatment: unselected brand chips dim to 0.35 alpha —
+    // several brand marks sit on an OPAQUE plate (asset audit: amex, cb), so tinting them
+    // monochrome flattens the plate into an unreadable block; brand logos are never re-tinted.
+    // Only the neutral glyph (a true silhouette) takes the style's iconColor. Selected state
+    // stays announced via semantics.
     val iconColor = LocalHiPayCardStyle.current.iconColor
     val iconTint = remember(iconColor) { ColorFilter.tint(cmpColor(iconColor)) }
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -598,8 +600,8 @@ private fun NetworkChips(controller: CmpCardController) {
                     Image(
                         painter = painterResource(net.iconResource()),
                         contentDescription = null, // described by the parent node
-                        colorFilter = if (isSel) null else iconTint,
-                        modifier = Modifier.size(width = 32.dp, height = 20.dp),
+                        modifier = Modifier.size(width = 32.dp, height = 20.dp)
+                            .alpha(if (isSel) 1f else 0.35f),
                     )
                 }
             }

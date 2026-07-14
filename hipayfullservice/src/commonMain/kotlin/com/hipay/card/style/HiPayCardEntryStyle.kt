@@ -39,10 +39,9 @@ public enum class HiPayFontWeight { REGULAR, MEDIUM, SEMIBOLD, BOLD }
  *
  * @property textColor entered-text color (ARGB, alpha > 0).
  * @property placeholderColor placeholder and floating-label color (ARGB).
- * @property iconColor tint for monochrome glyphs (neutral card icon, CVV info glyph) and the
- *  unselected network chips; brand network logos are never re-tinted when selected (ARGB).
- *  Pick a tint clearly distinct from the card networks' brand colors — the monochrome-vs-color
- *  contrast is the visible cue distinguishing the selected chip.
+ * @property iconColor tint for the monochrome glyphs: the neutral card silhouette and the CVV
+ *  info glyph (ARGB). Brand network logos are never re-tinted — unselected chips dim by
+ *  opacity instead (several brand marks sit on opaque plates a tint would flatten).
  * @property invalidTextColor inline validation-error text color (ARGB, alpha > 0).
  * @property fontFamily reserved for a future custom-font release — must stay null for now
  *  (null = platform system font; custom-font loading is not implemented).

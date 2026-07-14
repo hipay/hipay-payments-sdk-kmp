@@ -32,7 +32,8 @@ Styling: since 0.3.0 the card component accepts an optional
 `HiPayCardEntryStyle` (shared platform-neutral contract: colors, typography,
 field metrics) via the `style` parameter — rendered on CMP-iOS and on
 iOS-native (`HiPayCardTheme(style:)` bridges it to SwiftUI); Android-native
-follows.
+follows. The default look is light-mode: dark-mode hosts should pass a
+dark-adapted style until dedicated dark-theme support ships.
 
 ## Build & test
 

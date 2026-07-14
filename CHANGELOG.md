@@ -16,18 +16,31 @@ module + the iOS SPM/xcframework).
   Applied by the shared renderer on CMP-iOS and by the iOS-native SwiftUI component in this
   release; CMP-Android delegates to the native Android component and applies it when native
   Android styling ships. Style values are validated at construction
-  (`IllegalArgumentException` on out-of-range colors/metrics) rather than rendered wrong.
+  (`IllegalArgumentException` on out-of-range colors/metrics) rather than rendered wrong;
+  from Swift, constructing the Kotlin style with invalid values terminates the process
+  (Kotlin initializer exceptions are not catchable from Swift) — prefer overriding on
+  `HiPayCardTheme`, whose metric setters enforce the same bounds fail-fast.
   iOS-native: `HiPayCardEntryView`'s `theme` parameter is now a real appearance —
-  `HiPayCardTheme(style:)` bridges the shared contract to SwiftUI (`.default` still names
-  the default look), and the theme's mutable properties give Swift per-property overrides
-  (Kotlin default arguments are not exported, so from Swift start from `hipayDefault`).
+  `HiPayCardTheme(style:)` bridges the shared contract to SwiftUI (`.default` is deprecated
+  in favor of `.hipayDefault`), and the theme's mutable properties give Swift per-property
+  overrides (Kotlin default arguments are not exported, so from Swift start from
+  `hipayDefault`). The custom placeholder color applies from iOS 17 (iOS 15/16 keep the
+  system placeholder gray, which the default matches).
   Note: `hipayDefault` deliberately unifies small historical per-platform visual differences
   into one cross-platform baseline — no behavioural change, but expect visual normalization:
-  corner radius and border/label colors are unified, unselected network chips render as
-  monochrome (`iconColor`-tinted) silhouettes instead of alpha-dimmed brand logos, and the
-  text cursor follows `textColor` instead of the theme accent.
+  corner radius and border/label colors are unified, the neutral card placeholder takes
+  `iconColor` (brand-network chips keep their alpha dimming — brand marks are never
+  re-tinted), and the text cursor follows `textColor` instead of the theme accent. The
+  baseline is LIGHT-mode on every platform — iOS previously inherited adaptive system
+  colors, so dark-mode hosts should pass a dark-adapted style until dedicated dark-theme
+  support ships.
 
 ### Fixed
+
+- **iOS `HiPayCard`: CVV help dismissal.** The inline CVV explanation now closes when focus
+  moves to another entry field or a saved card is selected — it could previously stay open
+  (or re-appear unprompted after collapsing the entry fields). Focusing the CVV field itself
+  keeps the help open.
 
 - **CMP `hipaycard-cmp`: co-branding by backend network detection.** `CmpCardController` now
   resolves the network set through the backend (`resolveCardInfo`) once the entered number is
