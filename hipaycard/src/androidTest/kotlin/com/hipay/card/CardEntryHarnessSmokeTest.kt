@@ -27,7 +27,9 @@ class CardEntryHarnessSmokeTest {
     @Test
     fun rendersFormatsAndDetectsVisa() {
         val robot = CardEntryRobot(composeRule)
-        robot.setContent { HiPayCardEntry(controller()) }
+        // Pin the locale so English string assertions are deterministic regardless of the
+        // emulator's device locale (matches the one-click tests' convention).
+        robot.setContent { HiPayCardEntry(controller(), localeOverride = "en") }
 
         robot.assertPresent(
             HiPayCardEntryTags.HOLDER,
@@ -63,7 +65,9 @@ class CardEntryHarnessSmokeTest {
     @Test
     fun monoMaestroRequiresCvc() {
         val robot = CardEntryRobot(composeRule)
-        robot.setContent { HiPayCardEntry(controller()) }
+        // Pin the locale so English string assertions are deterministic regardless of the
+        // emulator's device locale (matches the one-click tests' convention).
+        robot.setContent { HiPayCardEntry(controller(), localeOverride = "en") }
 
         // Incomplete Maestro prefix (starts with 50). Locally this is a MONO Maestro (no co-brand
         // detected → offered = [Maestro]) → CVC IS required → field enabled (story 11.5).

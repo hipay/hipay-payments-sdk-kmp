@@ -25,7 +25,9 @@ class CardEntryErrorsTest {
     @Test
     fun incompleteNumberShowsErrorOnBlur() {
         val robot = CardEntryRobot(composeRule)
-        robot.setContent { HiPayCardEntry(controller()) }
+        // Pin the locale so English string assertions are deterministic regardless of the
+        // emulator's device locale (matches the one-click tests' convention).
+        robot.setContent { HiPayCardEntry(controller(), localeOverride = "en") }
 
         // No error before blur.
         robot.assertTagAbsent(HiPayCardEntryTags.error("number"))
@@ -41,7 +43,7 @@ class CardEntryErrorsTest {
     fun networkNotAuthorizedTakesPrecedence() {
         val robot = CardEntryRobot(composeRule)
         // Merchant allows only Mastercard; the user types a Visa prefix.
-        robot.setContent { HiPayCardEntry(controller(allowed = listOf(HiPayCardNetwork.MASTERCARD))) }
+        robot.setContent { HiPayCardEntry(controller(allowed = listOf(HiPayCardNetwork.MASTERCARD)), localeOverride = "en") }
 
         robot.type(HiPayCardEntryTags.NUMBER, "4111")
         robot.focus(HiPayCardEntryTags.HOLDER) // blur
@@ -55,7 +57,9 @@ class CardEntryErrorsTest {
     @Test
     fun cvvInfoShowsAndDismissesTooltip() {
         val robot = CardEntryRobot(composeRule)
-        robot.setContent { HiPayCardEntry(controller()) }
+        // Pin the locale so English string assertions are deterministic regardless of the
+        // emulator's device locale (matches the one-click tests' convention).
+        robot.setContent { HiPayCardEntry(controller(), localeOverride = "en") }
 
         // Visa prefix → CVC required → the info affordance is present.
         robot.type(HiPayCardEntryTags.NUMBER, "4111")

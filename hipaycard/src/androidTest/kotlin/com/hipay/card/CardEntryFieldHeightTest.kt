@@ -18,11 +18,11 @@ import org.junit.runner.RunWith
  * would add a whole text line (~20dp) to the field; asserting the CVC field is at most a small
  * delta taller than the Expiry field is the automatable proxy for "one line, no wrap".
  *
- * Post-styling note: the SDK default field height is compact (42dp), but Material3's decoration
- * floors any field carrying a TRAILING affordance at a 48dp touch-target minimum. The CVC field
- * has the "ⓘ" info icon, so it sits at that 48dp floor while Expiry (no trailing) sits at 42 — a
- * fixed ~6dp gap that is the same on the shared Compose renderer (CMP/iOS). A wrapped label would
- * push the gap far beyond that; the threshold below separates the two cases.
+ * Post-styling note: the SDK default field height is compact (42dp). The CVC "ⓘ" info icon is
+ * rendered as a sibling BESIDE the field (not in its trailing slot), so it no longer triggers
+ * Material3's 48dp trailing-affordance floor — the CVC field now honors 42dp and MATCHES Expiry
+ * (delta ~0), identically on the shared Compose renderer (CMP/iOS). A wrapped label would still add
+ * a whole text line (~20dp); the threshold below stays well under that to catch a wrap.
  * NETWORK-FREE: only incomplete (non-Luhn) BIN prefixes are typed.
  */
 @RunWith(AndroidJUnit4::class)
@@ -31,10 +31,11 @@ class CardEntryFieldHeightTest {
     @get:Rule
     val composeRule = createComposeRule()
 
-    // The Material touch-target floor makes a trailing-icon field ~6dp taller than a plain one; a
-    // wrapped second label line would add far more (~20dp). Anything under this threshold means
-    // the label stayed on one line.
-    private val maxIconFloorDelta = 8f
+    // The CVC field now matches Expiry: the "ⓘ" stays in the trailing slot but its custom layout
+    // reports zero height to the field, so it no longer triggers Material3's 48dp floor. Delta must
+    // be ~0 (tight bound catches a regression back to the 48dp floor at ~6dp); a wrapped label would
+    // add ~20dp. 2dp tolerates sub-pixel rounding only.
+    private val maxIconFloorDelta = 2f
 
     private fun controller() =
         HiPayCardEntryController(HiPayConfig("test-user", "test-pass", Environment.STAGE))
@@ -57,7 +58,7 @@ class CardEntryFieldHeightTest {
 
     @Test
     fun cvcLabelStaysOneLine_whenCvcRequired() {
-        composeRule.setContent { HiPayCardEntry(controller()) }
+        composeRule.setContent { HiPayCardEntry(controller(), localeOverride = "en") }
         // Incomplete Visa prefix → CVC required ("Security code" + "ⓘ"); no suffix on the label.
         composeRule.onNodeWithTag(HiPayCardEntryTags.NUMBER).performTextInput("411111")
         assertCvcLabelDidNotWrap()
@@ -65,7 +66,7 @@ class CardEntryFieldHeightTest {
 
     @Test
     fun cvcLabelStaysOneLine_monoMaestro() {
-        composeRule.setContent { HiPayCardEntry(controller()) }
+        composeRule.setContent { HiPayCardEntry(controller(), localeOverride = "en") }
         // Incomplete Maestro prefix → mono Maestro → CVC required + enabled; the label stays
         // "Security code" and the field keeps a single line.
         composeRule.onNodeWithTag(HiPayCardEntryTags.NUMBER).performTextInput("5018")

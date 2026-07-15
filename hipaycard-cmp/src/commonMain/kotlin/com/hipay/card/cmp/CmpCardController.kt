@@ -611,9 +611,13 @@ public class CmpCardController(
             val challenged = willPresent3DS(transaction)
             val final = try {
                 resolve3DS(transaction, redirectScheme, signature, threeDS)
-            } catch (e: HiPayException) {
-                // A failure during the 3DS round-trip (e.g. the confirm call) must be observable
-                // too — mirror the order-creation GENERIC path; the host still gets the rethrow.
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // Any failure during the 3DS phase must be observable — including non-HiPayException
+                // throws from the presentation launch itself (e.g. no browser to open the challenge,
+                // or a malformed forward URL), which a HiPayException-only catch let slip through as a
+                // null error. The host still gets the rethrow; coroutine cancellation is never relabelled.
                 lastOneClickError = OneClickError(card, OneClickErrorReason.GENERIC)
                 throw e
             }

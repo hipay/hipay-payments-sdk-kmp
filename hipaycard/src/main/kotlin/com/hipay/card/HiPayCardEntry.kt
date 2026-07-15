@@ -18,9 +18,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
@@ -41,10 +41,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -244,19 +246,32 @@ private fun CardEntryContent(
 
         // Card number (+ network chips)
         FieldGroup(setsAccessibilityOrder, 1f) {
-            HiPayStyledField(
-                value = controller.cardNumber,
-                onValueChange = controller::onNumberChange,
-                label = { FieldLabel(cardString(CardEntryStringKey.LABEL_NUMBER)) },
-                placeholder = { Text(cardString(CardEntryStringKey.PLACEHOLDER_NUMBER)) },
-                enabled = enabled,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                trailingIcon = { NetworkChips(controller) },
-                // Raw digits as value; spaces rendered by the transformation → caret stays correct (11.1).
-                visualTransformation = CardNumberVisualTransformation(controller.network),
-                modifier = Modifier.fillMaxWidth().testTag(HiPayCardEntryTags.NUMBER)
-                    .blurring(controller, Field.NUMBER),
-            )
+            // The network chips are OVERLAID on the field's trailing edge rather than passed to
+            // Material's trailingIcon slot (which floors the field to 48dp): in a plain Box, with the
+            // chips reporting zero height, the field keeps its compact fieldHeight and the chips sit
+            // visually inside its right edge — same technique as the CVC "ⓘ". (A full card number does
+            // not reach the chips at default type sizes; at very large font scales it can, see note.)
+            Box {
+                HiPayStyledField(
+                    value = controller.cardNumber,
+                    onValueChange = controller::onNumberChange,
+                    label = { FieldLabel(cardString(CardEntryStringKey.LABEL_NUMBER)) },
+                    placeholder = { Text(cardString(CardEntryStringKey.PLACEHOLDER_NUMBER)) },
+                    enabled = enabled,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    // Raw digits as value; spaces rendered by the transformation → caret stays correct (11.1).
+                    visualTransformation = CardNumberVisualTransformation(controller.network),
+                    modifier = Modifier.fillMaxWidth().testTag(HiPayCardEntryTags.NUMBER)
+                        .blurring(controller, Field.NUMBER),
+                )
+                NetworkChips(
+                    controller,
+                    Modifier.align(Alignment.CenterEnd).layout { measurable, constraints ->
+                        val placeable = measurable.measure(constraints)
+                        layout(placeable.width, 0) { placeable.place(0, -placeable.height / 2) }
+                    },
+                )
+            }
             // Network-not-authorized takes precedence over the number's own error (D1).
             ErrorSlot(controller.numberSlotErrorKey, HiPayCardEntryTags.error("number"))
         }
@@ -285,22 +300,32 @@ private fun CardEntryContent(
 
             // CVC (+ tap-to-toggle "ⓘ" when required)
             FieldGroup(setsAccessibilityOrder, 3f, Modifier.weight(1f)) {
-                // CVC is required (enabled) or not-applicable (disabled) — never a true "optional"
-                // enterable state — so the label stays the short "Security code" with no suffix
-                // (story 11.3 review): keeps it one line and avoids the half-width overflow.
-                HiPayStyledField(
-                    value = controller.cvc,
-                    onValueChange = controller::onCvcChange,
-                    label = { FieldLabel(cardString(CardEntryStringKey.LABEL_CVV)) },
-                    placeholder = { Text(cardString(CardEntryStringKey.PLACEHOLDER_CVV)) },
-                    enabled = enabled && controller.isCvcRequired,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                // The "ⓘ" is OVERLAID on the field's trailing edge rather than passed to Material's
+                // trailingIcon slot: a real trailing affordance forces the decoration up to a 48dp
+                // touch-target floor, making the CVC field taller than the icon-less expiry beside
+                // it. As an overlay in a plain Box — with the icon reporting zero height (see
+                // CvvInfoIcon) — the field keeps its compact styled fieldHeight and both fields match,
+                // while the "ⓘ" still sits visually inside the field with a full 48dp tap area.
+                Box {
+                    // CVC is required (enabled) or not-applicable (disabled) — never a true "optional"
+                    // enterable state — so the label stays the short "Security code" with no suffix
+                    // (story 11.3 review): keeps it one line and avoids the half-width overflow.
+                    HiPayStyledField(
+                        value = controller.cvc,
+                        onValueChange = controller::onCvcChange,
+                        label = { FieldLabel(cardString(CardEntryStringKey.LABEL_CVV)) },
+                        placeholder = { Text(cardString(CardEntryStringKey.PLACEHOLDER_CVV)) },
+                        enabled = enabled && controller.isCvcRequired,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth().testTag(HiPayCardEntryTags.CVC)
+                            .focusRequester(cvcFocus)
+                            .blurring(controller, Field.CVC),
+                    )
                     // Info affordance only when the CVC is required (no overlay on a disabled field).
-                    trailingIcon = if (controller.isCvcRequired) ({ CvvInfoIcon { showCvvInfo = !showCvvInfo } }) else null,
-                    modifier = Modifier.fillMaxWidth().testTag(HiPayCardEntryTags.CVC)
-                        .focusRequester(cvcFocus)
-                        .blurring(controller, Field.CVC),
-                )
+                    if (controller.isCvcRequired) {
+                        CvvInfoIcon(Modifier.align(Alignment.CenterEnd)) { showCvvInfo = !showCvvInfo }
+                    }
+                }
             }
         }
         // Expiry/CVC errors are FULL WIDTH below the row (11.2), between the fields and the info.
@@ -704,16 +729,26 @@ private fun ErrorSlot(key: CardEntryStringKey?, tag: String) {
 
 /** CVV info "ⓘ" affordance — toggles the full-width inline help text (story 11.2; no popup). */
 @Composable
-private fun CvvInfoIcon(onToggle: () -> Unit) {
+private fun CvvInfoIcon(modifier: Modifier = Modifier, onToggle: () -> Unit) {
     val tooltip = cardString(CardEntryStringKey.CVV_TOOLTIP)
     val iconColor = styleColor(LocalHiPayCardStyle.current.iconColor)
-    // ≥48dp touch target for the "ⓘ" affordance (the old text-only hit area was ~glyph sized).
-    // sizeIn, not a `requiredSize` overflow (which leaks into the decoration's measured height on
-    // Android, unlike the CMP/iOS renderer): the trailing slot already floors the field at 48dp,
-    // so a 48dp minimum fits without growing the field — the network chips use the same technique.
+    // ≥48dp touch target for the "ⓘ", overlaid on the field's trailing edge. A plain 48dp box would
+    // grow the row to 48; the `layout` below measures the 48dp target normally but reports ZERO
+    // height to its parent, so the icon overflows (vertically centered) over the compact field
+    // instead of inflating it — the field keeps its styled fieldHeight and matches expiry, while the
+    // tap area stays a full 48×48. (This works because the parent is a plain Box, not Material3's
+    // decoration, which reserves a 48dp floor for any trailing-slot content regardless of its size.)
     Box(
-        modifier = Modifier
-            .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+        modifier = modifier
+            .layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints)
+                layout(placeable.width, 0) { placeable.place(0, -placeable.height / 2) }
+            }
+            // 42dp round tap area = the field height, so the tap ripple stays a circle INSIDE the
+            // field instead of a 48dp square overflowing it. `clip` before `clickable` bounds the
+            // ripple to the circle.
+            .size(42.dp)
+            .clip(CircleShape)
             .clickable(role = Role.Button) { onToggle() }
             .testTag(HiPayCardEntryTags.CVC_INFO)
             .semantics { contentDescription = tooltip },
@@ -744,13 +779,13 @@ private fun CvvInfoText() {
 
 /** Tappable network/co-brand chips. Each is one focusable a11y node: "<brand>, selected". */
 @Composable
-private fun NetworkChips(controller: HiPayCardEntryController) {
+private fun NetworkChips(controller: HiPayCardEntryController, modifier: Modifier = Modifier) {
     // Unselected brand chips dim to 0.35 alpha (never tinted — several brand marks sit on an
     // OPAQUE plate: tinting them monochrome flattens the plate into an unreadable block). Only the
     // neutral glyph (a true silhouette) takes the style's iconColor. Mirrors CMP.
     val iconColor = LocalHiPayCardStyle.current.iconColor
     val iconTint = remember(iconColor) { ColorFilter.tint(styleColor(iconColor)) }
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         val nets = controller.networks
         if (nets.isEmpty()) {
             Image(
@@ -763,8 +798,13 @@ private fun NetworkChips(controller: HiPayCardEntryController) {
             nets.forEach { net ->
                 val isSel = net == controller.selectedNetwork
                 Box(
+                    // 42dp round tap area = the field height, so the co-brand selection ripple stays a
+                    // circle inside the field instead of a 48dp square overflowing it (the whole Row is
+                    // overlaid at zero reported height by the caller). `clip` before `clickable` rounds
+                    // the ripple.
                     modifier = Modifier
-                        .sizeIn(minWidth = 48.dp, minHeight = 48.dp)
+                        .size(42.dp)
+                        .clip(CircleShape)
                         .clickable { controller.selectNetwork(net) }
                         .testTag(HiPayCardEntryTags.network(net.code))
                         // One merged node so TalkBack announces "<brand>, selected".
