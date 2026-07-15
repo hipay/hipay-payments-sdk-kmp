@@ -36,6 +36,74 @@ CMP-Android (which delegates to the native Android component). The default
 look is light-mode: dark-mode hosts should pass a
 dark-adapted style until dedicated dark-theme support ships.
 
+## Customizing the card component
+
+### Styling — `HiPayCardEntryStyle` (since 0.3.0)
+
+A shared, platform-neutral contract: ARGB `Long` colors (`0xAARRGGBB`), `Float`
+metrics, and font enums (`fontFamily` is reserved — system font only in this
+release). Values are validated at construction: an out-of-range color/metric
+throws `IllegalArgumentException` rather than rendering wrong. Omit `style` for
+`HiPayCardEntryStyle.hipayDefault`.
+
+Android / Compose Multiplatform:
+
+```kotlin
+val style = HiPayCardEntryStyle(
+    textColor = 0xFF1A1A1A,
+    placeholderColor = 0xFF9E9E9E,
+    iconColor = 0xFF6200EE,
+    borderColor = 0xFFBDBDBD,
+    borderWidth = 1f,
+    cornerRadius = 12f,
+    backgroundColor = 0xFFFFFFFF,
+    fieldHeight = 42f,        // a MINIMUM (heightIn); grows under large font scales
+)
+HiPayCardEntry(controller = controller, style = style)
+```
+
+iOS (SwiftUI) — start from `hipayDefault` and override per property (Kotlin
+default arguments aren't exported to Swift; the theme setters enforce the same
+fail-fast bounds):
+
+```swift
+var theme = HiPayCardTheme.hipayDefault
+theme.iconColor = UIColor(red: 0.38, green: 0, blue: 0.93, alpha: 1)
+theme.cornerRadius = 12
+HiPayCardEntryView(controller: controller, theme: theme)
+```
+
+`HiPayCardTheme.default` is deprecated → use `.hipayDefault`. The custom
+placeholder color applies from iOS 17 (iOS 15/16 keep the system gray). The
+default baseline is light-mode — pass a dark-adapted style for dark hosts.
+
+### Localization — `localeOverride` (since 0.3.0)
+
+By default the component follows the device locale (fr/en/it; English is the
+fallback). To force a language:
+
+- Android / CMP — per component: `HiPayCardEntry(controller, localeOverride = "fr")`
+- iOS-native — a static global, set once before presenting the view:
+  `HiPayCardStrings.localeOverride = Locale(identifier: "fr")`
+
+### One-click / saved cards — 🚧 experimental (WIP, opt-in)
+
+**Off by default and not production-ready in 0.3.0** — the API/UX may still
+change, and the consent/legal copy and the out-of-checkout delete API are not
+final. To try it, enable it on the controller; card tokens are held in platform
+secure storage (Android Keystore + DataStore, iOS Keychain) and the PAN/CVV are
+never stored:
+
+```kotlin
+val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+controller.pay(/* … */, saveCard = true)     // offer to save on success (with consent)
+controller.payWithSavedCard(/* … */)          // pay from a stored token
+// list / manage: controller.savedCards, selectSavedCard(…), deleteSavedCard(…)
+```
+
+With `oneClickEnabled = false` (the default) no card store is created and
+behavior is unchanged.
+
 ## Build & test
 
 ```sh

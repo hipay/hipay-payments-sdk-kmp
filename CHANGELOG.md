@@ -4,7 +4,7 @@ Pre-1.0: the API may still move; per SemVer pre-1.0 a **minor** bump (0.1.0 → 
 breaking changes. `version` is the single source of truth in `gradle.properties` (inherited by every
 module + the iOS SPM/xcframework).
 
-## 0.3.0 — unreleased
+## 0.3.0 — Styling
 
 ### Added
 
@@ -36,6 +36,19 @@ module + the iOS SPM/xcframework).
   colors, so dark-mode hosts should pass a dark-adapted style until dedicated dark-theme
   support ships.
 
+- **One-click payments / saved cards — 🚧 EXPERIMENTAL (work-in-progress, opt-in).** A returning
+  payer can pay with a previously-saved card token without re-entering the PAN/CVV. **Off by
+  default** — enable per component with `oneClickEnabled = true` on the controller; when off, no
+  card store is created and nothing changes. Surface: `pay(…, saveCard = true)` offers to save on a
+  successful payment (with in-component consent); `payWithSavedCard(…)` pays from a stored token;
+  `savedCards` / `selectSavedCard` / `selectNewCard` / `deleteSavedCard` / `refreshSavedCards` drive
+  the saved-card list; `saveCardOptIn`, `lastSaveOutcome` and `lastOneClickError` expose the state
+  and outcome. Tokens are held in platform secure storage (Android Keystore + DataStore, iOS
+  Keychain); the PAN/CVV are never stored. **Status: WIP for 0.3.0 — the API and UX may still
+  change; the consent/legal copy, the out-of-checkout delete API, and the demos/docs/analytics are
+  not final. Not recommended for production yet.** Additive only: every new parameter defaults to
+  the off/false state, so existing integrations are unaffected.
+
 ### Fixed
 
 - **iOS `HiPayCard`: CVV help dismissal.** The inline CVV explanation now closes when focus
@@ -60,6 +73,38 @@ module + the iOS SPM/xcframework).
   **Behavioural change to be aware of:** an app running in French or Italian now shows the CMP
   card component in that language instead of English. No API change — `localeOverride` keeps
   its exact signature; pass `localeOverride = "en"` to keep the previous English-only rendering.
+
+- **iOS-native `HiPayCard`: device-locale strings.** The native iOS card component now follows the
+  device language (fr/en/it) too — it previously always rendered English because the SwiftUI
+  resource bundle's localization was capped to the package's development region rather than the
+  device locale. With this, **localized strings work across all targets** (iOS-native,
+  native-Android, and CMP). English stays the fallback for unsupported languages;
+  `HiPayCardStrings.localeOverride` still forces a specific language.
+
+- **Card fields: uniform compact height.** The security-code (CVV) and card-number fields no longer
+  render taller than the others. Their affordances — the CVV `ⓘ` help toggle and the
+  network/co-brand chips — are now overlaid inside the field instead of occupying Material's
+  trailing-icon slot, which had forced a 48dp floor. All entry fields now honor the styled
+  `fieldHeight` (compact 42dp by default) uniformly on native-Android and CMP; the tap affordances
+  keep a round 42dp target.
+
+### Deprecated
+
+- iOS `HiPayCardTheme.default` → use `HiPayCardTheme.hipayDefault` (renamed). `.default` still
+  compiles, with a deprecation warning.
+
+### Compatibility
+
+- **No breaking API changes vs 0.2.0 — source-compatible.** Every 0.3.0 addition (the `style`
+  parameter; one-click `oneClickEnabled` / `saveCard` / `payWithSavedCard` and the new saved-card
+  types) is additive with defaults, and `.default` is only deprecated, not removed — code that
+  compiled against 0.2.0 still compiles.
+  - Minor source note (not an API break): the new `HiPayErrorCode.CARD_NO_LONGER_VALID` (Kotlin) /
+    `HiPayError.cardNoLongerValid` (Swift) enum case can require a new branch in a Kotlin exhaustive
+    `when` used as an expression (a Swift `switch` on the non-frozen enum only warns). No public
+    symbol was removed, renamed, or re-typed.
+  - Behavioural changes to expect (not API breaks): CMP now follows the device locale and shows
+    co-branding; the default field look is unified to a light-mode baseline (see Added).
 
 ## 0.2.0 — SDK-managed 3DS
 
