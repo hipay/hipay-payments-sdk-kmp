@@ -40,6 +40,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -89,6 +92,11 @@ public class CmpCardController(
 
     private val tokenizer = CardTokenizer(config)
     private val gateway = GatewayClient(config)
+
+    /** SDK-wide forced locale from [HiPayConfig.settings], or a constant null flow when unset.
+     *  Always non-null so the component can `collectAsState()` it unconditionally (Compose rule). */
+    internal val settingsLocale: StateFlow<String?> =
+        config.settings?.localeOverride ?: MutableStateFlow<String?>(null).asStateFlow()
 
     // ---- Saved cards (one-click) ----
     // One store instance per controller, EVERY access (creation included) confined to this

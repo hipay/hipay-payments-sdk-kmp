@@ -77,14 +77,34 @@ HiPayCardEntryView(controller: controller, theme: theme)
 placeholder color applies from iOS 17 (iOS 15/16 keep the system gray). The
 default baseline is light-mode — pass a dark-adapted style for dark hosts.
 
-### Localization — `localeOverride` (since 0.3.0)
+### Localization — `HiPaySettings` / `localeOverride` (since 0.3.0)
 
-By default the component follows the device locale (fr/en/it; English is the
-fallback). To force a language:
+By default every component follows the device locale (fr/en/it; English is the
+fallback) and re-localizes automatically when the app language changes — no
+re-init. To **force** a language, set it once on `HiPaySettings` (attached to
+your config); it is observable, so changing it at runtime re-localizes every
+card live. Matching is case-insensitive and region-tolerant (`"FR"`/`"fr-FR"` →
+`"fr"`).
 
-- Android / CMP — per component: `HiPayCardEntry(controller, localeOverride = "fr")`
-- iOS-native — a static global, set once before presenting the view:
-  `HiPayCardStrings.localeOverride = Locale(identifier: "fr")`
+```kotlin
+val settings = HiPaySettings()                       // Android / CMP
+val config = HiPayConfig(user, pass, env, settings = settings)
+// later, anywhere — the cards update live:
+settings.setLocaleOverride("fr")                     // or null to follow the device
+```
+
+```swift
+let settings = HiPaySettings(localeOverride: nil)    // iOS — the same shared type
+let config = HiPayConfiguration(username: user, password: pass,
+                                environment: .stage, settings: settings)
+settings.setLocaleOverride(Locale(identifier: "fr")) // Locale convenience; live, no re-init
+```
+
+Resolution precedence: the per-component override → `HiPaySettings` → device.
+A per-component override still wins for one-off cases:
+
+- Android / CMP: `HiPayCardEntry(controller, localeOverride = "fr")`
+- iOS-native: `HiPayCardStrings.localeOverride = Locale(identifier: "fr")`
 
 ### One-click / saved cards — 🚧 experimental (WIP, opt-in)
 

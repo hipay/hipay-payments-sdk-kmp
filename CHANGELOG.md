@@ -49,6 +49,22 @@ module + the iOS SPM/xcframework).
   not final. Not recommended for production yet.** Additive only: every new parameter defaults to
   the off/false state, so existing integrations are unaffected.
 
+- **SDK-wide settings: `HiPaySettings` on `HiPayConfig`.** Set the display language once instead of
+  per component — build a `HiPaySettings` and pass it as the new optional `HiPayConfig(settings = …)`
+  (iOS: `HiPayConfiguration(settings:)`). It is an injected instance, not a global (architecture D7).
+  **One shared type across every platform** — the same `HiPaySettings` on Android, CMP and iOS
+  (Android/CMP use the Kotlin type; iOS uses the same type through the SDK, with a Swift `Locale`
+  convenience). The language is **observable and mutable at runtime**: change it and every card
+  sharing the instance re-localizes live, with no re-init (Compose reads it via `collectAsState()`;
+  iOS bridges its change listener to a SwiftUI re-render). Precedence: per-component `localeOverride`
+  → `HiPaySettings` → device locale. Language matching is now **case-insensitive and region-tolerant**
+  (`"FR"` / `"fr-FR"` → `"fr"`) on every platform; the shared core stores a lowercased ISO-639
+  `String`. Set it with `setLocaleOverride("fr")` (or `setLocaleOverride(Locale(…))` on iOS / a
+  `Locale` overload on Android). Additive — omit `settings` and behaviour is unchanged.
+  (Note: constructing the internal Kotlin `HiPayConfig` *directly from Swift* now needs `settings:` —
+  Kotlin default arguments are not exported to Swift — but integrators use the `HiPayConfiguration`
+  facade, which defaults it, so there is no public break.)
+
 ### Fixed
 
 - **iOS `HiPayCard`: CVV help dismissal.** The inline CVV explanation now closes when focus

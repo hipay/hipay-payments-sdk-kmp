@@ -31,6 +31,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -77,6 +78,7 @@ import com.hipay.card.store.oneClickErrorSurface
 import com.hipay.card.store.savedCardDisplay
 import com.hipay.card.style.HiPayCardEntryStyle
 import com.hipay.card.validation.CardEntryStringKey
+import com.hipay.core.resolveLanguage
 import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -145,7 +147,12 @@ public fun HiPayCardEntry(
         controller.bindPresentationContext(hostContext)
         onDispose { controller.bindPresentationContext(null) }
     }
-    if (localeOverride == null) {
+    // Effective language: per-component localeOverride → SDK-wide HiPaySettings → device locale
+    // (null result = follow the device). collectAsState() makes a runtime HiPaySettings change
+    // re-localize the component live, with no re-init.
+    val settingsLang = controller.settingsLocale.collectAsState().value
+    val effectiveLocale = resolveLanguage(localeOverride, settingsLang, device = null)
+    if (effectiveLocale == null) {
         CardEntryContent(controller, modifier, setsAccessibilityOrder, style)
         return
     }
@@ -153,8 +160,8 @@ public fun HiPayCardEntry(
     // Read the Configuration via LocalConfiguration (not base.resources.configuration):
     // it recomposes when the device Configuration changes (lint LocalContextConfigurationRead).
     val baseConfig = LocalConfiguration.current
-    val localized = remember(localeOverride, base, baseConfig) {
-        val cfg = Configuration(baseConfig).apply { setLocale(Locale.forLanguageTag(localeOverride)) }
+    val localized = remember(effectiveLocale, base, baseConfig) {
+        val cfg = Configuration(baseConfig).apply { setLocale(Locale.forLanguageTag(effectiveLocale)) }
         base.createConfigurationContext(cfg)
     }
     CompositionLocalProvider(

@@ -47,6 +47,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
@@ -82,6 +85,11 @@ public class HiPayCardEntryController(
 
     private val tokenizer = CardTokenizer(config)
     private val gateway = GatewayClient(config)
+
+    /** SDK-wide forced locale from [HiPayConfig.settings], or a constant null flow when unset.
+     *  Always non-null so the component can `collectAsState()` it unconditionally (Compose rule). */
+    internal val settingsLocale: StateFlow<String?> =
+        config.settings?.localeOverride ?: MutableStateFlow<String?>(null).asStateFlow()
     private val allowedKmp: List<CardNetwork> = allowedNetworks.map { it.kmpNetwork }
 
     private val ownsScope = scope == null

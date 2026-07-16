@@ -29,6 +29,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -91,8 +92,10 @@ internal fun CmpCardEntry(
 ) {
     // Deliberately not remember-ed: resolution is a cheap string scan, and re-resolving on
     // every recomposition lets a host that opts out of activity recreation on locale changes
-    // still pick up the new language on its next recomposition.
-    val cardLanguage = resolvedCardEntryLanguage(localeOverride)
+    // still pick up the new language on its next recomposition. collectAsState() additionally
+    // re-localizes live when the SDK-wide HiPaySettings language is changed at runtime.
+    val settingsLang = controller.settingsLocale.collectAsState().value
+    val cardLanguage = resolvedCardEntryLanguage(localeOverride, settingsLang)
     // Lock all fields while a payment is in flight — driven by the SDK (story 11.14); no host param.
     val enabled = !controller.isProcessing
     // With a saved card selected, the entry fields are not rendered — their values stay in the

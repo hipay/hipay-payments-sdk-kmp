@@ -3,6 +3,7 @@ package com.hipay.card.cmp
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import com.hipay.card.validation.CardEntryStringKey
+import com.hipay.core.resolveLanguage
 
 /**
  * Locale-aware string resolution for the shared card component (fr/en/it), keyed by
@@ -64,13 +65,16 @@ internal fun firstSupportedLanguage(languageTags: List<String>): String =
     languageTags.firstNotNullOfOrNull(::cardEntryLanguageOrNull) ?: "en"
 
 /**
- * The language the component renders in: the integrator's [localeOverride] when provided
- * (non-blank; an unsupported language falls back to English, deterministically), else the
- * first supported entry of the device's preferred-language list.
+ * The language the component renders in. Precedence: the integrator's per-component [localeOverride]
+ * → the SDK-wide [settingsOverride] (from `HiPayConfig.settings`) → the device's preferred-language
+ * list. The two overrides are normalized case-insensitively and region-tolerantly (`"FR"`/`"fr-FR"`
+ * → `"fr"`) via the shared core helper; an unsupported forced language falls back to English.
  */
-internal fun resolvedCardEntryLanguage(localeOverride: String?): String =
-    localeOverride?.takeIf { it.isNotBlank() }?.let(::cardEntryLanguage)
+internal fun resolvedCardEntryLanguage(localeOverride: String?, settingsOverride: String? = null): String {
+    val forced = resolveLanguage(localeOverride, settingsOverride, device = null)
+    return forced?.let(::cardEntryLanguage)
         ?: firstSupportedLanguage(systemLocaleLanguages())
+}
 
 /** Positional `%n$s` substitution for the catalog templates (e.g. the saved-card a11y label). */
 internal fun cmpFormat(template: String, vararg args: String): String {
