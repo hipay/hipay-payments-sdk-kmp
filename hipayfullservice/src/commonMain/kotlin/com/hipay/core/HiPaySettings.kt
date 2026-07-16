@@ -1,5 +1,6 @@
 package com.hipay.core
 
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,7 +24,10 @@ import kotlinx.coroutines.flow.asStateFlow
 public class HiPaySettings(localeOverride: String? = null) {
 
     private val _localeOverride = MutableStateFlow(normalizeLanguage(localeOverride))
-    private val listeners = mutableListOf<(String?) -> Unit>()
+    // Copy-on-write, @Volatile: notification always iterates a consistent immutable snapshot even if
+    // a listener (un)registers concurrently — no ConcurrentModificationException. (Registration is
+    // expected on the UI thread; the snapshot semantics make cross-thread reads safe regardless.)
+    @Volatile private var listeners: List<(String?) -> Unit> = emptyList()
 
     /**
      * Forced UI language as a lowercased ISO-639 code (e.g. `"fr"`), or `null` to follow the device
@@ -44,7 +48,7 @@ public class HiPaySettings(localeOverride: String? = null) {
     public fun setLocaleOverride(tag: String?) {
         val normalized = normalizeLanguage(tag)
         _localeOverride.value = normalized
-        listeners.toList().forEach { it(normalized) }
+        listeners.forEach { it(normalized) } // immutable snapshot — safe under concurrent (un)register
     }
 
     /**
@@ -53,7 +57,7 @@ public class HiPaySettings(localeOverride: String? = null) {
      * which bridges this to a SwiftUI re-render. @since 0.3.0
      */
     public fun addLocaleListener(listener: (String?) -> Unit): () -> Unit {
-        listeners.add(listener)
-        return { listeners.remove(listener) }
+        listeners = listeners + listener
+        return { listeners = listeners - listener }
     }
 }

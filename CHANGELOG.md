@@ -4,7 +4,7 @@ Pre-1.0: the API may still move; per SemVer pre-1.0 a **minor** bump (0.1.0 → 
 breaking changes. `version` is the single source of truth in `gradle.properties` (inherited by every
 module + the iOS SPM/xcframework).
 
-## 0.3.0 — Styling
+## 0.3.0 — 2026-07-16
 
 ### Added
 
