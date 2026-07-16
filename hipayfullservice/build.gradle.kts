@@ -70,7 +70,7 @@ kotlin {
 }
 
 // PCI anti-logging gate (story 2.4): fails the build on any logging primitive
-// under com.hipay.card or swift/Sources/HiPayCard.
+// under com.hipay.card or HiPay_Payments_SDK_iOS/Sources/HiPayCard.
 val checkCardNoLogging = tasks.register<Exec>("checkCardNoLogging") {
     group = "verification"
     description = "Asserts zero logging on the card path (PCI)"

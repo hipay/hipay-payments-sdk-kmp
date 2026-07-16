@@ -38,7 +38,7 @@ for src_set in "$ROOT"/hipayfullservice/src/*/kotlin/com/hipay/card \
                "$ROOT"/hipaycard-cmp/src/*/kotlin/com/hipay/card; do
   scan "$src_set"
 done
-scan "$ROOT/swift/Sources/HiPayCard"
+scan "$ROOT/HiPay_Payments_SDK_iOS/Sources/HiPayCard"
 
 # Ktor Logging plugin must never be installed on the shared HTTP path
 plugin_hits=$(grep -rnE 'install\(Logging' "$ROOT/hipayfullservice/src" 2>/dev/null || true)

@@ -12,12 +12,12 @@ consumed on iOS through a local Swift package.
     transactions), 3DS callback parsing
   - `com.hipay.card` — card validation, network rules, Secure Vault
     tokenization (PCI boundary: card data never leaves this module)
-- `swift/` — local SPM package (`HiPayCore` / `HiPayCard` products): the
+- `HiPay_Payments_SDK_iOS/` — local SPM package (`HiPayCore` / `HiPayCard` products): the
   hand-written Swift facade that IS the public iOS API, backed by the
   `HiPayFullservice` XCFramework (git-ignored build artifact)
 - `scripts/build-xcframework.sh` — rebuilds the XCFramework and refreshes the
   package (see its header for the edit-Kotlin → run-demo loop)
-- Demo app: separate repo `../HiPay-SDK-ios-Demo`
+- Demo app: separate repo `../HiPay_Payments_Demo_iOS`
 
 Co-branding (CB/BCMC): since 0.3.0 all three card components — Android
 (`:hipaycard`), iOS (`HiPayCard`) and Compose Multiplatform (`:hipaycard-cmp`)

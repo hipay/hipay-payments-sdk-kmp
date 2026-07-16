@@ -62,17 +62,17 @@ mkdir -p "$OUT"
 rm -f "$OUT/$ASSET"
 echo "==> Zipping XCFramework for SPM (ditto --keepParent)…"
 ditto -c -k --sequesterRsrc --keepParent \
-  "$ROOT/swift/HiPayFullservice.xcframework" \
+  "$ROOT/HiPay_Payments_SDK_iOS/HiPayFullservice.xcframework" \
   "$OUT/$ASSET"
 
 # --- 3. SwiftPM checksum -----------------------------------------------------
 echo "==> Computing SwiftPM checksum…"
-CHECKSUM="$(swift package --package-path "$ROOT/swift" compute-checksum "$OUT/$ASSET")"
+CHECKSUM="$(swift package --package-path "$ROOT/HiPay_Payments_SDK_iOS" compute-checksum "$OUT/$ASSET")"
 echo "$CHECKSUM" > "$OUT/checksum.txt"
 
 # --- 4. Generate the remote Package.swift from the template ------------------
 echo "==> Generating remote Package.swift…"
-TEMPLATE="$ROOT/swift/Package.remote.swift.template"
+TEMPLATE="$ROOT/HiPay_Payments_SDK_iOS/Package.remote.swift.template"
 [ -f "$TEMPLATE" ] || { echo "ERROR: missing $TEMPLATE" >&2; exit 1; }
 # Substitute placeholders. Delimiter '|' avoids the slashes in URLs; escape '&'
 # (means "the matched text" in a sed replacement) so an exotic REPO_SLUG can't

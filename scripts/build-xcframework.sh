@@ -19,6 +19,6 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 rsync -a --delete \
   "$ROOT/hipayfullservice/build/XCFrameworks/release/HiPayFullservice.xcframework/" \
-  "$ROOT/swift/HiPayFullservice.xcframework/"
+  "$ROOT/HiPay_Payments_SDK_iOS/HiPayFullservice.xcframework/"
 
-echo "OK: swift/HiPayFullservice.xcframework refreshed"
+echo "OK: HiPay_Payments_SDK_iOS/HiPayFullservice.xcframework refreshed"

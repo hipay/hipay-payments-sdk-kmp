@@ -14,7 +14,7 @@ export LC_ALL=C
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 ENUM_FILE="$ROOT/hipayfullservice/src/commonMain/kotlin/com/hipay/card/validation/CardEntryStringKey.kt"
-IOS_RES="$ROOT/swift/Sources/HiPayCard/Resources"
+IOS_RES="$ROOT/HiPay_Payments_SDK_iOS/Sources/HiPayCard/Resources"
 ANDROID_RES="$ROOT/hipaycard/src/main/res"
 CMP_STRINGS="$ROOT/hipaycard-cmp/src/commonMain/kotlin/com/hipay/card/cmp/CmpStrings.kt"
 LOCALES=(en fr it)
