@@ -22,9 +22,10 @@ import kotlin.test.assertTrue
 @OptIn(ExperimentalCoroutinesApi::class) // advanceUntilIdle
 class CmpCoBrandResolutionTest {
 
-    // Real co-branded stage test PANs (Luhn-valid): CB+Visa and CB+Mastercard.
+    // Real co-branded stage test PANs (Luhn-valid): CB+Visa, CB+Mastercard, Bancontact+Mastercard.
     private val cbVisaPan = "4484120000000029"
     private val cbMcPan = "5341013985664960"
+    private val bcmcMcPan = "5127880999999990"
 
     private fun config() = HiPayConfig(username = "u", password = "p", environment = Environment.STAGE)
 
@@ -100,6 +101,26 @@ class CmpCoBrandResolutionTest {
         c.onNumberChange(cbVisaPan)
         advanceUntilIdle()
         assertEquals(2, calls)
+    }
+
+    // PI-6078 — Scénario : Carte Bancontact/Mastercard — Bancontact priorisé par défaut.
+    //   Étant donné que les réseaux activés sont "bancontact" et "mastercard"
+    //   Quand je saisis un BIN cobrandé "bancontact" et "mastercard"
+    //   Alors le réseau "bancontact" est sélectionné par défaut
+    //   Et les logos "bancontact" et "mastercard" sont affichés (= l'offered set)
+    @Test
+    fun bancontactMastercardCoBrand_bancontactDefaultSelected() = runTest {
+        val c = CmpCardController(config(), allowed = listOf(CardNetwork.BCMC, CardNetwork.MASTERCARD), scope = this)
+        c.cardInfoResolver = { CardInfo(brand = "MASTERCARD", domesticNetwork = "bcmc") }
+        c.onNumberChange(bcmcMcPan)
+        // Local detection shows the international brand until the verdict lands.
+        assertEquals(listOf(CardNetwork.MASTERCARD), c.networks)
+        advanceUntilIdle()
+        // Verdict: domestic co-brand first (default-selected), international brand second.
+        assertEquals(listOf(CardNetwork.BCMC, CardNetwork.MASTERCARD), c.networks)
+        assertEquals(CardNetwork.BCMC, c.selectedNetwork)
+        // Bancontact never requires a CVC — the policy follows the selected co-brand.
+        assertFalse(c.isCvcRequired)
     }
 
     @Test
