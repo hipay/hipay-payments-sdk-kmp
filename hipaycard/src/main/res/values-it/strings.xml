@@ -21,7 +21,7 @@
     <string name="ERROR_INVALID_CVV">Codice di sicurezza non valido</string>
     <string name="ERROR_INCOMPLETE_CVV">Codice di sicurezza incompleto</string>
     <string name="ERROR_HOLDER_TOO_LONG">Nome del titolare troppo lungo</string>
-    <string name="ERROR_NETWORK_NOT_AUTHORIZED">Questo circuito di carte non è accettato</string>
+    <string name="ERROR_NETWORK_NOT_AUTHORIZED">Tipo di carta non autorizzato</string>
     <string name="LABEL_SAVED_CARDS">Carte salvate</string>
     <string name="LABEL_NEW_CARD">Nuova carta</string>
     <string name="LABEL_SAVE_CARD">Salva questa carta</string>

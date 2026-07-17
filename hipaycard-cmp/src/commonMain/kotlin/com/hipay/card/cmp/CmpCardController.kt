@@ -276,6 +276,12 @@ public class CmpCardController(
     // Last PAN sent to the backend resolution — one resolve per distinct valid PAN.
     private var lastResolvedDigits: String? = null
 
+    // PAN whose backend BIN verdict left NO allowed network — the only trigger for the
+    // "not authorized" error. Local detection alone must never show
+    // it: a co-branded card (e.g. CB+Visa with only CB allowed) locally detects the
+    // disallowed brand and would flash a false error until the verdict lands.
+    private var unauthorizedDigits: String? by mutableStateOf(null)
+
     private val panDigits: String get() = cardNumber.filter { it in '0'..'9' }
     private val expiryDigits: String get() = expiry.filter { it in '0'..'9' }
     private val expiryMonth: String get() = expiryDigits.take(2)
@@ -324,9 +330,12 @@ public class CmpCardController(
     private val numberErrorKey: CardEntryStringKey?
         get() = if (numberBlurred) CardFieldValidation.cardNumberReason(panDigits).messageKey() else null
 
+    // Backend-verdict-gated (contractual, not blur-gated unlike expiry/CVV): shown as soon
+    // as the BIN verdict for the CURRENT number leaves no allowed network. The comparison
+    // with panDigits clears it on any further edit.
     private val networkErrorKey: CardEntryStringKey?
-        get() = if (numberBlurred && network != CardNetwork.UNKNOWN && !isNetworkAuthorized)
-            AllowedNetworks.reason(network, allowed).messageKey() else null
+        get() = if (unauthorizedDigits != null && unauthorizedDigits == panDigits)
+            CardEntryStringKey.ERROR_NETWORK_NOT_AUTHORIZED else null
 
     /** Number-slot error: network-not-authorized takes precedence over the number's own error (D1). */
     public val numberSlotErrorKey: CardEntryStringKey?
@@ -430,8 +439,17 @@ public class CmpCardController(
             val info = cardInfoResolver?.invoke(digits)
                 ?: tokenizer.resolveCardInfo(digits, "12", nextYear())
             if (digits != panDigits) return // user kept typing — drop the stale result
-            val offered = AllowedNetworks.offered(info.resolvedNetworks(), allowed)
-            if (offered.isNotEmpty()) applyOffered(offered)
+            val resolved = info.resolvedNetworks()
+            val offered = AllowedNetworks.offered(resolved, allowed)
+            when {
+                offered.isNotEmpty() -> {
+                    unauthorizedDigits = null
+                    applyOffered(offered)
+                }
+                // The vault identified the card but the merchant allows none of its
+                // networks → the contractual "not authorized" error (networkErrorKey).
+                resolved.isNotEmpty() -> unauthorizedDigits = digits
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {

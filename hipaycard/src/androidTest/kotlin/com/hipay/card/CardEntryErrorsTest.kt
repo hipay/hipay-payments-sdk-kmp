@@ -10,8 +10,10 @@ import org.junit.runner.RunWith
 
 /**
  * Story 7.4 — inline errors, CVV tooltip, allowed-networks. NETWORK-FREE:
- * incomplete (non-Luhn) prefixes only, and the allowed-networks case is driven
- * by the constructor param, so `resolveCardInfo`/tokenization never fire.
+ * incomplete (non-Luhn) prefixes only, except the allowed-networks case which
+ * fakes the BIN verdict through the controller's `cardInfoResolver` seam (the
+ * "not authorized" error is backend-verdict-gated) — real
+ * `resolveCardInfo`/tokenization still never fire.
  */
 @RunWith(AndroidJUnit4::class)
 class CardEntryErrorsTest {
@@ -40,17 +42,23 @@ class CardEntryErrorsTest {
     }
 
     @Test
-    fun networkNotAuthorizedTakesPrecedence() {
+    fun networkNotAuthorizedShowsOnBackendVerdictOnly() {
         val robot = CardEntryRobot(composeRule)
-        // Merchant allows only Mastercard; the user types a Visa prefix.
-        robot.setContent { HiPayCardEntry(controller(allowed = listOf(HiPayCardNetwork.MASTERCARD)), localeOverride = "en") }
+        // Merchant allows only Mastercard; the faked BIN verdict identifies a mono-network
+        // Visa (the error is backend-verdict-gated — local detection alone never shows it).
+        val controller = controller(allowed = listOf(HiPayCardNetwork.MASTERCARD))
+        controller.cardInfoResolver = { com.hipay.card.model.CardInfo(brand = "VISA") }
+        robot.setContent { HiPayCardEntry(controller, localeOverride = "en") }
 
-        robot.type(HiPayCardEntryTags.NUMBER, "4111")
-        robot.focus(HiPayCardEntryTags.HOLDER) // blur
+        robot.type(HiPayCardEntryTags.NUMBER, "4111") // partial: local detection only
+        // No error while only locally detected (a co-branded card would flash a false one),
+        // even though the disallowed visa chip is already hidden.
+        robot.assertTagAbsent(HiPayCardEntryTags.error("number"))
 
-        // The number slot shows the network message, NOT the incomplete one (D1 precedence).
+        robot.type(HiPayCardEntryTags.NUMBER, "111111111111") // complete Luhn-valid PAN → verdict
+        // The error shows on the verdict, without any blur, and wins over the number's own error.
         robot.assertTagExists(HiPayCardEntryTags.error("number"))
-        robot.assertTextShown("This card network is not accepted")
+        robot.assertTextShown("Card type not allowed")
         robot.assertTextAbsent("Card number is incomplete")
     }
 

@@ -331,6 +331,17 @@ public class HiPayCardEntryController(
     private var lastResolvedDigits: String? = null
     private var lastDetected: CardNetwork = CardNetwork.UNKNOWN
 
+    // PAN whose backend BIN verdict left NO allowed network — the only trigger for the
+    // "not authorized" error. Local detection alone must never show
+    // it: a co-branded card (e.g. CB+Visa with only CB allowed) locally detects the
+    // disallowed brand and would flash a false error until the verdict lands.
+    private var unauthorizedDigits: String? by mutableStateOf(null)
+
+    /** In-module test seam: instrumented tests fake the backend co-brand verdict through
+     *  this (no network); null in production — [resolve] then calls the real [tokenizer].
+     *  Same convention as the CMP controller's resolver seam. */
+    internal var cardInfoResolver: (suspend (digits: String) -> com.hipay.card.model.CardInfo)? = null
+
     // ---- Derived rules (all from the shared contract — no reimplementation) ----
     private val panDigits: String get() = cardNumber.filter { it in '0'..'9' }
     private val expiryDigits: String get() = expiry.filter { it in '0'..'9' }
@@ -388,9 +399,12 @@ public class HiPayCardEntryController(
     private val numberErrorKey: CardEntryStringKey?
         get() = if (numberBlurred) CardFieldValidation.cardNumberReason(panDigits).messageKey() else null
 
+    // Backend-verdict-gated (contractual, not blur-gated unlike expiry/CVV): shown as soon
+    // as the BIN verdict for the CURRENT number leaves no allowed network. The comparison
+    // with panDigits clears it on any further edit.
     private val networkErrorKey: CardEntryStringKey?
-        get() = if (numberBlurred && network != CardNetwork.UNKNOWN && !isNetworkAuthorized)
-            AllowedNetworks.reason(network, allowedKmp).messageKey() else null
+        get() = if (unauthorizedDigits != null && unauthorizedDigits == panDigits)
+            CardEntryStringKey.ERROR_NETWORK_NOT_AUTHORIZED else null
 
     /** Number-field slot error: network-not-authorized takes precedence over the number's own error (D1). */
     public val numberSlotErrorKey: CardEntryStringKey?
@@ -475,11 +489,20 @@ public class HiPayCardEntryController(
 
     private suspend fun resolve(digits: String) {
         try {
-            val info = tokenizer.resolveCardInfo(digits, "12", nextYear())
+            val info = cardInfoResolver?.invoke(digits) ?: tokenizer.resolveCardInfo(digits, "12", nextYear())
             if (digits != panDigits) return // user kept typing — drop the stale result
-            val offered = AllowedNetworks.offered(info.resolvedNetworks(), allowedKmp)
+            val resolved = info.resolvedNetworks()
+            val offered = AllowedNetworks.offered(resolved, allowedKmp)
                 .mapNotNull { HiPayCardNetwork.from(it) }
-            if (offered.isNotEmpty()) applyOffered(offered)
+            when {
+                offered.isNotEmpty() -> {
+                    unauthorizedDigits = null
+                    applyOffered(offered)
+                }
+                // The vault identified the card but the merchant allows none of its
+                // networks → the contractual "not authorized" error (networkErrorKey).
+                resolved.isNotEmpty() -> unauthorizedDigits = digits
+            }
         } catch (e: Exception) {
             // Degrade: keep the locally detected icon; allow a retry on the next edit.
             if (digits == panDigits) lastResolvedDigits = null

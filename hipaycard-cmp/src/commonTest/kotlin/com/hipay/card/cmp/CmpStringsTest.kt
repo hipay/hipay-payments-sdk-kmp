@@ -63,7 +63,7 @@ class CmpStringsTest {
             CardEntryStringKey.ERROR_INVALID_CVV to "Invalid security code",
             CardEntryStringKey.ERROR_INCOMPLETE_CVV to "Security code is incomplete",
             CardEntryStringKey.ERROR_HOLDER_TOO_LONG to "Cardholder name is too long",
-            CardEntryStringKey.ERROR_NETWORK_NOT_AUTHORIZED to "This card network is not accepted",
+            CardEntryStringKey.ERROR_NETWORK_NOT_AUTHORIZED to "Card type not allowed",
             CardEntryStringKey.LABEL_SAVED_CARDS to "Saved cards",
             CardEntryStringKey.LABEL_NEW_CARD to "New card",
             CardEntryStringKey.LABEL_SAVE_CARD to "Save this card",

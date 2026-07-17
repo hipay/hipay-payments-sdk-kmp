@@ -22,7 +22,7 @@
     <string name="ERROR_INVALID_CVV">Invalid security code</string>
     <string name="ERROR_INCOMPLETE_CVV">Security code is incomplete</string>
     <string name="ERROR_HOLDER_TOO_LONG">Cardholder name is too long</string>
-    <string name="ERROR_NETWORK_NOT_AUTHORIZED">This card network is not accepted</string>
+    <string name="ERROR_NETWORK_NOT_AUTHORIZED">Card type not allowed</string>
     <string name="LABEL_SAVED_CARDS">Saved cards</string>
     <string name="LABEL_NEW_CARD">New card</string>
     <string name="LABEL_SAVE_CARD">Save this card</string>
