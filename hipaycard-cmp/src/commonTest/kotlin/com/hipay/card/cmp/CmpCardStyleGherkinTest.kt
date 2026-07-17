@@ -23,8 +23,7 @@ import kotlin.test.assertNull
  * scenario's "sur iOS et Android" for CMP. The pixel-level result is the manual G13 matrix;
  * the custom-style scenario is marked "non testable" in the ticket (demo toggle + G13).
  *
- * `fieldHeight` is 42 (a MINIMUM), not the ticket's 48 — recorded product decision
- * (2026-07-13); fields with a trailing affordance floor at the 48dp a11y touch target.
+ * `fieldHeight` is 42 (a MINIMUM).
  */
 class CmpCardStyleGherkinTest {
 
