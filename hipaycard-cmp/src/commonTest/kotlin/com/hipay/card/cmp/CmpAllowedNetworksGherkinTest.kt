@@ -59,12 +59,15 @@ class CmpAllowedNetworksGherkinTest {
         assertEquals(CardNetwork.VISA, c.selectedNetwork)
     }
 
-    // Scénario 2 : réseau détecté non autorisé — erreur affichée (au verdict BIN), logo non affiché.
+    // Scénario 2 : réseau détecté non autorisé (cas AMBIGU) — erreur affichée au verdict BIN, pas
+    // avant. Seul "cb" est autorisé et le BIN est Visa : CB peut chevaucher un BIN Visa, donc la
+    // détection locale seule ne doit PAS rejeter (le cas NON ambigu, ex. Amex/CB-only, rejette
+    // immédiatement — cf. CmpCardValidationGherkinTest). Refinement 2026-07-20.
     @Test
     fun disallowedNetworkShowsErrorOnBackendVerdictAndHidesLogo() = runTest {
-        val c = CmpCardController(config(), allowed = listOf(CardNetwork.MASTERCARD), scope = this)
+        val c = CmpCardController(config(), allowed = listOf(CardNetwork.CB), scope = this)
         c.cardInfoResolver = fakeVault
-        c.onNumberChange("4111") // partial visa BIN — local detection only
+        c.onNumberChange("4111") // partial visa BIN — local detection only; CB could ride it
         // No error from local detection alone; the disallowed logo is already hidden (neutral glyph).
         assertNull(c.numberSlotErrorKey)
         assertTrue(c.networks.isEmpty())

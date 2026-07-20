@@ -24,6 +24,10 @@ public object CardFieldValidation {
     public fun cardNumberReason(number: String): ValidationReason = when {
         number.isEmpty() -> ValidationReason.VALID
         number.any { it !in '0'..'9' } || number.length > 19 -> ValidationReason.INVALID_NUMBER
+        // A prefix no supported network can ever match (e.g. leading "1" or
+        // "30") is invalid from the first wrong digit — no amount of further
+        // typing can repair it, so the UI flags it immediately (no blur gate).
+        !CardNetworks.isPrefixViable(number) -> ValidationReason.INVALID_NUMBER
         CardValidators.isCardNumberValid(number) -> ValidationReason.VALID
         // At or beyond the network's completion length but fails Luhn → invalid
         // (covers over-length-for-network, e.g. a 19-digit Amex); a still-short
@@ -33,12 +37,14 @@ public object CardFieldValidation {
         else -> ValidationReason.INCOMPLETE_NUMBER
     }
 
-    /** Both empty → VALID. Bad format → INVALID_EXPIRY. Valid format but past → EXPIRED. */
+    /** Both empty → VALID. Bad format or year beyond the 15-year issuance
+     *  horizon → INVALID_EXPIRY. Valid format but past → EXPIRED. */
     public fun expiryReason(month: String, year: String): ValidationReason = when {
         month.isEmpty() && year.isEmpty() -> ValidationReason.VALID
         !CardValidators.isExpiryMonthValid(month) || !CardValidators.isExpiryYearValid(year) ->
             ValidationReason.INVALID_EXPIRY
         !CardValidators.isExpiryDateValid(month, year) -> ValidationReason.EXPIRED
+        !CardValidators.isExpiryYearWithinHorizon(year) -> ValidationReason.INVALID_EXPIRY
         else -> ValidationReason.VALID
     }
 
@@ -65,7 +71,11 @@ public object CardFieldValidation {
     public fun cvcReason(cvc: String, network: CardNetwork): ValidationReason =
         cvcReason(cvc, network, listOf(network))
 
-    /** Empty → VALID (untouched). Over 60 chars → HOLDER_TOO_LONG. */
-    public fun holderReason(holder: String): ValidationReason =
-        if (CardValidators.isHolderValid(holder)) ValidationReason.VALID else ValidationReason.HOLDER_TOO_LONG
+    /** Empty → VALID (untouched). Over 60 chars → HOLDER_TOO_LONG; non-empty
+     *  under 3 chars → HOLDER_TOO_SHORT (shown on focus loss). */
+    public fun holderReason(holder: String): ValidationReason = when {
+        !CardValidators.isHolderValid(holder) -> ValidationReason.HOLDER_TOO_LONG
+        !CardValidators.isHolderLongEnough(holder) -> ValidationReason.HOLDER_TOO_SHORT
+        else -> ValidationReason.VALID
+    }
 }

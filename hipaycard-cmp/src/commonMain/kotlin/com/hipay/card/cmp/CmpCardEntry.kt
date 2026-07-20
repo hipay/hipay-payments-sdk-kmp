@@ -38,6 +38,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import com.hipay.card.cmp.CmpCardController.Field
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -157,7 +159,8 @@ internal fun CmpCardEntry(
             label = { FieldLabel(cmpString(CardEntryStringKey.LABEL_HOLDER)) },
             placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_HOLDER)) },
             enabled = enabled,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().blurring(controller, Field.HOLDER),
+            isError = controller.holderErrorKey != null,
         )
         ErrorText(controller.holderErrorKey)
 
@@ -175,7 +178,8 @@ internal fun CmpCardEntry(
                 enabled = enabled,
                 // Raw digits as value; spaces rendered by the transformation → caret stays correct (11.1).
                 visualTransformation = CardNumberVisualTransformation(controller.network),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().blurring(controller, Field.NUMBER),
+                isError = controller.numberSlotErrorKey != null,
             )
             NetworkChips(
                 controller,
@@ -204,7 +208,9 @@ internal fun CmpCardEntry(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     // Raw digits as value; "/" rendered by the transformation → caret stays correct (11.8).
                     visualTransformation = ExpiryVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth().focusRequester(expiryFocus),
+                    modifier = Modifier.fillMaxWidth().focusRequester(expiryFocus)
+                        .blurring(controller, Field.EXPIRY),
+                    isError = controller.expiryErrorKey != null,
                 )
             }
             // CVC — shown-disabled when not required; "ⓘ" toggles the full-width info text (11.2).
@@ -223,7 +229,9 @@ internal fun CmpCardEntry(
                         label = { FieldLabel(cmpString(CardEntryStringKey.LABEL_CVV)) },
                         placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_CVV)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth().focusRequester(cvcFocus),
+                        modifier = Modifier.fillMaxWidth().focusRequester(cvcFocus)
+                            .blurring(controller, Field.CVC),
+                        isError = controller.cvcErrorKey != null,
                     )
                     if (controller.isCvcRequired) {
                         val cvvHelp = cmpString(CardEntryStringKey.CVV_TOOLTIP)
@@ -638,6 +646,17 @@ private fun NetworkChips(controller: CmpCardController, modifier: Modifier = Mod
                 }
             }
         }
+    }
+}
+
+/** Calls `markBlurred(field)` on a focused→unfocused transition (not on first composition) —
+ *  the CMP mirror of the Android `blurring` modifier. */
+@Composable
+private fun Modifier.blurring(controller: CmpCardController, field: Field): Modifier {
+    var wasFocused by remember { mutableStateOf(false) }
+    return this.onFocusChanged { state ->
+        if (wasFocused && !state.isFocused) controller.markBlurred(field)
+        wasFocused = state.isFocused
     }
 }
 

@@ -111,6 +111,61 @@ class CardNetworksTest {
         assertEquals("", CardNetworks.format(""))
     }
 
+    // --- Prefix viability (immediate invalid-pattern detection) ---
+
+    @Test
+    fun viablePrefixesForEverySupportedNetwork() {
+        assertTrue(CardNetworks.isPrefixViable(""))
+        assertTrue(CardNetworks.isPrefixViable("3"))    // could become 34/37 (Amex)
+        assertTrue(CardNetworks.isPrefixViable("34"))
+        assertTrue(CardNetworks.isPrefixViable("4"))    // Visa
+        assertTrue(CardNetworks.isPrefixViable("5"))    // 50/51-55/56-69
+        assertTrue(CardNetworks.isPrefixViable("6"))    // 56-69 / 6703
+        assertTrue(CardNetworks.isPrefixViable("2"))    // could become 2221-2720
+        assertTrue(CardNetworks.isPrefixViable("22"))
+        assertTrue(CardNetworks.isPrefixViable("2221"))
+        assertTrue(CardNetworks.isPrefixViable("2720"))
+        assertTrue(CardNetworks.isPrefixViable("6703"))
+        assertTrue(CardNetworks.isPrefixViable("4111111111111111"))
+    }
+
+    @Test
+    fun unviablePrefixesAreDetectedAtTheFirstWrongDigit() {
+        assertFalse(CardNetworks.isPrefixViable("0"))
+        assertFalse(CardNetworks.isPrefixViable("1"))
+        assertFalse(CardNetworks.isPrefixViable("7"))
+        assertFalse(CardNetworks.isPrefixViable("8"))
+        assertFalse(CardNetworks.isPrefixViable("9"))
+        assertFalse(CardNetworks.isPrefixViable("30"))   // neither 34 nor 37
+        assertFalse(CardNetworks.isPrefixViable("35"))
+        assertFalse(CardNetworks.isPrefixViable("21"))   // below 2221
+        assertFalse(CardNetworks.isPrefixViable("2220"))
+        assertFalse(CardNetworks.isPrefixViable("2721")) // above 2720
+        assertFalse(CardNetworks.isPrefixViable("28"))
+    }
+
+    // --- Possible backend resolutions per locally-detected network (co-brand model) ---
+
+    @Test
+    fun amexHasNoDomesticCoBrand() {
+        assertEquals(setOf(CardNetwork.AMEX), CardNetworks.possibleResolutions(CardNetwork.AMEX))
+    }
+
+    @Test
+    fun internationalRailsCanCarryDomesticCoBrands() {
+        assertTrue(CardNetwork.CB in CardNetworks.possibleResolutions(CardNetwork.VISA))
+        assertTrue(CardNetwork.BCMC in CardNetworks.possibleResolutions(CardNetwork.VISA))
+        assertTrue(CardNetwork.CB in CardNetworks.possibleResolutions(CardNetwork.MASTERCARD))
+        // A Visa BIN can never be Amex or Mastercard (disjoint international ranges).
+        assertTrue(CardNetwork.AMEX !in CardNetworks.possibleResolutions(CardNetwork.VISA))
+        assertTrue(CardNetwork.MASTERCARD !in CardNetworks.possibleResolutions(CardNetwork.VISA))
+    }
+
+    @Test
+    fun unknownCouldStillBecomeAnything() {
+        assertEquals(CardNetwork.entries.toSet(), CardNetworks.possibleResolutions(CardNetwork.UNKNOWN))
+    }
+
     // Review fix: a non-ASCII Unicode digit must NOT count as a card digit
     // (consistent with CardValidators). Arabic-Indic "٤" is not "4".
     @Test

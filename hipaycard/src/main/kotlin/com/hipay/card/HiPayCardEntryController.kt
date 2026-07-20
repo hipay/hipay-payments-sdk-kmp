@@ -366,8 +366,11 @@ public class HiPayCardEntryController(
         get() = (oneClickEnabled && selectedSavedCard != null) ||
             (holder.isNotBlank() &&
                 CardValidators.isHolderValid(holder) &&
-                CardValidators.isCardNumberValid(panDigits) &&
+                CardValidators.isHolderLongEnough(holder) &&
+                panDigits.isNotEmpty() &&
+                CardFieldValidation.cardNumberReason(panDigits) == ValidationReason.VALID &&
                 CardValidators.isExpiryDateValid(expiryMonth, expiryYear) &&
+                CardValidators.isExpiryYearWithinHorizon(expiryYear) &&
                 isCvcComplete &&
                 isNetworkAuthorized)
 
@@ -375,8 +378,10 @@ public class HiPayCardEntryController(
     public val firstInvalidField: Field?
         get() = when {
             CardFieldValidation.holderReason(holder) != ValidationReason.VALID -> Field.HOLDER
-            !CardValidators.isCardNumberValid(panDigits) -> Field.NUMBER
-            !CardValidators.isExpiryDateValid(expiryMonth, expiryYear) -> Field.EXPIRY
+            !CardValidators.isCardNumberValid(panDigits) ||
+                !CardNetworks.isPrefixViable(panDigits) -> Field.NUMBER
+            !CardValidators.isExpiryDateValid(expiryMonth, expiryYear) ||
+                !CardValidators.isExpiryYearWithinHorizon(expiryYear) -> Field.EXPIRY
             !isCvcComplete -> Field.CVC
             else -> null
         }
@@ -406,15 +411,34 @@ public class HiPayCardEntryController(
         get() = if (unauthorizedDigits != null && unauthorizedDigits == panDigits)
             CardEntryStringKey.ERROR_NETWORK_NOT_AUTHORIZED else null
 
+    // Unrepairable prefix — no supported network can ever match the typed digits
+    // (e.g. leading "1" or "30"). Immediate like networkErrorKey (no blur gate):
+    // further typing cannot fix it, so waiting for focus loss only delays the user.
+    private val patternErrorKey: CardEntryStringKey?
+        get() = if (panDigits.isNotEmpty() && !CardNetworks.isPrefixViable(panDigits))
+            CardEntryStringKey.ERROR_INVALID_NUMBER else null
+
+    // Locally UNAMBIGUOUS network rejection — shown immediately during focus (not
+    // blur-gated, no backend needed) when the detected network can never be a co-brand
+    // of any allowed one (e.g. Amex detected, only CB allowed). The AMBIGUOUS cases
+    // (Visa/MC detected with an allowed domestic co-brand like CB) stay backend-gated
+    // via networkErrorKey — a real co-branded card is never flashed as rejected while
+    // typing (contract 2026-07-17 + refinement 2026-07-20). Guarded on an empty offered
+    // set so a resolved allowed co-brand always wins.
+    private val localNetworkErrorKey: CardEntryStringKey?
+        get() = if (networks.isEmpty() &&
+            AllowedNetworks.isLocallyUnauthorized(CardNetworks.detect(panDigits), allowedKmp))
+            CardEntryStringKey.ERROR_NETWORK_NOT_AUTHORIZED else null
+
     /** Number-field slot error: network-not-authorized takes precedence over the number's own error (D1). */
     public val numberSlotErrorKey: CardEntryStringKey?
-        get() = networkErrorKey ?: numberErrorKey
+        get() = networkErrorKey ?: patternErrorKey ?: localNetworkErrorKey ?: numberErrorKey
 
     // ---- Field handlers (called from the Composable onValueChange) ----
     // Each edit is a fresh payment intent → it supersedes a showing one-click error.
     public fun onHolderChange(input: String) {
         lastOneClickError = null
-        holder = input.uppercase().take(60)
+        holder = CardValidators.sanitizeHolder(input)
     }
 
     public fun onNumberChange(input: String) {

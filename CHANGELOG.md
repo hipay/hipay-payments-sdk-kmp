@@ -4,6 +4,49 @@ Pre-1.0: the API may still move; per SemVer pre-1.0 a **minor** bump (0.1.0 → 
 breaking changes. `version` is the single source of truth in `gradle.properties` (inherited by every
 module + the iOS SPM/xcframework).
 
+## Unreleased
+
+### Added
+
+- **Card-entry validation hardening** (all three platforms, shared rules in commonMain):
+  - **Immediate invalid-pattern detection** — the number field errors ("Invalid card number") as
+    soon as the typed digit prefix can no longer match any supported network (progressive check
+    over Amex/Visa/Mastercard/Bancontact/Maestro; CB is co-badged and needs no prefix of its own).
+    Not blur-gated: no amount of further typing can repair the prefix.
+  - **Immediate "Card type not allowed" on an UNAMBIGUOUS local mismatch** — when the
+    locally-detected network can never be a co-brand of any allowed network (e.g. Amex detected
+    with only CB allowed, or Visa detected with only Mastercard allowed), the "Card type not
+    allowed" error now shows during focus on local detection, without waiting for the backend.
+    The AMBIGUOUS cases — where an allowed domestic scheme (CB/BCMC) could ride the detected
+    international BIN, e.g. Visa detected with only CB allowed — stay backend-verdict-gated as
+    before, so a genuine co-branded card is never flashed as rejected while typing. Driven by the
+    new shared `CardNetworks.possibleResolutions` / `AllowedNetworks.isLocallyUnauthorized`.
+  - **Expiry horizon** — an expiry year more than 15 years ahead is invalid
+    ("Invalid expiry date"), shown on focus loss like the other expiry errors.
+  - **Cardholder minimum length** — a non-empty holder under 3 characters shows the new
+    "Minimum 3 characters" error on focus loss (new key `ERROR_HOLDER_TOO_SHORT`, FR/EN/IT in
+    the three catalogs; new `ValidationReason.HOLDER_TOO_SHORT`).
+  - **Cardholder input shaping** — one shared sanitizer (`CardValidators.sanitizeHolder`):
+    uppercased; letters, spaces and `- ' .` accepted; at most 8 digits in total; every other
+    character dropped at input; still hard-capped at 60 characters.
+
+### Changed
+
+- **Invalid fields now tint their border with `invalidTextColor` while their inline error is
+  visible** (blur-gated; immediate for the pattern/network errors), on all three platforms.
+  iOS-native previously tinted borders live while typing (an incomplete number went red from the
+  first digit); Android/CMP previously never tinted the border. `canPay` also enforces the new
+  rules (holder ≥ 3 chars, viable prefix, expiry within the horizon).
+
+### Fixed
+
+- **CMP (iOS renderer): blur-gated inline errors could never appear** — the renderer never
+  reported focus loss, so the number/expiry/CVC/holder errors stayed hidden. Fields now mark
+  the blur exactly like native Android.
+- **iOS-native: number input is capped at the detected network's length** (Amex 15,
+  Visa/Mastercard/CB 16, Bancontact 17; 19 while undetected) instead of a flat 19 —
+  Android/CMP parity.
+
 ## 0.3.0 — 2026-07-16
 
 ### Added

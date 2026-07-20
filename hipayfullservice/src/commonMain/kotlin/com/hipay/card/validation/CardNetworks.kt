@@ -43,6 +43,43 @@ public object CardNetworks {
         }
     }
 
+    /**
+     * True while the digit prefix can still become a PAN of one of the
+     * locally known networks ([detect]'s prefix rules: Amex 34/37, Visa 4,
+     * Mastercard 51-55 / 2221-2720, BCMC 6703, Maestro 50 / 56-69 — CB is
+     * co-badged Visa/Mastercard so it needs no rule of its own). An empty
+     * prefix is viable. The moment this returns false no further typing can
+     * repair the number, so the UI may flag it immediately without waiting
+     * for focus loss.
+     */
+    public fun isPrefixViable(number: String): Boolean {
+        val digits = number.filter { it in '0'..'9' }
+        if (digits.isEmpty()) return true
+        return prefixCanMatch(digits, "34") ||
+            prefixCanMatch(digits, "37") ||
+            prefixCanMatch(digits, "4") ||
+            prefixCanMatchRange(digits, "51", "55") ||
+            prefixCanMatchRange(digits, "2221", "2720") ||
+            prefixCanMatch(digits, "6703") ||
+            prefixCanMatch(digits, "50") ||
+            prefixCanMatchRange(digits, "56", "69")
+    }
+
+    /** The typed digits and the fixed BIN prefix agree on their common length. */
+    private fun prefixCanMatch(digits: String, prefix: String): Boolean {
+        val k = minOf(digits.length, prefix.length)
+        return digits.take(k) == prefix.take(k)
+    }
+
+    /** The typed digits, truncated to the range's width, still fall inside
+     *  [lo]..[hi] truncated the same way (same-length digit strings compare
+     *  correctly as text). */
+    private fun prefixCanMatchRange(digits: String, lo: String, hi: String): Boolean {
+        val k = minOf(digits.length, lo.length)
+        val d = digits.take(k)
+        return d >= lo.take(k) && d <= hi.take(k)
+    }
+
     /** Digit count at which a network's PAN is complete. Variable-length
      *  networks (Maestro/unknown) only "complete" at the 19-digit max. */
     public fun completionLength(network: CardNetwork): Int = when (network) {
@@ -92,6 +129,29 @@ public object CardNetworks {
     /** Convenience: a lone network is treated as mono (so a bare Maestro requires a CVC). */
     public fun isCvcRequired(network: CardNetwork): Boolean =
         isCvcRequired(network, listOf(network))
+
+    /**
+     * The networks the backend could plausibly resolve for a card whose LOCAL prefix
+     * detection is [detected]. Local detection sees only the international BIN, never a
+     * DOMESTIC co-brand (CB in France, BCMC in Belgium) that the backend adds — so a "4…"
+     * (Visa) card may still resolve to CB, a Maestro to BCMC, and so on. Used to decide
+     * whether a local "not authorized" verdict is safe to surface BEFORE the backend
+     * responds (see [AllowedNetworks.isLocallyUnauthorized]).
+     *
+     * Deliberately GENEROUS (a conservative superset): over-including a co-brand only makes
+     * the UI wait for the backend, whereas under-including would wrongly reject a real card
+     * mid-typing. Amex (34/37) is the one range that carries no domestic co-brand.
+     */
+    public fun possibleResolutions(detected: CardNetwork): Set<CardNetwork> = when (detected) {
+        CardNetwork.AMEX -> setOf(CardNetwork.AMEX)
+        CardNetwork.VISA -> setOf(CardNetwork.VISA, CardNetwork.CB, CardNetwork.BCMC)
+        CardNetwork.MASTERCARD -> setOf(CardNetwork.MASTERCARD, CardNetwork.CB, CardNetwork.BCMC)
+        CardNetwork.MAESTRO -> setOf(CardNetwork.MAESTRO, CardNetwork.CB, CardNetwork.BCMC)
+        CardNetwork.BCMC ->
+            setOf(CardNetwork.BCMC, CardNetwork.MAESTRO, CardNetwork.VISA, CardNetwork.MASTERCARD)
+        // CB is never detected locally; UNKNOWN (mid-typing) could still become anything.
+        CardNetwork.CB, CardNetwork.UNKNOWN -> CardNetwork.entries.toSet()
+    }
 
     /** Display formatting: Amex 4-6-5, everything else groups of 4. */
     public fun format(number: String): String =

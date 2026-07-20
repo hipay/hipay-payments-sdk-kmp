@@ -97,6 +97,7 @@ internal fun HiPayCardEntryStyle.fieldColors(): TextFieldColors {
         val hint = styleColor(placeholderColor)
         val border = styleColor(borderColor)
         val container = styleColor(backgroundColor)
+        val invalid = styleColor(invalidTextColor)
         defaults.copy(
             focusedTextColor = text,
             unfocusedTextColor = text,
@@ -114,6 +115,16 @@ internal fun HiPayCardEntryStyle.fieldColors(): TextFieldColors {
             focusedLabelColor = hint,
             unfocusedLabelColor = hint,
             disabledLabelColor = hint.dimmedDisabled(),
+            // Invalid state: only the border switches to invalidTextColor — text,
+            // label, placeholder and container keep their normal style colors (the
+            // inline ⚠ message below the field carries the red text).
+            errorTextColor = text,
+            errorCursorColor = text,
+            errorIndicatorColor = invalid,
+            errorContainerColor = container,
+            errorPlaceholderColor = hint,
+            errorLabelColor = hint,
+            errorTrailingIconColor = defaults.unfocusedTrailingIconColor,
         )
     }
 }
@@ -140,6 +151,7 @@ internal fun HiPayStyledField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailingIcon: (@Composable () -> Unit)? = null,
+    isError: Boolean = false,
 ) {
     val style = LocalHiPayCardStyle.current
     val interactionSource = remember { MutableInteractionSource() }
@@ -179,6 +191,7 @@ internal fun HiPayStyledField(
             label = label,
             placeholder = placeholder,
             trailingIcon = trailingIcon,
+            isError = isError,
             colors = colors,
             contentPadding = OutlinedTextFieldDefaults.contentPadding(
                 top = verticalPadding,
@@ -187,7 +200,7 @@ internal fun HiPayStyledField(
             container = {
                 OutlinedTextFieldDefaults.Container(
                     enabled = enabled,
-                    isError = false,
+                    isError = isError,
                     interactionSource = interactionSource,
                     colors = colors,
                     shape = shape,

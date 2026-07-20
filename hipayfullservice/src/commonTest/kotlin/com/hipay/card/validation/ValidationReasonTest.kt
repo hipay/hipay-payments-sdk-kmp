@@ -37,6 +37,24 @@ class ValidationReasonTest {
     }
 
     @Test
+    fun unviablePrefixIsInvalidImmediately() {
+        // No supported network can ever start with these — invalid from the
+        // first wrong digit, without waiting for the completion length.
+        assertEquals(ValidationReason.INVALID_NUMBER, CardFieldValidation.cardNumberReason("1"))
+        assertEquals(ValidationReason.INVALID_NUMBER, CardFieldValidation.cardNumberReason("9"))
+        assertEquals(ValidationReason.INVALID_NUMBER, CardFieldValidation.cardNumberReason("30")) // neither 34 nor 37
+        assertEquals(ValidationReason.INVALID_NUMBER, CardFieldValidation.cardNumberReason("21")) // outside 2221-2720
+    }
+
+    @Test
+    fun viablePrefixStaysIncomplete() {
+        // These can still become an Amex / Mastercard / Maestro PAN.
+        assertEquals(ValidationReason.INCOMPLETE_NUMBER, CardFieldValidation.cardNumberReason("3"))
+        assertEquals(ValidationReason.INCOMPLETE_NUMBER, CardFieldValidation.cardNumberReason("22"))
+        assertEquals(ValidationReason.INCOMPLETE_NUMBER, CardFieldValidation.cardNumberReason("6"))
+    }
+
+    @Test
     fun overNetworkCompletionLengthFailingLuhnIsInvalid() {
         // Amex completes at 15; a 19-digit Amex-prefixed Luhn-failing number is
         // past completion → INVALID, not INCOMPLETE (D1 review fix).
@@ -62,6 +80,13 @@ class ValidationReasonTest {
     fun pastExpiryIsExpired() {
         val (year, _) = currentYearMonth()
         assertEquals(ValidationReason.EXPIRED, CardFieldValidation.expiryReason("12", (year - 1).toString()))
+    }
+
+    @Test
+    fun expiryBeyondHorizonIsInvalid() {
+        val (year, _) = currentYearMonth()
+        assertEquals(ValidationReason.VALID, CardFieldValidation.expiryReason("12", (year + 15).toString()))
+        assertEquals(ValidationReason.INVALID_EXPIRY, CardFieldValidation.expiryReason("12", (year + 16).toString()))
     }
 
     @Test
@@ -109,5 +134,14 @@ class ValidationReasonTest {
     fun holderLength() {
         assertEquals(ValidationReason.VALID, CardFieldValidation.holderReason("A".repeat(60)))
         assertEquals(ValidationReason.HOLDER_TOO_LONG, CardFieldValidation.holderReason("A".repeat(61)))
+    }
+
+    @Test
+    fun holderUnderThreeCharsIsTooShort() {
+        // Empty stays unflagged (untouched-field convention); 1-2 chars → too short.
+        assertEquals(ValidationReason.VALID, CardFieldValidation.holderReason(""))
+        assertEquals(ValidationReason.HOLDER_TOO_SHORT, CardFieldValidation.holderReason("A"))
+        assertEquals(ValidationReason.HOLDER_TOO_SHORT, CardFieldValidation.holderReason("AB"))
+        assertEquals(ValidationReason.VALID, CardFieldValidation.holderReason("ABC"))
     }
 }

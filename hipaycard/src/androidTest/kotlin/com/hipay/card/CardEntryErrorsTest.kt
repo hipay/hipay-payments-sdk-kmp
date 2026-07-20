@@ -44,13 +44,16 @@ class CardEntryErrorsTest {
     @Test
     fun networkNotAuthorizedShowsOnBackendVerdictOnly() {
         val robot = CardEntryRobot(composeRule)
-        // Merchant allows only Mastercard; the faked BIN verdict identifies a mono-network
-        // Visa (the error is backend-verdict-gated — local detection alone never shows it).
-        val controller = controller(allowed = listOf(HiPayCardNetwork.MASTERCARD))
+        // AMBIGUOUS case (refinement 2026-07-20): merchant allows only CB and the BIN is Visa.
+        // CB can ride a Visa BIN, so local detection alone must NOT reject — the error stays
+        // backend-verdict-gated. The faked verdict is a mono Visa (no CB), so it resolves to
+        // "not allowed". (The UNAMBIGUOUS case — Amex detected, CB-only — now errors immediately;
+        // see CardEntryValidationGherkinTest.)
+        val controller = controller(allowed = listOf(HiPayCardNetwork.CB))
         controller.cardInfoResolver = { com.hipay.card.model.CardInfo(brand = "VISA") }
         robot.setContent { HiPayCardEntry(controller, localeOverride = "en") }
 
-        robot.type(HiPayCardEntryTags.NUMBER, "4111") // partial: local detection only
+        robot.type(HiPayCardEntryTags.NUMBER, "4111") // partial: local detection only; CB could ride it
         // No error while only locally detected (a co-branded card would flash a false one),
         // even though the disallowed visa chip is already hidden.
         robot.assertTagAbsent(HiPayCardEntryTags.error("number"))

@@ -247,6 +247,7 @@ private fun CardEntryContent(
                 enabled = enabled,
                 modifier = Modifier.fillMaxWidth().testTag(HiPayCardEntryTags.HOLDER)
                     .blurring(controller, Field.HOLDER),
+                isError = controller.holderErrorKey != null,
             )
             ErrorSlot(controller.holderErrorKey, HiPayCardEntryTags.error("holder"))
         }
@@ -270,6 +271,7 @@ private fun CardEntryContent(
                     visualTransformation = CardNumberVisualTransformation(controller.network),
                     modifier = Modifier.fillMaxWidth().testTag(HiPayCardEntryTags.NUMBER)
                         .blurring(controller, Field.NUMBER),
+                    isError = controller.numberSlotErrorKey != null,
                 )
                 NetworkChips(
                     controller,
@@ -302,6 +304,7 @@ private fun CardEntryContent(
                     modifier = Modifier.fillMaxWidth().testTag(HiPayCardEntryTags.EXPIRY)
                         .focusRequester(expiryFocus)
                         .blurring(controller, Field.EXPIRY),
+                    isError = controller.expiryErrorKey != null,
                 )
             }
 
@@ -327,6 +330,7 @@ private fun CardEntryContent(
                         modifier = Modifier.fillMaxWidth().testTag(HiPayCardEntryTags.CVC)
                             .focusRequester(cvcFocus)
                             .blurring(controller, Field.CVC),
+                        isError = controller.cvcErrorKey != null,
                     )
                     // Info affordance only when the CVC is required (no overlay on a disabled field).
                     if (controller.isCvcRequired) {

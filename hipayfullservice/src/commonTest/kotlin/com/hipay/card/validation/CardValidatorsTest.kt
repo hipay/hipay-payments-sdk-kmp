@@ -99,6 +99,42 @@ class CardValidatorsTest {
     }
 
     @Test
+    fun holderMinimumThreeCharsOnceNonEmpty() {
+        assertTrue(CardValidators.isHolderLongEnough("")) // untouched field stays unflagged
+        assertFalse(CardValidators.isHolderLongEnough("A"))
+        assertFalse(CardValidators.isHolderLongEnough("AB"))
+        assertTrue(CardValidators.isHolderLongEnough("ABC"))
+    }
+
+    @Test
+    fun sanitizeHolderUppercasesAndFilters() {
+        assertEquals("JEAN-PIERRE D'ARC JR.", CardValidators.sanitizeHolder("Jean-Pierre d'Arc Jr."))
+        // Symbols outside letters/digits/space/-/'/. are dropped
+        assertEquals("AB", CardValidators.sanitizeHolder("a@#%b"))
+        // Accented letters are kept and uppercased
+        assertEquals("HÉLÈNE", CardValidators.sanitizeHolder("Hélène"))
+    }
+
+    @Test
+    fun sanitizeHolderCapsDigitsAtEight() {
+        assertEquals("A12345678B", CardValidators.sanitizeHolder("a123456789b")) // 9th digit dropped
+        assertEquals("12345678", CardValidators.sanitizeHolder("1234567890"))
+    }
+
+    @Test
+    fun sanitizeHolderCapsLengthAtSixty() {
+        assertEquals(60, CardValidators.sanitizeHolder("A".repeat(80)).length)
+    }
+
+    @Test
+    fun expiryYearHorizonIsFifteenYears() {
+        val (year, _) = currentYearMonth()
+        assertTrue(CardValidators.isExpiryYearWithinHorizon((year + 15).toString()))
+        assertFalse(CardValidators.isExpiryYearWithinHorizon((year + 16).toString()))
+        assertFalse(CardValidators.isExpiryYearWithinHorizon("20AB"))
+    }
+
+    @Test
     fun cvcEmptyOrThreeToFourDigits() {
         assertTrue(CardValidators.isCvcValid(""))
         assertTrue(CardValidators.isCvcValid("123"))

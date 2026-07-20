@@ -89,7 +89,7 @@ class CmpCardControllerTest {
         val c = controller()
         c.onHolderChange("John Doe")
         c.onNumberChange("4111111111111111")
-        c.onExpiryChange("1299") // 12/2099 — future
+        c.onExpiryChange("1230") // 12/2030 — future, within the 15-year horizon
         c.onCvcChange("123")
         assertTrue(c.canPay)
     }

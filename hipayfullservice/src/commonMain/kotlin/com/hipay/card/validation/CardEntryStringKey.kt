@@ -25,6 +25,7 @@ public enum class CardEntryStringKey {
     ERROR_INVALID_CVV,
     ERROR_INCOMPLETE_CVV,
     ERROR_HOLDER_TOO_LONG,
+    ERROR_HOLDER_TOO_SHORT,
     ERROR_NETWORK_NOT_AUTHORIZED,
     LABEL_SAVED_CARDS,
     LABEL_NEW_CARD,
@@ -57,5 +58,6 @@ public fun ValidationReason.messageKey(): CardEntryStringKey? = when (this) {
     ValidationReason.INVALID_CVV -> CardEntryStringKey.ERROR_INVALID_CVV
     ValidationReason.INCOMPLETE_CVV -> CardEntryStringKey.ERROR_INCOMPLETE_CVV
     ValidationReason.HOLDER_TOO_LONG -> CardEntryStringKey.ERROR_HOLDER_TOO_LONG
+    ValidationReason.HOLDER_TOO_SHORT -> CardEntryStringKey.ERROR_HOLDER_TOO_SHORT
     ValidationReason.NETWORK_NOT_AUTHORIZED -> CardEntryStringKey.ERROR_NETWORK_NOT_AUTHORIZED
 }

@@ -35,6 +35,9 @@ public enum class ValidationReason {
     /** Holder name longer than the 60-char vault limit. */
     HOLDER_TOO_LONG,
 
+    /** Non-empty holder name shorter than 3 characters — shown on focus loss. */
+    HOLDER_TOO_SHORT,
+
     /** The detected/selected network is not in the merchant's allowed set (D13). */
     NETWORK_NOT_AUTHORIZED,
 }

@@ -34,8 +34,44 @@ public object CardValidators {
         return y > currentYear || (y == currentYear && month.toInt() >= currentMonth)
     }
 
+    /** Valid formats AND not further out than [maxYearsAhead] years (expiry
+     *  cards are never issued that far; guards against a typo like 2099). */
+    public fun isExpiryYearWithinHorizon(year: String, maxYearsAhead: Int = EXPIRY_HORIZON_YEARS): Boolean {
+        if (!isExpiryYearValid(year)) return false
+        return year.toInt() <= currentYearMonth().first + maxYearsAhead
+    }
+
     /** At most 60 characters (vault contract). */
     public fun isHolderValid(holder: String): Boolean = holder.length <= 60
+
+    /** At least 3 characters once the field is non-empty (an untouched/empty
+     *  field is not flagged — same convention as the other fields). */
+    public fun isHolderLongEnough(holder: String): Boolean =
+        holder.isEmpty() || holder.length >= HOLDER_MIN_LENGTH
+
+    /**
+     * Input shaping for the holder field, shared by the three UIs so typing
+     * behaves identically everywhere: uppercased; letters, spaces and common
+     * name punctuation (- ' .) accepted; ASCII digits accepted up to
+     * [HOLDER_MAX_DIGITS] in total; everything else dropped; hard-capped at
+     * 60 characters (vault contract — typing past the cap is blocked).
+     */
+    public fun sanitizeHolder(input: String): String {
+        val out = StringBuilder()
+        var digits = 0
+        for (ch in input.uppercase()) {
+            if (out.length >= 60) break
+            when {
+                ch in '0'..'9' -> if (digits < HOLDER_MAX_DIGITS) { out.append(ch); digits++ }
+                ch.isLetter() || ch == ' ' || ch == '-' || ch == '\'' || ch == '.' -> out.append(ch)
+            }
+        }
+        return out.toString()
+    }
+
+    public const val HOLDER_MIN_LENGTH: Int = 3
+    public const val HOLDER_MAX_DIGITS: Int = 8
+    public const val EXPIRY_HORIZON_YEARS: Int = 15
 
     /** Empty (allowed by the vault contract) or 3-4 digits. */
     public fun isCvcValid(cvc: String): Boolean =
