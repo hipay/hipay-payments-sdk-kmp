@@ -6,6 +6,7 @@ import com.hipay.fullservice.hipaycard_cmp.generated.resources.Res
 import com.hipay.fullservice.hipaycard_cmp.generated.resources.hp_amex
 import com.hipay.fullservice.hipaycard_cmp.generated.resources.hp_bcmc
 import com.hipay.fullservice.hipaycard_cmp.generated.resources.hp_card_neutral
+import com.hipay.fullservice.hipaycard_cmp.generated.resources.hp_ic_trash
 import com.hipay.fullservice.hipaycard_cmp.generated.resources.hp_cb
 import com.hipay.fullservice.hipaycard_cmp.generated.resources.hp_maestro
 import com.hipay.fullservice.hipaycard_cmp.generated.resources.hp_mastercard
@@ -40,3 +41,6 @@ internal fun CardNetwork.displayName(): String = when (this) {
 
 /** Neutral (no detected/authorized network) placeholder icon. */
 internal val neutralCardIcon: DrawableResource get() = Res.drawable.hp_card_neutral
+
+/** Trash glyph revealed by the swipe-to-delete affordance. */
+internal val trashIcon: DrawableResource get() = Res.drawable.hp_ic_trash

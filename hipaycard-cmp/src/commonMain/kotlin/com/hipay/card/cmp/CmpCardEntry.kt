@@ -2,18 +2,23 @@
 package com.hipay.card.cmp
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectableGroup
@@ -22,6 +27,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -56,11 +63,14 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import com.hipay.card.store.OneClickError
 import com.hipay.card.store.OneClickErrorSurface
 import com.hipay.card.store.SavedCard
@@ -285,7 +295,7 @@ internal fun CmpCardEntry(
  * (a card, or "New card"); no visual radio indicator by design.
  *
  * The most-recent `savedCardsDisplayCount` cards are shown (MRU-first, the most recent pre-selected);
- * when more cards are stored a "Show more / Show less" toggle reveals or hides the rest (story 12-9).
+ * when more cards are stored a "Show more / Show less" toggle reveals or hides the rest.
  * The list force-expands (and "Show less" is disabled) while the selected card sits beyond the fold,
  * so the paying card is never hidden. Every saved card is retained by the store — the display count
  * only bounds what is shown by default.
@@ -338,10 +348,11 @@ private fun CmpSavedCardsSections(
         if (errorSurface == OneClickErrorSurface.SECTION && oneClickError != null) {
             OneClickErrorText(oneClickError.reason.messageKey())
         }
-        visibleCards.forEach { card ->
+        visibleCards.forEachIndexed { index, card ->
             CmpSavedCardCell(
                 controller,
                 card,
+                index,
                 enabled,
                 error = oneClickError?.takeIf {
                     errorSurface == OneClickErrorSurface.INLINE_CARD && it.matches(card)
@@ -386,6 +397,7 @@ private fun CmpSavedCardsSections(
 private fun CmpSavedCardCell(
     controller: CmpCardController,
     card: SavedCard,
+    index: Int,
     enabled: Boolean,
     error: OneClickError? = null,
     onRequestDelete: (SavedCard) -> Unit,
@@ -412,72 +424,109 @@ private fun CmpSavedCardCell(
         else BorderStroke(style.borderWidth.dp, cmpColor(style.borderColor))
     // The cell + its inline error travel as one visual unit (the field error spacing).
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .border(border, cellShape)
-                .background(cmpColor(style.backgroundColor), cellShape)
-                .then(
-                    if (isSelected) {
-                        Modifier.background(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                            cellShape,
-                        )
-                    } else {
-                        Modifier
-                    },
-                )
-                // Tap selects; long-press requests delete (no visible delete button, PM decision).
-                .combinedClickable(
+        // Left-swipe reveals a trailing trash action; tapping it opens the delete confirmation. An
+        // accidental swipe never deletes — only the trash tap (or the retained long-press / a11y
+        // "Delete" action) requests deletion. Reverses the earlier no-visible-delete-button
+        // behaviour.
+        val actionWidthPx = with(LocalDensity.current) { 56.dp.toPx() }
+        var swipeOffset by remember(card) { mutableStateOf(0f) }
+        val revealOffset by animateFloatAsState(swipeOffset, label = "savedcard.swipe")
+        // A (re)selection, or the row becoming disabled (payment in flight), snaps the reveal shut.
+        LaunchedEffect(isSelected, enabled) { if (isSelected || !enabled) swipeOffset = 0f }
+        val swipeState = rememberDraggableState { delta ->
+            swipeOffset = (swipeOffset + delta).coerceIn(-actionWidthPx, 0f)
+        }
+        Box(modifier = Modifier.fillMaxWidth()) {
+            // Trash revealed behind the row, pinned to the end — present only while revealed so it
+            // never leaks into the a11y tree at rest (the custom "Delete" action covers a11y).
+            if (revealOffset < -1f) {
+                IconButton(
+                    onClick = { swipeOffset = 0f; onRequestDelete(card) },
                     enabled = enabled,
-                    onClick = { controller.selectSavedCard(card) },
-                    onLongClick = { onRequestDelete(card) },
-                )
-                // One merged node: "<Network> finishing 1111, expires MM / YYYY, selected" —
-                // the bullet glyphs are never announced. The mandatory "Delete" custom action makes
-                // deletion reachable to screen readers (the long-press gesture is invisible to them).
-                .semantics(mergeDescendants = true) {
-                    contentDescription = a11yLabel
-                    selected = isSelected
-                    // Gated on enabled: while a payment is in flight the delete must be unreachable to
-                    // screen readers too — the long-press is already gated via combinedClickable, and
-                    // this custom action is the only other delete entry point.
-                    customActions =
-                        if (enabled) {
-                            listOf(CustomAccessibilityAction(deleteLabel) { onRequestDelete(card); true })
-                        } else {
-                            emptyList()
-                        }
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .testTag("hipay.card.savedcard.$index.delete"),
+                ) {
+                    Icon(
+                        painter = painterResource(trashIcon),
+                        contentDescription = deleteLabel,
+                        tint = MaterialTheme.colorScheme.error,
+                    )
                 }
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        ) {
-            Image(
-                painter = painterResource(display.network?.iconResource() ?: neutralCardIcon),
-                contentDescription = null, // described by the merged cell node
-                // Brand marks stay full-color; only the neutral fallback glyph takes iconColor.
-                colorFilter = if (display.network == null) {
-                    ColorFilter.tint(cmpColor(style.iconColor))
-                } else {
-                    null
-                },
-                modifier = Modifier.size(width = 32.dp, height = 20.dp),
-            )
-            Column {
-                Text(
-                    display.maskedNumber,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = cmpColor(style.textColor),
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .offset { IntOffset(revealOffset.roundToInt(), 0) }
+                    .draggable(
+                        state = swipeState,
+                        orientation = Orientation.Horizontal,
+                        enabled = enabled,
+                        onDragStopped = {
+                            swipeOffset = if (swipeOffset < -actionWidthPx / 2f) -actionWidthPx else 0f
+                        },
+                    )
+                    .heightIn(min = 48.dp)
+                    .border(border, cellShape)
+                    .background(cmpColor(style.backgroundColor), cellShape)
+                    .then(
+                        if (isSelected) {
+                            Modifier.background(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                                cellShape,
+                            )
+                        } else {
+                            Modifier
+                        },
+                    )
+                    // Tap selects; long-press requests delete (kept as the quick/accessible path).
+                    .combinedClickable(
+                        enabled = enabled,
+                        onClick = { controller.selectSavedCard(card) },
+                        onLongClick = { onRequestDelete(card) },
+                    )
+                    // One merged node: "<Network> finishing 1111, expires MM / YYYY, selected" — the
+                    // bullet glyphs are never announced. The mandatory "Delete" custom action makes
+                    // deletion reachable to screen readers (swipe + long-press are invisible to them).
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = a11yLabel
+                        selected = isSelected
+                        customActions =
+                            if (enabled) {
+                                listOf(CustomAccessibilityAction(deleteLabel) { onRequestDelete(card); true })
+                            } else {
+                                emptyList()
+                            }
+                    }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                Image(
+                    painter = painterResource(display.network?.iconResource() ?: neutralCardIcon),
+                    contentDescription = null, // described by the merged cell node
+                    // Brand marks stay full-color; only the neutral fallback glyph takes iconColor.
+                    colorFilter = if (display.network == null) {
+                        ColorFilter.tint(cmpColor(style.iconColor))
+                    } else {
+                        null
+                    },
+                    modifier = Modifier.size(width = 32.dp, height = 20.dp),
                 )
-                Text(
-                    text = "${card.holder}  ·  ${display.displayExpiry}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = cmpColor(style.placeholderColor),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Column {
+                    Text(
+                        display.maskedNumber,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = cmpColor(style.textColor),
+                    )
+                    Text(
+                        text = "${card.holder}  ·  ${display.displayExpiry}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = cmpColor(style.placeholderColor),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
         error?.let { OneClickErrorText(it.reason.messageKey()) }
@@ -507,7 +556,7 @@ private fun CmpNewCardHeader(controller: CmpCardController, enabled: Boolean) {
     }
 }
 
-/** "Show more / Show less" disclosure toggle (story 12-9): reveals or hides the saved cards beyond
+/** "Show more / Show less" disclosure toggle: reveals or hides the saved cards beyond
  *  the display count. A centered button whose expanded/collapsed state carries the meaning for a11y
  *  (the chevron is decorative); it stays present across toggles so screen-reader focus is retained.
  *  When [enabled] is false while expanded, "Show less" is inert (the selection sits beyond the fold).

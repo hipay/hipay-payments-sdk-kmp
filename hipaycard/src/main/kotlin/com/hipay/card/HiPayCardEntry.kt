@@ -3,12 +3,16 @@ package com.hipay.card
 
 import android.content.res.Configuration
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +20,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectableGroup
@@ -24,6 +29,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -50,6 +57,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -68,6 +76,7 @@ import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.traversalIndex
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.hipay.card.HiPayCardEntryController.Field
 import com.hipay.card.store.OneClickError
@@ -82,6 +91,7 @@ import com.hipay.core.resolveLanguage
 import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 /** Stable test/semantics tags shared with the UI-test harness (story 7.1/7.2). */
 public object HiPayCardEntryTags {
@@ -102,6 +112,9 @@ public object HiPayCardEntryTags {
     public const val CONFIRM_CANCEL: String = "hipay.card.delete.cancel"
     /** One tag per saved-card cell (0 = most-recent) — never a single duplicated id across cells. */
     public fun savedCard(index: Int): String = "hipay.card.savedcard.$index"
+
+    /** The trash action revealed by left-swipe on saved-card cell [index]. */
+    public fun savedCardDelete(index: Int): String = "hipay.card.savedcard.$index.delete"
     public fun network(code: String): String = "hipay.card.network.$code"
     public fun error(field: String): String = "hipay.card.error.$field"
 }
@@ -385,8 +398,8 @@ private fun SavedCardsSections(
         }
         return
     }
-    // Story 12-9: show the most-recent `displayCount` cards; a "Show more / Show less" toggle reveals
-    // or hides the rest. This bounds only what is shown — every saved card is retained (store cap 20).
+    // Show the most-recent `displayCount` cards; a "Show more / Show less" toggle reveals or hides
+    // the rest. This bounds only what is shown — every saved card is retained (store cap 20).
     val displayCount = controller.savedCardsDisplayCount
     val hasMore = cards.size > displayCount
     // If the selected card sits beyond the default fold, the list must stay open (the paying card is
@@ -495,73 +508,114 @@ private fun SavedCardCell(
         else BorderStroke(style.borderWidth.dp, styleColor(style.borderColor))
     // The cell + its inline error travel as one visual unit (the field errorSlot spacing).
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .border(border, cellShape)
-                .background(styleColor(style.backgroundColor), cellShape)
-                .then(
-                    if (isSelected) {
-                        Modifier.background(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                            cellShape,
-                        )
-                    } else {
-                        Modifier
-                    },
-                )
-                // Tap selects; long-press requests delete (no visible delete button, PM decision).
-                .combinedClickable(
+        // Left-swipe reveals a trailing trash action; tapping it opens the delete confirmation. An
+        // accidental swipe never deletes — only the trash tap (or the retained long-press / a11y
+        // "Delete" action) requests deletion. Reverses the earlier no-visible-delete-button
+        // behaviour.
+        val actionWidthPx = with(LocalDensity.current) { 56.dp.toPx() }
+        var swipeOffset by remember(card) { mutableStateOf(0f) }
+        val revealOffset by animateFloatAsState(swipeOffset, label = "savedcard.swipe")
+        // A (re)selection, or the row becoming disabled (payment in flight), snaps the reveal shut
+        // so no orphaned trash lingers and delete stays unreachable while processing.
+        LaunchedEffect(isSelected, enabled) { if (isSelected || !enabled) swipeOffset = 0f }
+        val swipeState = rememberDraggableState { delta ->
+            swipeOffset = (swipeOffset + delta).coerceIn(-actionWidthPx, 0f)
+        }
+        Box(modifier = Modifier.fillMaxWidth()) {
+            // Trash revealed behind the row, pinned to the end — present only while revealed so it
+            // never leaks into the a11y tree at rest (the custom "Delete" action covers a11y).
+            if (revealOffset < -1f) {
+                IconButton(
+                    onClick = { swipeOffset = 0f; onRequestDelete(card) },
                     enabled = enabled,
-                    onClick = { controller.selectSavedCard(card) },
-                    onLongClick = { onRequestDelete(card) },
-                )
-                .testTag(HiPayCardEntryTags.savedCard(index))
-                // One merged node: "<Network> finishing 1111, expires MM / YYYY, selected" —
-                // the bullet glyphs are never announced. The mandatory "Delete" custom action makes
-                // deletion reachable to TalkBack (the long-press gesture is invisible to it).
-                .semantics(mergeDescendants = true) {
-                    contentDescription = a11yLabel
-                    selected = isSelected
-                    // Gated on enabled: while a payment is in flight the delete must be unreachable to
-                    // screen readers too — the long-press is already gated via combinedClickable, and
-                    // this custom action is the only other delete entry point.
-                    customActions =
-                        if (enabled) {
-                            listOf(CustomAccessibilityAction(deleteLabel) { onRequestDelete(card); true })
-                        } else {
-                            emptyList()
-                        }
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .testTag(HiPayCardEntryTags.savedCardDelete(index)),
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.hp_ic_trash),
+                        contentDescription = deleteLabel,
+                        tint = MaterialTheme.colorScheme.error,
+                    )
                 }
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        ) {
-            Image(
-                painter = painterResource(platformNetwork?.drawableRes ?: R.drawable.hp_card_neutral),
-                contentDescription = null, // described by the merged cell node
-                // Brand marks stay full-color; only the neutral fallback glyph takes iconColor.
-                colorFilter = if (platformNetwork == null) {
-                    ColorFilter.tint(styleColor(style.iconColor))
-                } else {
-                    null
-                },
-                modifier = Modifier.size(width = 32.dp, height = 20.dp),
-            )
-            Column {
-                Text(
-                    display.maskedNumber,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = styleColor(style.textColor),
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .offset { IntOffset(revealOffset.roundToInt(), 0) }
+                    .draggable(
+                        state = swipeState,
+                        orientation = Orientation.Horizontal,
+                        enabled = enabled,
+                        onDragStopped = {
+                            swipeOffset = if (swipeOffset < -actionWidthPx / 2f) -actionWidthPx else 0f
+                        },
+                    )
+                    .heightIn(min = 48.dp)
+                    .border(border, cellShape)
+                    .background(styleColor(style.backgroundColor), cellShape)
+                    .then(
+                        if (isSelected) {
+                            Modifier.background(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                                cellShape,
+                            )
+                        } else {
+                            Modifier
+                        },
+                    )
+                    // Tap selects; long-press requests delete (kept as the quick/accessible path).
+                    .combinedClickable(
+                        enabled = enabled,
+                        onClick = { controller.selectSavedCard(card) },
+                        onLongClick = { onRequestDelete(card) },
+                    )
+                    .testTag(HiPayCardEntryTags.savedCard(index))
+                    // One merged node: "<Network> finishing 1111, expires MM / YYYY, selected" — the
+                    // bullet glyphs are never announced. The mandatory "Delete" custom action makes
+                    // deletion reachable to TalkBack (swipe + long-press are invisible to it).
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = a11yLabel
+                        selected = isSelected
+                        // Gated on enabled: while a payment is in flight the delete must be
+                        // unreachable to screen readers too — swipe/long-press are already gated, and
+                        // this custom action is the only other delete entry point.
+                        customActions =
+                            if (enabled) {
+                                listOf(CustomAccessibilityAction(deleteLabel) { onRequestDelete(card); true })
+                            } else {
+                                emptyList()
+                            }
+                    }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                Image(
+                    painter = painterResource(platformNetwork?.drawableRes ?: R.drawable.hp_card_neutral),
+                    contentDescription = null, // described by the merged cell node
+                    // Brand marks stay full-color; only the neutral fallback glyph takes iconColor.
+                    colorFilter = if (platformNetwork == null) {
+                        ColorFilter.tint(styleColor(style.iconColor))
+                    } else {
+                        null
+                    },
+                    modifier = Modifier.size(width = 32.dp, height = 20.dp),
                 )
-                Text(
-                    text = "${card.holder}  ·  ${display.displayExpiry}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = styleColor(style.placeholderColor),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Column {
+                    Text(
+                        display.maskedNumber,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = styleColor(style.textColor),
+                    )
+                    Text(
+                        text = "${card.holder}  ·  ${display.displayExpiry}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = styleColor(style.placeholderColor),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
         ErrorSlot(error?.reason?.messageKey(), HiPayCardEntryTags.error("savedcard.$index"))
@@ -593,7 +647,7 @@ private fun NewCardHeader(controller: HiPayCardEntryController, enabled: Boolean
     }
 }
 
-/** "Show more / Show less" disclosure toggle (story 12-9): reveals or hides the saved cards beyond
+/** "Show more / Show less" disclosure toggle: reveals or hides the saved cards beyond
  *  the display count. A centered button whose expanded/collapsed state carries the meaning for a11y
  *  (the chevron is decorative); it stays present across toggles so screen-reader focus is retained.
  *  When [enabled] is false while expanded, "Show less" is inert (the selection sits beyond the fold). */

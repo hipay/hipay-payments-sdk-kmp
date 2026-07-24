@@ -16,6 +16,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.hipay.card.store.SavedCard
@@ -113,6 +115,39 @@ class OneClickEntryUiTest {
         composeRule.onNodeWithTag(HiPayCardEntryTags.HOLDER).assertIsDisplayed()
         assertEquals(0, countTag(HiPayCardEntryTags.savedCard(0)))
         assertEquals(0, countTag(HiPayCardEntryTags.SAVE_SWITCH))
+    }
+
+    // Left-swipe reveals a trash action; confirming deletes, an accidental swipe alone
+    // never does. No trash is shown at rest (reverses hidden delete — now visible on swipe).
+    @Test
+    fun swipeRevealsTrash_confirm_deletesCard() {
+        seedNCards(2) // both fit the default display count of 3
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        composeRule.setContent { HiPayCardEntry(controller) }
+        awaitSections()
+        val before = controller.savedCards.size
+        assertEquals(0, countTag(HiPayCardEntryTags.savedCardDelete(0))) // no trash at rest
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).performTouchInput { swipeLeft() }
+        composeRule.waitUntil(5_000) { countTag(HiPayCardEntryTags.savedCardDelete(0)) == 1 }
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCardDelete(0)).performClick()
+        composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_DELETE).assertExists()
+        composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_DELETE).performClick()
+        composeRule.waitUntil(5_000) { controller.savedCards.size == before - 1 }
+        assertEquals(before - 1, controller.savedCards.size)
+    }
+
+    @Test
+    fun swipeRevealsTrash_cancel_keepsCard() {
+        seedNCards(2)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        composeRule.setContent { HiPayCardEntry(controller) }
+        awaitSections()
+        val before = controller.savedCards.size
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).performTouchInput { swipeLeft() }
+        composeRule.waitUntil(5_000) { countTag(HiPayCardEntryTags.savedCardDelete(0)) == 1 }
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCardDelete(0)).performClick()
+        composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_CANCEL).performClick()
+        assertEquals(before, controller.savedCards.size)
     }
 
     @Test
@@ -223,8 +258,8 @@ class OneClickEntryUiTest {
         assertEquals(1, countTag(HiPayCardEntryTags.SHOW_MORE))
     }
 
-    // Story 12-9: the paying card is never hidden — selecting a card beyond the default fold
-    // force-expands the list and disables "Show less" until a card within the fold is selected.
+    // The paying card is never hidden — selecting a card beyond the default fold force-expands the
+    // list and disables "Show less" until a card within the fold is selected.
     @Test
     fun selectingCardBeyondFold_forcesExpandAndDisablesShowLess() {
         seedNCards(4) // default display count = 3
