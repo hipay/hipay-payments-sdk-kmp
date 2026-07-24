@@ -92,6 +92,9 @@ public object HiPayCardEntryTags {
     public const val CVC_INFO: String = "hipay.card.cvc.info"
     public const val CVC_TOOLTIP: String = "hipay.card.cvc.tooltip"
     public const val SAVED_CARDS_HEADER: String = "hipay.card.savedcards.header"
+
+    /** The "Show more" control revealing saved cards beyond the display count. */
+    public const val SHOW_MORE: String = "hipay.card.savedcards.showmore"
     public const val NEW_CARD: String = "hipay.card.newcard"
     public const val SAVE_SWITCH: String = "hipay.card.saveswitch"
     public const val CONSENT: String = "hipay.card.consent"
@@ -357,9 +360,9 @@ private fun CardEntryContent(
  * expanded state). The cells form a single-selection group — exactly one selection at all times
  * (a card, or "New card"); no visual radio indicator by design.
  *
- * While the new-card branch is active the list collapses to just the most-recent card, and the
- * "Saved cards" header gains its own chevron to re-expand the full list (so the payer can switch
- * card without losing what they typed). With a single saved card there is no collapse affordance.
+ * The most-recent `savedCardsDisplayCount` cards are shown (MRU-first, the most recent pre-selected);
+ * when more cards are stored a "Show more" control reveals the rest (story 12-9). Every saved card is
+ * retained by the store — the display count only bounds what is shown by default.
  */
 @Composable
 private fun SavedCardsSections(
@@ -380,19 +383,15 @@ private fun SavedCardsSections(
         }
         return
     }
-    // Second, independent expand/collapse axis for the LIST itself (distinct from the "New card"
-    // fields expand): only meaningful in the new-card branch with more than one card.
-    var savedCardsExpanded by rememberSaveable { mutableStateOf(false) }
-    val newCardBranch = controller.selectedSavedCard == null
-    // Each fresh new-card entry starts collapsed: forget a manual re-expand once the branch is left,
-    // so the collapse-to-MRU behaviour never silently stops after the payer expands the list once.
-    LaunchedEffect(newCardBranch) { if (!newCardBranch) savedCardsExpanded = false }
-    val collapsible = newCardBranch && cards.size > 1
-    val showAllCards = !newCardBranch || savedCardsExpanded
-    val visibleCards = if (showAllCards) cards else cards.take(1)
+    // Story 12-9: show the most-recent `displayCount` cards; a "Show more" control reveals the rest.
+    // This bounds only what is shown — every saved card is retained by the store (cap 20).
+    val displayCount = controller.savedCardsDisplayCount
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val hasMore = cards.size > displayCount
+    val visibleCards = if (expanded || !hasMore) cards else cards.take(displayCount)
 
-    // Delete is a gesture (long-press) / a11y-action affordance — no visible button. The pending
-    // card drives the confirmation dialog; it lives in the UI, not the controller.
+    // Delete is a gesture (long-press) / a11y-action affordance. The pending card drives the
+    // confirmation dialog; it lives in the UI, not the controller.
     var cardPendingDelete by remember { mutableStateOf<SavedCard?>(null) }
     // Drop a pending confirmation if its card vanishes from the list underneath the open dialog
     // (a concurrent refresh on app-foreground, or an expiry purge) — otherwise the payer would
@@ -403,13 +402,7 @@ private fun SavedCardsSections(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth().selectableGroup(),
     ) {
-        if (collapsible) {
-            SavedCardsCollapsibleHeader(expanded = savedCardsExpanded, enabled = enabled) {
-                savedCardsExpanded = !savedCardsExpanded
-            }
-        } else {
-            SectionHeader(cardString(CardEntryStringKey.LABEL_SAVED_CARDS))
-        }
+        SectionHeader(cardString(CardEntryStringKey.LABEL_SAVED_CARDS))
         if (errorSurface == OneClickErrorSurface.SECTION && oneClickError != null) {
             ErrorSlot(oneClickError.reason.messageKey(), HiPayCardEntryTags.error("oneclick.section"))
         }
@@ -423,6 +416,9 @@ private fun SavedCardsSections(
                     errorSurface == OneClickErrorSurface.INLINE_CARD && it.matches(card)
                 },
             ) { cardPendingDelete = it }
+        }
+        if (hasMore && !expanded) {
+            ShowMoreButton(enabled = enabled) { expanded = true }
         }
         NewCardHeader(controller, enabled)
     }
@@ -583,26 +579,25 @@ private fun NewCardHeader(controller: HiPayCardEntryController, enabled: Boolean
     }
 }
 
-/** "Saved cards" header, collapsible in the new-card branch: a button re-expanding the full list. */
+/** "Show more" control (story 12-9): reveals the saved cards beyond the display count. A centered
+ *  button with a downward chevron; once tapped the full list is shown and the control disappears. */
 @Composable
-private fun SavedCardsCollapsibleHeader(expanded: Boolean, enabled: Boolean, onToggle: () -> Unit) {
-    val expandState = cardString(
-        if (expanded) CardEntryStringKey.A11Y_EXPANDED else CardEntryStringKey.A11Y_COLLAPSED,
-    )
+private fun ShowMoreButton(enabled: Boolean, onClick: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
-            .clickable(enabled = enabled, role = Role.Button) { onToggle() }
-            .testTag(HiPayCardEntryTags.SAVED_CARDS_HEADER)
-            .semantics(mergeDescendants = true) { stateDescription = expandState },
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .testTag(HiPayCardEntryTags.SHOW_MORE),
     ) {
-        SectionHeader(
-            text = cardString(CardEntryStringKey.LABEL_SAVED_CARDS),
-            modifier = Modifier.weight(1f),
+        Text(
+            text = cardString(CardEntryStringKey.LABEL_SHOW_MORE),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
         )
-        ChevronGlyph(expanded)
+        ChevronGlyph(expanded = true) // decorative ▾ — the button label carries the meaning for a11y
     }
 }
 

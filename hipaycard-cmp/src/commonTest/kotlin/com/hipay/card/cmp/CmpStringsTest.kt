@@ -73,6 +73,7 @@ class CmpStringsTest {
             CardEntryStringKey.A11Y_SAVED_CARD to "%1\$s finishing %2\$s, expires %3\$s",
             CardEntryStringKey.A11Y_EXPANDED to "expanded",
             CardEntryStringKey.A11Y_COLLAPSED to "collapsed",
+            CardEntryStringKey.LABEL_SHOW_MORE to "Show more",
             CardEntryStringKey.LABEL_DELETE_CARD to "Delete card",
             CardEntryStringKey.CONFIRM_DELETE_CARD to
                 "Remove this saved card? You can save it again next time you pay.",

@@ -7,12 +7,14 @@ import androidx.compose.runtime.setValue
 import com.hipay.card.CardTokenizer
 import com.hipay.card.model.CardInfo
 import com.hipay.card.model.CardToken
+import com.hipay.card.store.DEFAULT_SAVED_CARDS_DISPLAY_COUNT
 import com.hipay.card.store.OneClickError
 import com.hipay.card.store.OneClickErrorReason
 import com.hipay.card.store.SavedCard
 import com.hipay.card.store.SavedCardOutcome
 import com.hipay.card.store.SecureCardStore
 import com.hipay.card.store.cardNoLongerValidOrNull
+import com.hipay.card.store.coerceSavedCardsDisplayCount
 import com.hipay.card.store.oneClickReasonForOutcome
 import com.hipay.card.store.savedCardExpiredNow
 import com.hipay.card.store.savedCardFromToken
@@ -75,7 +77,14 @@ public class CmpCardController(
     /** Optional host scope for the async backend network resolution (@since 0.3.0); when null
      *  the controller owns one (main-immediate) and cancels it in [dispose]. */
     scope: CoroutineScope? = null,
+    /** How many saved cards the one-click UI shows before a "Show more" control.
+     *  Additive, default [DEFAULT_SAVED_CARDS_DISPLAY_COUNT] (3), clamped 1..10; bounds display only
+     *  — every saved card is still persisted. */
+    savedCardsDisplayCount: Int = DEFAULT_SAVED_CARDS_DISPLAY_COUNT,
 ) {
+    /** The clamped (1..10) saved-cards display count — see the constructor parameter. */
+    public val savedCardsDisplayCount: Int = coerceSavedCardsDisplayCount(savedCardsDisplayCount)
+
     public enum class Field { HOLDER, NUMBER, EXPIRY, CVC }
 
     // The owned scope is created LAZILY (on the first resolve): construction must not touch

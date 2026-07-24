@@ -31,8 +31,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * One-click UI on the card component — sections, multi-card list, selection, collapse, save
- * switch — against the real store (seeded per test). No network: nothing here reaches the gateway.
+ * One-click UI on the card component — sections, multi-card list, selection, "Show more"
+ * save switch — against the real store (seeded per test). No network: nothing reaches the gateway.
  */
 @RunWith(AndroidJUnit4::class)
 class OneClickEntryUiTest {
@@ -64,6 +64,23 @@ class OneClickEntryUiTest {
                     SavedCard(
                         token = i.toString().repeat(64), maskedPan = pan, network = net,
                         holder = holder, expiryMonth = "12", expiryYear = "2031",
+                    ),
+                    consentGiven = true,
+                ),
+            )
+        }
+    }
+
+    /** Seeds [n] distinct cards in order → the store's MRU-first list is [n-1 … 0]. */
+    private fun seedNCards(n: Int) = runBlocking(Dispatchers.IO) {
+        val store = createSecureCardStore(context, config)
+        repeat(n) { i ->
+            assertTrue(
+                store.save(
+                    SavedCard(
+                        token = i.toString().repeat(64),
+                        maskedPan = "411111xxxxxx${1000 + i}",
+                        network = "VISA", holder = "CARD $i", expiryMonth = "12", expiryYear = "2031",
                     ),
                     consentGiven = true,
                 ),
@@ -182,45 +199,51 @@ class OneClickEntryUiTest {
         assertTrue(controller.canPay)
     }
 
+    // collapse-to-MRU model is replaced by a display count + "Show more".
     @Test
-    fun newCardBranch_collapsesListToMru_andHeaderChevronReexpands() {
-        seedCards()
+    fun showMore_revealsCardsBeyondTheDefaultDisplayCount() {
+        seedNCards(4) // default display count = 3
         val controller = HiPayCardEntryController(config, oneClickEnabled = true)
-        composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
+        composeRule.setContent { HiPayCardEntry(controller) }
         awaitSections()
-
-        // Enter the new-card branch: the list collapses to the single most-recent card,
-        // the "Saved cards" header becomes a collapsed button.
-        composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD).performClick()
+        // The first 3 (MRU-first) show; the 4th is behind "Show more".
         assertEquals(1, countTag(HiPayCardEntryTags.savedCard(0)))
-        assertEquals(0, countTag(HiPayCardEntryTags.savedCard(1))) // collapsed away
-        composeRule.onNodeWithTag(HiPayCardEntryTags.SAVED_CARDS_HEADER)
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "collapsed"))
-
-        // Re-expand via the header: the full list comes back, header reads "expanded".
-        composeRule.onNodeWithTag(HiPayCardEntryTags.SAVED_CARDS_HEADER).performClick()
-        composeRule.onNodeWithTag(HiPayCardEntryTags.SAVED_CARDS_HEADER)
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "expanded"))
-        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(1)))
         assertEquals(1, countTag(HiPayCardEntryTags.savedCard(2)))
+        assertEquals(0, countTag(HiPayCardEntryTags.savedCard(3)))
+        assertEquals(1, countTag(HiPayCardEntryTags.SHOW_MORE))
+        // Reveal the rest; the control disappears once expanded.
+        composeRule.onNodeWithTag(HiPayCardEntryTags.SHOW_MORE).performClick()
+        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(3)))
+        assertEquals(0, countTag(HiPayCardEntryTags.SHOW_MORE))
     }
 
     @Test
-    fun reenteringNewCard_afterAManualReexpand_collapsesTheListAgain() {
-        seedCards()
+    fun showMore_absentWhenAllCardsFitTheDisplayCount() {
+        seedCards() // 3 cards, default display count 3 → nothing hidden
         val controller = HiPayCardEntryController(config, oneClickEnabled = true)
-        composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
+        composeRule.setContent { HiPayCardEntry(controller) }
         awaitSections()
-        // Enter new-card, manually re-expand the list, then pick a card (leaves the new-card branch).
-        composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD).performClick()
-        composeRule.onNodeWithTag(HiPayCardEntryTags.SAVED_CARDS_HEADER).performClick() // expand
-        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(1)))
-        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(1)).performClick() // → saved-card branch
-        // Re-enter new-card: the list must collapse again (the manual expand was forgotten).
-        composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD).performClick()
-        assertEquals(0, countTag(HiPayCardEntryTags.savedCard(1)))
-        composeRule.onNodeWithTag(HiPayCardEntryTags.SAVED_CARDS_HEADER)
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "collapsed"))
+        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(2)))
+        assertEquals(0, countTag(HiPayCardEntryTags.SHOW_MORE))
+    }
+
+    @Test
+    fun displayCount_isClampedToOneToTen() {
+        assertEquals(1, HiPayCardEntryController(config, savedCardsDisplayCount = 0).savedCardsDisplayCount)
+        assertEquals(10, HiPayCardEntryController(config, savedCardsDisplayCount = 99).savedCardsDisplayCount)
+        assertEquals(2, HiPayCardEntryController(config, savedCardsDisplayCount = 2).savedCardsDisplayCount)
+    }
+
+    @Test
+    fun customDisplayCount_boundsTheVisibleList() {
+        seedCards() // 3 cards
+        val controller =
+            HiPayCardEntryController(config, oneClickEnabled = true, savedCardsDisplayCount = 1)
+        composeRule.setContent { HiPayCardEntry(controller) }
+        awaitSections()
+        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(0)))
+        assertEquals(0, countTag(HiPayCardEntryTags.savedCard(1))) // hidden behind Show more
+        assertEquals(1, countTag(HiPayCardEntryTags.SHOW_MORE))
     }
 
     @Test

@@ -77,26 +77,34 @@ class SecureCardStoreTest {
         assertEquals(2, s.list().size)
     }
 
-    // cap 3 + LRU
-    @Test fun caps_at_three_evicting_least_recently_used() {
+    // storage cap 20 + LRU (12-9: raised from 3 so a valid card is never evicted below the ceiling)
+    @Test fun keeps_more_than_three_cards_no_eviction_below_cap() {
         val s = store()
-        s.save(card(pan = "1", token = "a"), true)
-        s.save(card(pan = "2", token = "b"), true)
-        s.save(card(pan = "3", token = "c"), true)
-        s.save(card(pan = "4", token = "d"), true)
+        (1..4).forEach { s.save(card(pan = it.toString(), token = "t$it"), true) }
+        assertEquals(4, s.list().size)
+        assertEquals(setOf("1", "2", "3", "4"), s.list().map { it.maskedPan }.toSet())
+    }
+
+    @Test fun keeps_up_to_twenty_cards() {
+        val s = store()
+        (1..20).forEach { s.save(card(pan = it.toString(), token = "t$it"), true) }
+        assertEquals(20, s.list().size)
+    }
+
+    @Test fun caps_at_twenty_evicting_least_recently_used() {
+        val s = store()
+        (1..21).forEach { s.save(card(pan = it.toString(), token = "t$it"), true) }
         val pans = s.list().map { it.maskedPan }.toSet()
-        assertEquals(3, pans.size)
-        assertFalse("1" in pans)
-        assertTrue("4" in pans)
+        assertEquals(20, pans.size)
+        assertFalse("1" in pans) // the oldest is evicted only at the 21st card
+        assertTrue("21" in pans) // the newest is kept
     }
 
     @Test fun touch_updates_recency_so_lru_evicts_the_truly_oldest() {
         val s = store()
-        s.save(card(pan = "1"), true)
-        s.save(card(pan = "2"), true)
-        s.save(card(pan = "3"), true)
+        (1..20).forEach { s.save(card(pan = it.toString()), true) } // fill to the cap
         s.touch(s.list().first { it.maskedPan == "1" }) // 1 becomes most-recent
-        s.save(card(pan = "4"), true)                    // evicts 2 (now oldest), not 1
+        s.save(card(pan = "21"), true)                   // evicts 2 (now oldest), not 1
         val pans = s.list().map { it.maskedPan }.toSet()
         assertTrue("1" in pans)
         assertFalse("2" in pans)
@@ -230,12 +238,12 @@ class SecureCardStoreTest {
         assertEquals(listOf("1", "3", "2"), s.list().map { it.maskedPan })
     }
 
-    @Test fun overwrite_at_cap_does_not_evict_another_card() {
+    @Test fun overwrite_does_not_create_a_duplicate_or_evict_another_card() {
         val s = store()
         s.save(card(pan = "1"), true)
         s.save(card(pan = "2"), true)
         s.save(card(pan = "3"), true)
-        s.save(card(pan = "2", token = "renewed"), true) // in-place overwrite while at cap
+        s.save(card(pan = "2", token = "renewed"), true) // in-place overwrite (same identity)
         val list = s.list()
         assertEquals(setOf("1", "2", "3"), list.map { it.maskedPan }.toSet())
         assertEquals("renewed", list.first { it.maskedPan == "2" }.token)

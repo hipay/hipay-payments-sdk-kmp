@@ -306,17 +306,15 @@ private fun CmpSavedCardsSections(
         }
         return
     }
-    var savedCardsExpanded by rememberSaveable { mutableStateOf(false) }
-    val newCardBranch = controller.selectedSavedCard == null
-    // Each fresh new-card entry starts collapsed: forget a manual re-expand once the branch is left,
-    // so the collapse-to-MRU behaviour never silently stops after the payer expands the list once.
-    LaunchedEffect(newCardBranch) { if (!newCardBranch) savedCardsExpanded = false }
-    val collapsible = newCardBranch && cards.size > 1
-    val showAllCards = !newCardBranch || savedCardsExpanded
-    val visibleCards = if (showAllCards) cards else cards.take(1)
+    // Show the most-recent `displayCount` cards; a "Show more" control reveals the rest.
+    // This bounds only what is shown — every saved card is retained by the store (cap 20).
+    val displayCount = controller.savedCardsDisplayCount
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val hasMore = cards.size > displayCount
+    val visibleCards = if (expanded || !hasMore) cards else cards.take(displayCount)
 
-    // Delete is a gesture (long-press) / a11y-action affordance — no visible button. The pending
-    // card drives the confirmation dialog; it lives in the UI, not the controller.
+    // Delete is a gesture (long-press) / a11y-action affordance. The pending card drives the
+    // confirmation dialog; it lives in the UI, not the controller.
     var cardPendingDelete by remember { mutableStateOf<SavedCard?>(null) }
     // Drop a pending confirmation if its card vanishes from the list underneath the open dialog
     // (a concurrent refresh on app-foreground, or an expiry purge) — otherwise the payer would
@@ -327,13 +325,7 @@ private fun CmpSavedCardsSections(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth().selectableGroup(),
     ) {
-        if (collapsible) {
-            CmpSavedCardsCollapsibleHeader(expanded = savedCardsExpanded, enabled = enabled) {
-                savedCardsExpanded = !savedCardsExpanded
-            }
-        } else {
-            CmpSectionHeader(cmpString(CardEntryStringKey.LABEL_SAVED_CARDS))
-        }
+        CmpSectionHeader(cmpString(CardEntryStringKey.LABEL_SAVED_CARDS))
         if (errorSurface == OneClickErrorSurface.SECTION && oneClickError != null) {
             OneClickErrorText(oneClickError.reason.messageKey())
         }
@@ -346,6 +338,9 @@ private fun CmpSavedCardsSections(
                     errorSurface == OneClickErrorSurface.INLINE_CARD && it.matches(card)
                 },
             ) { cardPendingDelete = it }
+        }
+        if (hasMore && !expanded) {
+            CmpShowMoreButton(enabled = enabled) { expanded = true }
         }
         CmpNewCardHeader(controller, enabled)
     }
@@ -497,25 +492,24 @@ private fun CmpNewCardHeader(controller: CmpCardController, enabled: Boolean) {
     }
 }
 
-/** "Saved cards" header, collapsible in the new-card branch: a button re-expanding the full list. */
+/** "Show more" control (story 12-9): reveals the saved cards beyond the display count. A centered
+ *  button with a downward chevron; once tapped the full list is shown and the control disappears. */
 @Composable
-private fun CmpSavedCardsCollapsibleHeader(expanded: Boolean, enabled: Boolean, onToggle: () -> Unit) {
-    val expandState = cmpString(
-        if (expanded) CardEntryStringKey.A11Y_EXPANDED else CardEntryStringKey.A11Y_COLLAPSED,
-    )
+private fun CmpShowMoreButton(enabled: Boolean, onClick: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
-            .clickable(enabled = enabled, role = Role.Button) { onToggle() }
-            .semantics(mergeDescendants = true) { stateDescription = expandState },
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
     ) {
-        CmpSectionHeader(
-            text = cmpString(CardEntryStringKey.LABEL_SAVED_CARDS),
-            modifier = Modifier.weight(1f),
+        Text(
+            text = cmpString(CardEntryStringKey.LABEL_SHOW_MORE),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
         )
-        CmpChevronGlyph(expanded)
+        CmpChevronGlyph(expanded = true) // decorative ▾ — the button label carries the meaning for a11y
     }
 }
 

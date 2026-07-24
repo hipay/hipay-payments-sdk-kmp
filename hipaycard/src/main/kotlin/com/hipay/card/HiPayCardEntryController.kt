@@ -22,12 +22,14 @@ import com.hipay.card.validation.CardValidators
 import com.hipay.card.validation.ValidationReason
 import com.hipay.card.validation.AllowedNetworks
 import com.hipay.card.model.CardToken
+import com.hipay.card.store.DEFAULT_SAVED_CARDS_DISPLAY_COUNT
 import com.hipay.card.store.OneClickError
 import com.hipay.card.store.OneClickErrorReason
 import com.hipay.card.store.SavedCard
 import com.hipay.card.store.SavedCardOutcome
 import com.hipay.card.store.SecureCardStore
 import com.hipay.card.store.cardNoLongerValidOrNull
+import com.hipay.card.store.coerceSavedCardsDisplayCount
 import com.hipay.card.store.createSecureCardStore
 import com.hipay.card.store.oneClickReasonForOutcome
 import com.hipay.card.store.savedCardExpiredNow
@@ -79,7 +81,14 @@ public class HiPayCardEntryController(
      *  Headless-host note: once [refreshSavedCards] has pre-selected a saved card, a plain [pay]
      *  call routes to that stored token (no CVV) — call [selectNewCard] first to force card entry. */
     public val oneClickEnabled: Boolean = false,
+    /** How many saved cards the one-click UI shows before a "Show more" control.
+     *  Additive, defaulted to [DEFAULT_SAVED_CARDS_DISPLAY_COUNT] (3), clamped to 1..10. Bounds only
+     *  the DISPLAY — every saved card is still persisted (see the storage cap in SecureCardStore). */
+    savedCardsDisplayCount: Int = DEFAULT_SAVED_CARDS_DISPLAY_COUNT,
 ) {
+    /** The clamped (1..10) saved-cards display count — see the constructor parameter. */
+    public val savedCardsDisplayCount: Int = coerceSavedCardsDisplayCount(savedCardsDisplayCount)
+
     /** Field identifiers (for blur tracking / first-invalid focus — error UI is story 7.4). */
     public enum class Field { HOLDER, NUMBER, EXPIRY, CVC }
 

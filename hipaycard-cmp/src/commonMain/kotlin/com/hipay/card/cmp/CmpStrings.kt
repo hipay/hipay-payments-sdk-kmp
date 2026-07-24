@@ -120,6 +120,7 @@ private val cmpStringsEn: Map<CardEntryStringKey, String> = mapOf(
     CardEntryStringKey.A11Y_SAVED_CARD to "%1\$s finishing %2\$s, expires %3\$s",
     CardEntryStringKey.A11Y_EXPANDED to "expanded",
     CardEntryStringKey.A11Y_COLLAPSED to "collapsed",
+    CardEntryStringKey.LABEL_SHOW_MORE to "Show more",
     // PROVISIONAL delete copy — NOT yet legally/UX approved; finalized in a later release.
     CardEntryStringKey.LABEL_DELETE_CARD to "Delete card",
     CardEntryStringKey.CONFIRM_DELETE_CARD to "Remove this saved card? You can save it again next time you pay.",
@@ -161,6 +162,7 @@ private val cmpStringsFr: Map<CardEntryStringKey, String> = mapOf(
     CardEntryStringKey.A11Y_SAVED_CARD to "%1\$s se terminant par %2\$s, expire %3\$s",
     CardEntryStringKey.A11Y_EXPANDED to "déplié",
     CardEntryStringKey.A11Y_COLLAPSED to "replié",
+    CardEntryStringKey.LABEL_SHOW_MORE to "Afficher plus",
     // PROVISIONAL delete copy — see the English catalog note.
     CardEntryStringKey.LABEL_DELETE_CARD to "Supprimer la carte",
     CardEntryStringKey.CONFIRM_DELETE_CARD to "Supprimer cette carte enregistrée ? Vous pourrez l'enregistrer à nouveau lors d'un prochain paiement.",
@@ -202,6 +204,7 @@ private val cmpStringsIt: Map<CardEntryStringKey, String> = mapOf(
     CardEntryStringKey.A11Y_SAVED_CARD to "%1\$s che termina con %2\$s, scade %3\$s",
     CardEntryStringKey.A11Y_EXPANDED to "espanso",
     CardEntryStringKey.A11Y_COLLAPSED to "compresso",
+    CardEntryStringKey.LABEL_SHOW_MORE to "Mostra altre",
     // PROVISIONAL delete copy — see the English catalog note.
     CardEntryStringKey.LABEL_DELETE_CARD to "Elimina carta",
     CardEntryStringKey.CONFIRM_DELETE_CARD to "Rimuovere questa carta salvata? Potrai salvarla di nuovo al prossimo pagamento.",

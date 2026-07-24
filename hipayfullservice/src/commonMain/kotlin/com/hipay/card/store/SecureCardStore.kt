@@ -4,8 +4,12 @@ package com.hipay.card.store
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-/** Max saved cards kept on the device. */
-private const val MAX_CARDS = 3
+/**
+ * Max saved cards kept on the device. Raised 3 → 20 (story 12-9): a valid card is never evicted
+ * below this ceiling; LRU eviction bites only at the 20th-card boundary. The number of cards the UI
+ * *shows* is a separate, integrator-configurable display count (default 3) — see the card component.
+ */
+private const val MAX_CARDS = 20
 
 /** Storage format version — bump and migrate when the persisted shape changes. */
 internal const val SAVED_CARDS_VERSION = 1
@@ -33,7 +37,7 @@ private inline val storeJson: Json get() = Json.Default
 /**
  * Saved-card store LOGIC — platform-free, single-sourced in Kotlin.
  *
- * Owns: consent gate, overwrite-on-match by masked-PAN+expiry, cap-3 + Least Recently Used (LRU),
+ * Owns: consent gate, overwrite-on-match by masked-PAN+expiry, storage cap (MAX_CARDS) + Least Recently Used (LRU),
  * expired-card auto-purge, versioned (de)serialization (fail-closed on an unknown version), and
  * fail-soft graceful degrade (any storage/parse failure ⇒ behaves as "no saved cards", never throws).
  * Mutating operations return whether the change was persisted, so the caller can react — e.g. surface
@@ -59,7 +63,7 @@ public class SecureCardStore(
 
     /**
      * Persist [card] only if [consentGiven] — consent is enforced at the store, not just in the UI.
-     * Overwrites any card with the same identity (masked-PAN + expiry); enforces the 3-card cap by
+     * Overwrites any card with the same identity (masked-PAN + expiry); enforces the storage cap by
      * evicting the least-recently-used. Returns true iff the card was persisted (false without consent
      * or on a storage-write failure).
      */
