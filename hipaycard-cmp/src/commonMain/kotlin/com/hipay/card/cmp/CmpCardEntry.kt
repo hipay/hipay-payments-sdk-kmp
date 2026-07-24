@@ -2,7 +2,7 @@
 package com.hipay.card.cmp
 
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -430,7 +430,12 @@ private fun CmpSavedCardCell(
         // behaviour.
         val actionWidthPx = with(LocalDensity.current) { 56.dp.toPx() }
         var swipeOffset by remember(card) { mutableStateOf(0f) }
-        val revealOffset by animateFloatAsState(swipeOffset, label = "savedcard.swipe")
+        // The animated position is keyed to the card so a list reorder (after a deletion) starts the
+        // row closed instead of animating the previous row's reveal onto whichever card now sits in
+        // this slot.
+        val reveal = remember(card) { Animatable(0f) }
+        LaunchedEffect(swipeOffset) { reveal.animateTo(swipeOffset) }
+        val revealOffset = reveal.value
         // A (re)selection, or the row becoming disabled (payment in flight), snaps the reveal shut.
         LaunchedEffect(isSelected, enabled) { if (isSelected || !enabled) swipeOffset = 0f }
         val swipeState = rememberDraggableState { delta ->
@@ -439,7 +444,9 @@ private fun CmpSavedCardCell(
         Box(modifier = Modifier.fillMaxWidth()) {
             // Trash revealed behind the row, pinned to the end — present only while revealed so it
             // never leaks into the a11y tree at rest (the custom "Delete" action covers a11y).
-            if (revealOffset < -1f) {
+            // Gated on the target offset (not the animated one) so it disappears at once when the
+            // reveal is dismissed — never left tappable during the close animation.
+            if (swipeOffset < -1f) {
                 IconButton(
                     onClick = { swipeOffset = 0f; onRequestDelete(card) },
                     enabled = enabled,
