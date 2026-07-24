@@ -35,6 +35,7 @@
     <string name="A11Y_EXPANDED">expanded</string>
     <string name="A11Y_COLLAPSED">collapsed</string>
     <string name="LABEL_SHOW_MORE">Show more</string>
+    <string name="LABEL_SHOW_LESS">Show less</string>
     <!-- PROVISIONAL delete copy — NOT yet legally/UX approved; finalized in a later release. -->
     <string name="LABEL_DELETE_CARD">Delete card</string>
     <string name="CONFIRM_DELETE_CARD">Remove this saved card? You can save it again next time you pay.</string>

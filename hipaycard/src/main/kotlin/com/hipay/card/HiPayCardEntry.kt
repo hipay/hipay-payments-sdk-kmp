@@ -355,14 +355,16 @@ private fun CardEntryContent(
 }
 
 /**
- * The two one-click zones sharing one section-header treatment: "Saved cards" (the list of ≤3
- * saved cards, most-recent first) and "New card" (an actionable header whose chevron shows the
- * expanded state). The cells form a single-selection group — exactly one selection at all times
- * (a card, or "New card"); no visual radio indicator by design.
+ * The two one-click zones sharing one section-header treatment: "Saved cards" (the most-recent
+ * `savedCardsDisplayCount` cards, most-recent first) and "New card" (an actionable header whose
+ * chevron shows the expanded state). The cells form a single-selection group — exactly one selection
+ * at all times (a card, or "New card"); no visual radio indicator by design.
  *
  * The most-recent `savedCardsDisplayCount` cards are shown (MRU-first, the most recent pre-selected);
- * when more cards are stored a "Show more" control reveals the rest (story 12-9). Every saved card is
- * retained by the store — the display count only bounds what is shown by default.
+ * when more cards are stored a "Show more / Show less" toggle reveals or hides the rest.
+ * The list force-expands (and "Show less" is disabled) while the selected card sits beyond the fold,
+ * so the paying card is never hidden. Every saved card is retained by the store — the display count
+ * only bounds what is shown by default.
  */
 @Composable
 private fun SavedCardsSections(
@@ -383,12 +385,18 @@ private fun SavedCardsSections(
         }
         return
     }
-    // Story 12-9: show the most-recent `displayCount` cards; a "Show more" control reveals the rest.
-    // This bounds only what is shown — every saved card is retained by the store (cap 20).
+    // Story 12-9: show the most-recent `displayCount` cards; a "Show more / Show less" toggle reveals
+    // or hides the rest. This bounds only what is shown — every saved card is retained (store cap 20).
     val displayCount = controller.savedCardsDisplayCount
-    var expanded by rememberSaveable { mutableStateOf(false) }
     val hasMore = cards.size > displayCount
-    val visibleCards = if (expanded || !hasMore) cards else cards.take(displayCount)
+    // If the selected card sits beyond the default fold, the list must stay open (the paying card is
+    // never hidden): force-expand and disable "Show less" while that holds. -1 (no saved-card
+    // selection, e.g. the new-card branch) is never beyond the fold.
+    val selectedIndex = cards.indexOfFirst { it == controller.selectedSavedCard }
+    val selectionBeyondFold = selectedIndex >= displayCount
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(selectionBeyondFold) { if (selectionBeyondFold) expanded = true }
+    val visibleCards = if (expanded) cards else cards.take(displayCount)
 
     // Delete is a gesture (long-press) / a11y-action affordance. The pending card drives the
     // confirmation dialog; it lives in the UI, not the controller.
@@ -417,8 +425,14 @@ private fun SavedCardsSections(
                 },
             ) { cardPendingDelete = it }
         }
-        if (hasMore && !expanded) {
-            ShowMoreButton(enabled = enabled) { expanded = true }
+        if (hasMore) {
+            // Persistent disclosure toggle: it stays present across toggles so screen-reader focus is
+            // not dropped and its expanded/collapsed state stays truthful. "Show less" is inert while
+            // the selection sits beyond the fold (collapsing would hide the paying card).
+            ShowMoreToggle(
+                expanded = expanded,
+                enabled = if (expanded) enabled && !selectionBeyondFold else enabled,
+            ) { expanded = !expanded }
         }
         NewCardHeader(controller, enabled)
     }
@@ -579,25 +593,39 @@ private fun NewCardHeader(controller: HiPayCardEntryController, enabled: Boolean
     }
 }
 
-/** "Show more" control (story 12-9): reveals the saved cards beyond the display count. A centered
- *  button with a downward chevron; once tapped the full list is shown and the control disappears. */
+/** "Show more / Show less" disclosure toggle (story 12-9): reveals or hides the saved cards beyond
+ *  the display count. A centered button whose expanded/collapsed state carries the meaning for a11y
+ *  (the chevron is decorative); it stays present across toggles so screen-reader focus is retained.
+ *  When [enabled] is false while expanded, "Show less" is inert (the selection sits beyond the fold). */
 @Composable
-private fun ShowMoreButton(enabled: Boolean, onClick: () -> Unit) {
+private fun ShowMoreToggle(expanded: Boolean, enabled: Boolean, onToggle: () -> Unit) {
+    val expandState = cardString(
+        if (expanded) CardEntryStringKey.A11Y_EXPANDED else CardEntryStringKey.A11Y_COLLAPSED,
+    )
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .testTag(HiPayCardEntryTags.SHOW_MORE),
+            .clickable(enabled = enabled, role = Role.Button, onClick = onToggle)
+            .testTag(HiPayCardEntryTags.SHOW_MORE)
+            .semantics(mergeDescendants = true) { stateDescription = expandState },
     ) {
         Text(
-            text = cardString(CardEntryStringKey.LABEL_SHOW_MORE),
+            text = cardString(
+                if (expanded) CardEntryStringKey.LABEL_SHOW_LESS else CardEntryStringKey.LABEL_SHOW_MORE,
+            ),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.primary,
         )
-        ChevronGlyph(expanded = true) // decorative ▾ — the button label carries the meaning for a11y
+        // Decorative direction cue — collapsed points down (reveal), expanded points up (hide).
+        Text(
+            text = if (expanded) "▴" else "▾",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.clearAndSetSemantics {},
+        )
     }
 }
 

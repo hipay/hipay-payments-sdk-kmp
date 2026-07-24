@@ -35,6 +35,7 @@ public enum class CardEntryStringKey {
     A11Y_EXPANDED,
     A11Y_COLLAPSED,
     LABEL_SHOW_MORE,
+    LABEL_SHOW_LESS,
     LABEL_DELETE_CARD,
     CONFIRM_DELETE_CARD,
     LABEL_CANCEL,

@@ -4,6 +4,8 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
@@ -199,9 +201,9 @@ class OneClickEntryUiTest {
         assertTrue(controller.canPay)
     }
 
-    // collapse-to-MRU model is replaced by a display count + "Show more".
+    // collapse-to-MRU model is replaced by a display count + a "Show more / Show less" toggle.
     @Test
-    fun showMore_revealsCardsBeyondTheDefaultDisplayCount() {
+    fun showMore_togglesCardsBeyondTheDefaultDisplayCount() {
         seedNCards(4) // default display count = 3
         val controller = HiPayCardEntryController(config, oneClickEnabled = true)
         composeRule.setContent { HiPayCardEntry(controller) }
@@ -211,10 +213,34 @@ class OneClickEntryUiTest {
         assertEquals(1, countTag(HiPayCardEntryTags.savedCard(2)))
         assertEquals(0, countTag(HiPayCardEntryTags.savedCard(3)))
         assertEquals(1, countTag(HiPayCardEntryTags.SHOW_MORE))
-        // Reveal the rest; the control disappears once expanded.
+        // Expand: the rest appears and the toggle STAYS present (now "Show less").
         composeRule.onNodeWithTag(HiPayCardEntryTags.SHOW_MORE).performClick()
         assertEquals(1, countTag(HiPayCardEntryTags.savedCard(3)))
-        assertEquals(0, countTag(HiPayCardEntryTags.SHOW_MORE))
+        assertEquals(1, countTag(HiPayCardEntryTags.SHOW_MORE))
+        // Collapse again: the 4th hides, the toggle stays.
+        composeRule.onNodeWithTag(HiPayCardEntryTags.SHOW_MORE).performClick()
+        assertEquals(0, countTag(HiPayCardEntryTags.savedCard(3)))
+        assertEquals(1, countTag(HiPayCardEntryTags.SHOW_MORE))
+    }
+
+    // Story 12-9: the paying card is never hidden — selecting a card beyond the default fold
+    // force-expands the list and disables "Show less" until a card within the fold is selected.
+    @Test
+    fun selectingCardBeyondFold_forcesExpandAndDisablesShowLess() {
+        seedNCards(4) // default display count = 3
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        composeRule.setContent { HiPayCardEntry(controller) }
+        awaitSections()
+        // Expand, then select the 4th card (index 3, beyond the fold of 3).
+        composeRule.onNodeWithTag(HiPayCardEntryTags.SHOW_MORE).performClick()
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(3)).performClick()
+        assertEquals(controller.savedCards[3], controller.selectedSavedCard)
+        // The list stays expanded (4th visible) and "Show less" is disabled.
+        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(3)))
+        composeRule.onNodeWithTag(HiPayCardEntryTags.SHOW_MORE).assertIsNotEnabled()
+        // Selecting a card within the fold re-enables "Show less".
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).performClick()
+        composeRule.onNodeWithTag(HiPayCardEntryTags.SHOW_MORE).assertIsEnabled()
     }
 
     @Test
