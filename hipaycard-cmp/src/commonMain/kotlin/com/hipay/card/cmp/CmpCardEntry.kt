@@ -141,15 +141,21 @@ internal fun CmpCardEntry(
         LaunchedEffect(controller) { controller.refreshSavedCards() }
     }
 
+    val reduceMotion = reduceMotionEnabled()
+
     CompositionLocalProvider(
         LocalHiPayCardLanguage provides cardLanguage,
         LocalHiPayCardStyle provides style,
     ) {
     Column(
         // Animate the expand/collapse only when one-click is on — an opted-out integrator must
-        // see no new animation of pre-existing size changes (errors, tooltip).
+        // see no new animation of pre-existing size changes (errors, tooltip). Suppressed under the
+        // reduce-motion accessibility setting (WCAG 2.3.3): the size change then applies instantly.
         modifier = modifier.fillMaxWidth().padding(16.dp)
-            .then(if (controller.oneClickEnabled) Modifier.animateContentSize() else Modifier),
+            .then(
+                if (controller.oneClickEnabled && !reduceMotion) Modifier.animateContentSize()
+                else Modifier,
+            ),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         // Also composed when the list just emptied with a section-level one-click error to show
@@ -434,7 +440,11 @@ private fun CmpSavedCardCell(
         // row closed instead of animating the previous row's reveal onto whichever card now sits in
         // this slot.
         val reveal = remember(card) { Animatable(0f) }
-        LaunchedEffect(swipeOffset) { reveal.animateTo(swipeOffset) }
+        // Reduce-motion (WCAG 2.3.3): snap the reveal to its target instead of sliding it.
+        val reduceMotion = reduceMotionEnabled()
+        LaunchedEffect(swipeOffset) {
+            if (reduceMotion) reveal.snapTo(swipeOffset) else reveal.animateTo(swipeOffset)
+        }
         val revealOffset = reveal.value
         // A (re)selection, or the row becoming disabled (payment in flight), snaps the reveal shut.
         LaunchedEffect(isSelected, enabled) { if (isSelected || !enabled) swipeOffset = 0f }

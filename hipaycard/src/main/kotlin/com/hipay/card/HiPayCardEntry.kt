@@ -2,6 +2,7 @@
 package com.hipay.card
 
 import android.content.res.Configuration
+import android.provider.Settings
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.BorderStroke
@@ -229,14 +230,20 @@ private fun CardEntryContent(
         LaunchedEffect(controller) { controller.refreshSavedCards() }
     }
 
+    val reduceMotion = reduceMotionEnabled()
+
     CompositionLocalProvider(LocalHiPayCardStyle provides style) {
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(16.dp)
             // Animate the expand/collapse only when one-click is on — an opted-out integrator must
-            // see no new animation of pre-existing size changes (errors, tooltip).
-            .then(if (controller.oneClickEnabled) Modifier.animateContentSize() else Modifier)
+            // see no new animation of pre-existing size changes (errors, tooltip). Suppressed under
+            // the reduce-motion accessibility setting (WCAG 2.3.3): the size change applies instantly.
+            .then(
+                if (controller.oneClickEnabled && !reduceMotion) Modifier.animateContentSize()
+                else Modifier,
+            )
             .then(if (setsAccessibilityOrder) Modifier.semantics { isTraversalGroup = true } else Modifier),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -518,7 +525,11 @@ private fun SavedCardCell(
         // row closed instead of animating the previous row's reveal onto whichever card now sits in
         // this slot.
         val reveal = remember(card) { Animatable(0f) }
-        LaunchedEffect(swipeOffset) { reveal.animateTo(swipeOffset) }
+        // Reduce-motion (WCAG 2.3.3): snap the reveal to its target instead of sliding it.
+        val reduceMotion = reduceMotionEnabled()
+        LaunchedEffect(swipeOffset) {
+            if (reduceMotion) reveal.snapTo(swipeOffset) else reveal.animateTo(swipeOffset)
+        }
         val revealOffset = reveal.value
         // A (re)selection, or the row becoming disabled (payment in flight), snaps the reveal shut
         // so no orphaned trash lingers and delete stays unreachable while processing.
@@ -918,5 +929,20 @@ private fun NetworkChips(controller: HiPayCardEntryController, modifier: Modifie
                 }
             }
         }
+    }
+}
+
+/**
+ * Whether the "Remove animations" accessibility setting is on. It zeroes the global animation
+ * scales; a scale of 0 is the accepted signal that the user wants no motion (WCAG 2.3.3). Absent
+ * off-device (JVM host tests) → "motion allowed".
+ */
+@Composable
+private fun reduceMotionEnabled(): Boolean {
+    val resolver = LocalContext.current.contentResolver
+    return try {
+        Settings.Global.getFloat(resolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
+    } catch (_: Settings.SettingNotFoundException) {
+        false
     }
 }
