@@ -3,6 +3,7 @@ package com.hipay.card
 
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -129,6 +130,10 @@ internal fun HiPayCardEntryStyle.fieldColors(): TextFieldColors {
     }
 }
 
+/** Space reserved above the field border for the floated outlined label (≈ half a `bodySmall`
+ *  line) so its top half is not clipped — mirrors the reserve Material3's OutlinedTextField adds. */
+private val FLOATING_LABEL_RESERVE = 8.dp
+
 /**
  * The styled card field: `BasicTextField` + `OutlinedTextFieldDefaults.DecorationBox`/
  * `Container` — the documented Material3 route to a custom border thickness and a custom
@@ -172,7 +177,11 @@ internal fun HiPayStyledField(
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = modifier.heightIn(min = style.fieldHeight.dp),
+        // Reserve room above the border for the floated (outlined) label: the compact `fieldHeight`
+        // puts the border at the field's top edge, so the label's top half that straddles it gets
+        // clipped. The full Material3 OutlinedTextField reserves this in its measure policy; the
+        // BasicTextField + DecorationBox route does not, so add it here.
+        modifier = modifier.padding(top = FLOATING_LABEL_RESERVE).heightIn(min = style.fieldHeight.dp),
         enabled = enabled,
         textStyle = textStyle,
         keyboardOptions = keyboardOptions,
