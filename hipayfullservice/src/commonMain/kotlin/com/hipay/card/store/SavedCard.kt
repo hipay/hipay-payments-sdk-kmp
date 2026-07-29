@@ -20,19 +20,15 @@ public class SavedCard(
     public val expiryYear: String,
 ) {
     /**
-     * Identity for dedup/overwrite: normalised masked PAN + expiry — never the token, never last4 alone.
-     * The masked PAN is reduced to its `[0-9x]` characters (case-insensitive) so a cosmetic re-mask of
-     * the same card (spacing, uppercase X, differing BIN length) still matches; month/year are parsed
-     * to numbers (2-digit years normalised to 20xx) so `"30"` and `"2030"` are the same card. The parts
-     * are numeric-only, so the `|` delimiter is injection-safe.
+     * Identity for dedup/overwrite: the normalised masked PAN ONLY — never the token, never last4
+     * alone, and deliberately NOT the expiry. Re-saving the same card with a renewed expiry (and/or
+     * a changed holder) therefore updates the existing alias in place instead of creating a duplicate
+     * (one-click "save my card" AC: existing masked PAN → update, no doublon). The masked PAN is
+     * reduced to its `[0-9x]` characters (case-insensitive) so a cosmetic re-mask of the same card
+     * (spacing, uppercase X, differing BIN length) still matches.
      */
     internal val identity: String
-        get() {
-            val pan = maskedPan.lowercase().filter { it in '0'..'9' || it == 'x' }
-            val mm = expiryMonth.trim().toIntOrNull() ?: -1
-            val yyyy = normalizeYear(expiryYear) ?: -1
-            return "$pan|$mm|$yyyy"
-        }
+        get() = maskedPan.lowercase().filter { it in '0'..'9' || it == 'x' }
 
     // Never expose the token — mirror HiPayConfig/CardToken terseness.
     override fun toString(): String =

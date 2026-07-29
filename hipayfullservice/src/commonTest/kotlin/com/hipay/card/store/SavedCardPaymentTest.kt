@@ -41,8 +41,8 @@ class SavedCardPaymentTest {
 
     @Test
     fun missingIdentityFieldsFailSoftToNull() {
-        // pan + expiry form the store's overwrite identity: without them the
-        // card cannot be deduplicated, so nothing is persisted.
+        // A saved card needs its masked PAN (the dedup key) AND its expiry (stored + displayed) to
+        // be built at all: if any is missing the token can't yield a card, so nothing is persisted.
         assertNull(savedCardFromToken(fullToken(pan = null)))
         assertNull(savedCardFromToken(fullToken(month = null)))
         assertNull(savedCardFromToken(fullToken(year = null)))

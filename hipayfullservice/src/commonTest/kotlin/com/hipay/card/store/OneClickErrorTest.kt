@@ -39,12 +39,12 @@ class OneClickErrorTest {
     @Test
     fun matchesTheSameCardAcrossAReloadAndCosmeticRemask() {
         val error = OneClickError(card(), OneClickErrorReason.DECLINED)
-        // A fresh store read yields a new instance; a cosmetic re-mask (case, 2-digit year)
-        // must still resolve to the same card — the store's own dedup identity.
+        // A fresh store read yields a new instance; a cosmetic re-mask (case) OR a renewed expiry
+        // must still resolve to the same card — the store's dedup identity is the masked PAN only.
         assertTrue(error.matches(card(token = "b".repeat(64))))
         assertTrue(error.matches(card(maskedPan = "411111XXXXXX1111", year = "29")))
-        assertFalse(error.matches(card(maskedPan = "555555xxxxxx4444")))
-        assertFalse(error.matches(card(month = "11")))
+        assertTrue(error.matches(card(month = "11", year = "2031"))) // renewed expiry, same PAN → same card
+        assertFalse(error.matches(card(maskedPan = "555555xxxxxx4444"))) // different PAN → different card
     }
 
     @Test

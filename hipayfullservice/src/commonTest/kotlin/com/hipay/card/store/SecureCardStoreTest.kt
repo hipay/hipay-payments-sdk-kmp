@@ -59,8 +59,8 @@ class SecureCardStoreTest {
         assertEquals(1, s.list().size)
     }
 
-    // overwrite-on-match by maskedPan + expiry
-    @Test fun overwrites_on_matching_maskedpan_and_expiry() {
+    // overwrite-on-match by masked PAN (the dedup key is the PAN only, never the token/expiry)
+    @Test fun overwrites_on_matching_maskedpan() {
         val s = store()
         s.save(card(holder = "OLD", token = "t1"), true)
         s.save(card(holder = "NEW", token = "t2"), true)
@@ -70,11 +70,17 @@ class SecureCardStoreTest {
         assertEquals("t2", list[0].token)
     }
 
-    @Test fun different_expiry_is_a_distinct_card() {
+    // One-click AC: re-saving the same masked PAN with a renewed expiry (and/or new holder) updates
+    // the existing alias in place — no duplicate (dedup keys on the masked PAN only, not the expiry).
+    @Test fun same_pan_renewed_expiry_updates_in_place() {
         val s = store()
-        s.save(card(year = "2030"), true)
-        s.save(card(year = "2031"), true)
-        assertEquals(2, s.list().size)
+        s.save(card(year = "2030", token = "t1"), true)
+        s.save(card(year = "2031", holder = "JANE R DOE", token = "t2"), true)
+        val list = s.list()
+        assertEquals(1, list.size)
+        assertEquals("2031", list[0].expiryYear)
+        assertEquals("JANE R DOE", list[0].holder)
+        assertEquals("t2", list[0].token)
     }
 
     // storage cap 20 + LRU (12-9: raised from 3 so a valid card is never evicted below the ceiling)
