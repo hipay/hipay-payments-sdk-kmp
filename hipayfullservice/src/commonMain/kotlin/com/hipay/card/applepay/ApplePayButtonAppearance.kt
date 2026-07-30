@@ -11,10 +11,10 @@ package com.hipay.card.applepay
 /**
  * Button style — maps 1:1 to `PKPaymentButtonStyle`.
  *
- * - [BLACK]: dark fill, for a light background (default).
+ * - [BLACK]: dark fill, for a light background.
  * - [WHITE]: white fill without a border, for a coloured/dark contrasting background.
  * - [WHITE_OUTLINE]: white fill with a black outline, for a light/white background.
- * - [AUTOMATIC]: follows the system light/dark mode (iOS 14+).
+ * - [AUTOMATIC]: follows the system light/dark mode (iOS 14+); the default.
  */
 public enum class HiPayApplePayButtonStyle {
     BLACK,

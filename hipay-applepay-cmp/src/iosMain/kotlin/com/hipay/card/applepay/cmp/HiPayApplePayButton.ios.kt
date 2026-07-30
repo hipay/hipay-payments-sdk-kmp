@@ -16,10 +16,6 @@ import kotlinx.cinterop.ObjCAction
 import platform.Foundation.NSSelectorFromString
 import platform.PassKit.PKPaymentAuthorizationController
 import platform.PassKit.PKPaymentButton
-import platform.PassKit.PKPaymentNetworkCartesBancaires
-import platform.PassKit.PKPaymentNetworkMaestro
-import platform.PassKit.PKPaymentNetworkMasterCard
-import platform.PassKit.PKPaymentNetworkVisa
 import platform.PassKit.PKPaymentButtonStyle
 import platform.PassKit.PKPaymentButtonStyleAutomatic
 import platform.PassKit.PKPaymentButtonStyleBlack
@@ -43,16 +39,6 @@ import platform.PassKit.PKPaymentButtonTypeTopUp
 import platform.UIKit.UIControlEventTouchUpInside
 import platform.darwin.NSObject
 
-// Default availability check: the device must have a usable card of a network we support
-// (canMakePaymentsUsingNetworks — stricter than the network-less canMakePayments(), which is true
-// on any Apple-Pay-capable device). Refined by full routable-network eligibility later.
-private val defaultNetworks = listOf(
-    PKPaymentNetworkVisa,
-    PKPaymentNetworkMasterCard,
-    PKPaymentNetworkMaestro,
-    PKPaymentNetworkCartesBancaires,
-)
-
 /** Retains the tap closure and exposes an ObjC selector for the `PKPaymentButton` target-action. */
 private class ApplePayTapTarget(var onTap: () -> Unit) : NSObject() {
     @ObjCAction
@@ -69,7 +55,7 @@ public actual fun HiPayApplePayButton(
     type: HiPayApplePayButtonType,
     isAvailable: Boolean?,
 ) {
-    val available = isAvailable ?: PKPaymentAuthorizationController.canMakePaymentsUsingNetworks(defaultNetworks)
+    val available = isAvailable ?: PKPaymentAuthorizationController.canMakePayments()
     if (!available) return
 
     val target = remember { ApplePayTapTarget(onTap) }
@@ -95,14 +81,14 @@ public actual fun HiPayApplePayButton(
     }
 }
 
-private fun HiPayApplePayButtonStyle.toPk(): PKPaymentButtonStyle = when (this) {
+internal fun HiPayApplePayButtonStyle.toPk(): PKPaymentButtonStyle = when (this) {
     HiPayApplePayButtonStyle.BLACK -> PKPaymentButtonStyleBlack
     HiPayApplePayButtonStyle.WHITE -> PKPaymentButtonStyleWhite
     HiPayApplePayButtonStyle.WHITE_OUTLINE -> PKPaymentButtonStyleWhiteOutline
     HiPayApplePayButtonStyle.AUTOMATIC -> PKPaymentButtonStyleAutomatic
 }
 
-private fun HiPayApplePayButtonType.toPk(): PKPaymentButtonType = when (this) {
+internal fun HiPayApplePayButtonType.toPk(): PKPaymentButtonType = when (this) {
     HiPayApplePayButtonType.PLAIN -> PKPaymentButtonTypePlain
     HiPayApplePayButtonType.BUY -> PKPaymentButtonTypeBuy
     HiPayApplePayButtonType.CHECKOUT -> PKPaymentButtonTypeCheckout

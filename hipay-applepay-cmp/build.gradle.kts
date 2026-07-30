@@ -1,6 +1,6 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
-// Opt-in Compose-Multiplatform Apple Pay button (Epic 17, story 17.1). A CMP merchant adds THIS
+// Opt-in Compose-Multiplatform Apple Pay button. A CMP merchant adds THIS
 // artifact only if they want Apple Pay — merchants who don't depend on it pull no Apple Pay code
 // (modularity, Option A). Apple Pay is iOS-only: the iOS actual renders the native PKPaymentButton
 // via UIKitView; the Android actual renders nothing (Apple Pay is unavailable on Android).
@@ -53,7 +53,7 @@ android {
     }
 }
 
-// Publication (Epic 17): the CMP Apple Pay module ships to Maven as
+// Publication: the CMP Apple Pay module ships to Maven as
 // com.hipay.fullservice:hipay-applepay-cmp; its POM declares :hipayfullservice (via `api`).
 mavenPublishing {
     publishToMavenCentral()
