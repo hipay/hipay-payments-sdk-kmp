@@ -27,14 +27,17 @@ public class HiPayConfig(
  */
 public enum class Environment(
     public val gatewayV1Url: String,
+    public val gatewayV2Url: String,
     public val secureVaultV2Url: String,
 ) {
     STAGE(
         gatewayV1Url = "https://stage-secure-gateway.hipay-tpp.com/rest/v1/",
+        gatewayV2Url = "https://stage-secure-gateway.hipay-tpp.com/rest/v2/",
         secureVaultV2Url = "https://stage-secure2-vault.hipay-tpp.com/rest/v2/",
     ),
     PRODUCTION(
         gatewayV1Url = "https://secure-gateway.hipay-tpp.com/rest/v1/",
+        gatewayV2Url = "https://secure-gateway.hipay-tpp.com/rest/v2/",
         secureVaultV2Url = "https://secure2-vault.hipay-tpp.com/rest/v2/",
     ),
 }
