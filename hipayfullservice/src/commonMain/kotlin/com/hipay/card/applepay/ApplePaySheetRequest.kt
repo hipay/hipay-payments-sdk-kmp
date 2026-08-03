@@ -2,7 +2,9 @@
 package com.hipay.card.applepay
 
 import com.hipay.card.validation.CardNetwork
+import com.hipay.core.HiPayErrorCode
 import com.hipay.core.HiPayException
+import com.hipay.core.gateway.model.requireAmountFormat
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
@@ -11,11 +13,13 @@ import kotlin.coroutines.cancellation.CancellationException
  *
  * The adapter builds the request as: `merchantIdentifier`, `merchantCapabilities = 3DS`,
  * `supportedNetworks` = [supportedNetworks] mapped to `PKPaymentNetwork`, a SINGLE summary item
- * whose label = [merchantDisplayName] and amount = [amount] (the sheet's final line = store name +
- * total, AC1), and **no** `requiredBilling/ShippingContactFields` (AC7).
+ * whose label = [merchantDisplayName] and amount = [amount] — so the sheet's final line reads
+ * "merchant store name + total" — and **no** `requiredBilling/ShippingContactFields`.
  *
- * @property supportedNetworks the 17.2 resolved routable set (already narrowed by any merchant
- *   restriction) — only these are selectable in the sheet (AC3/AC4).
+ * @property supportedNetworks the routable set resolved for the account, already narrowed by any
+ *   merchant restriction: only these are selectable in the sheet.
+ * @property currencyCode,countryCode uppercased ISO codes, the form PassKit expects (the order keeps
+ *   the merchant's own strings).
  */
 public class ApplePaySheetRequest(
     public val merchantIdentifier: String,
@@ -27,9 +31,13 @@ public class ApplePaySheetRequest(
 )
 
 /**
- * Assembles an [ApplePaySheetRequest] from the merchant config + the 17.2 resolved networks.
- * Validates the config first (AC2) — a missing merchant name / identifier fails here with an
- * explicit [HiPayException] rather than opening a broken sheet.
+ * Assembles an [ApplePaySheetRequest] from the merchant config + the resolved routable networks.
+ *
+ * Validates everything the sheet needs BEFORE it can open: the mandatory config fields, the ISO
+ * currency/country codes, the amount format, and that at least one network is selectable. The Apple
+ * Pay token is single-use, so any input the order would later reject must fail here — once the
+ * customer has authorized, the token is spent and they have to start over. A missing merchant name
+ * or identifier therefore surfaces as an explicit [HiPayException] instead of a broken sheet.
  */
 @Throws(HiPayException::class, CancellationException::class)
 public fun applePaySheetRequest(
@@ -40,12 +48,34 @@ public fun applePaySheetRequest(
     countryCode: String,
 ): ApplePaySheetRequest {
     config.ensureValid()
+    requireAmountFormat(amount)
+    val currency = requireIsoCode(currencyCode, field = "currency", length = 3)
+    val country = requireIsoCode(countryCode, field = "country", length = 2)
+    if (resolvedNetworks.isEmpty()) {
+        throw HiPayException(
+            code = HiPayErrorCode.VALIDATION,
+            message = "Apple Pay: no card network is selectable for this payment",
+        )
+    }
     return ApplePaySheetRequest(
         merchantIdentifier = config.merchantIdentifier,
         merchantDisplayName = config.merchantDisplayName,
         supportedNetworks = resolvedNetworks,
         amount = amount,
-        currencyCode = currencyCode,
-        countryCode = countryCode,
+        currencyCode = currency,
+        countryCode = country,
     )
+}
+
+/** Returns the uppercased code, or fails naming the field — a blank or malformed code would
+ *  otherwise surface as an opaque "sheet could not be presented" from PassKit. */
+private fun requireIsoCode(value: String, field: String, length: Int): String {
+    val code = value.trim()
+    if (code.length != length || !code.all { it.isLetter() }) {
+        throw HiPayException(
+            code = HiPayErrorCode.VALIDATION,
+            message = "Apple Pay: $field must be a $length-letter ISO code",
+        )
+    }
+    return code.uppercase()
 }

@@ -51,7 +51,7 @@ public class ApplePayTokenizer internal constructor(
                 message = "Unusable Secure Vault response (apple-pay/token)",
             )
         }
-        if (token.token.isEmpty()) {
+        if (token.token.isBlank()) {
             throw HiPayException(
                 code = HiPayErrorCode.SERVER,
                 message = "Secure Vault returned an empty token (apple-pay/token)",

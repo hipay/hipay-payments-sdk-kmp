@@ -21,9 +21,9 @@ import kotlin.coroutines.cancellation.CancellationException
  *   HiPay. Mandatory.
  * @property applePayUsername an optional dedicated Apple Pay account username; when present BOTH the
  *   wallet tokenize and the order route through it (fixing the legacy asymmetry), else the classic
- *   account is used.
- * @property allowedNetworks an optional merchant restriction on the routable networks (17.2); empty
- *   accepts every routable network the account offers.
+ *   account is used. Blank is treated as absent.
+ * @property allowedNetworks an optional merchant restriction on the routable networks, applied to the
+ *   sheet at payment time; empty accepts every routable network the account offers.
  */
 public class HiPayApplePayConfig(
     public val merchantIdentifier: String,
@@ -33,19 +33,20 @@ public class HiPayApplePayConfig(
     public val allowedNetworks: List<CardNetwork> = emptyList(),
 ) {
     // No validation in the constructor: a throwing constructor is not catchable across the
-    // Kotlin/Native boundary and would crash the Swift host (same rule as OrderRequest). Callers
-    // validate via [ensureValid] at component init so a missing field surfaces a catchable error.
+    // Kotlin/Native boundary and would crash the Swift host (same rule as OrderRequest). Validation
+    // runs in [ensureValid], which the payment entry point calls before it can open a sheet, so a
+    // missing field always surfaces as a catchable error.
 
     // Never expose the .p12 password.
     override fun toString(): String =
         "HiPayApplePayConfig(merchantIdentifier=$merchantIdentifier, merchantDisplayName=$merchantDisplayName, " +
-            "privateKeyPassword=***, applePayUsername=$applePayUsername)"
+            "privateKeyPassword=***, applePayUsername=$applePayUsername, allowedNetworks=$allowedNetworks)"
 }
 
 /**
- * Validates the mandatory Apple Pay fields (AC2). Throws [HiPayException] with
- * [HiPayErrorCode.VALIDATION] naming the first missing/blank field — the presentation layer calls
- * this at component init so a misconfiguration fails explicitly instead of opening a broken sheet.
+ * Validates the mandatory Apple Pay fields. Throws [HiPayException] with
+ * [HiPayErrorCode.VALIDATION] naming the first missing/blank field. Hosts can call this at component
+ * init to fail early; the payment entry point calls it too, so no sheet can open unvalidated.
  */
 @Throws(HiPayException::class, CancellationException::class)
 public fun HiPayApplePayConfig.ensureValid() {
@@ -61,3 +62,11 @@ public fun HiPayApplePayConfig.ensureValid() {
     require(privateKeyPassword, "privateKeyPassword")
     require(merchantDisplayName, "merchantDisplayName")
 }
+
+/**
+ * The networks actually offered in the sheet: the account's routable set narrowed by the merchant
+ * restriction when one is configured. Applied by the payment entry point, so the restriction holds
+ * whatever list the host passes in — the config never disagrees with what the sheet shows.
+ */
+internal fun HiPayApplePayConfig.selectableNetworks(resolvedNetworks: List<CardNetwork>): List<CardNetwork> =
+    if (allowedNetworks.isEmpty()) resolvedNetworks else resolvedNetworks.filter { it in allowedNetworks }

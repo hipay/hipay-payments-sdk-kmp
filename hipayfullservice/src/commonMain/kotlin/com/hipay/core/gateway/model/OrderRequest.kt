@@ -45,12 +45,7 @@ public class OrderRequest(
     // Swift host (same reason CallbackUrlParser.parse is @Throws). Validating
     // at field-build time surfaces a catchable HiPayException(VALIDATION).
     internal fun toFields(): Map<String, String> {
-        if (!amount.matches(AMOUNT_FORMAT)) {
-            throw HiPayException(
-                code = HiPayErrorCode.VALIDATION,
-                message = "amount: must be a 2-decimal string (e.g. \"10.00\")",
-            )
-        }
+        requireAmountFormat(amount)
         val fields = linkedMapOf(
             "orderid" to orderId,
             "payment_product" to paymentProduct,
@@ -83,7 +78,21 @@ public class OrderRequest(
         return fields
     }
 
-    private companion object {
-        val AMOUNT_FORMAT = Regex("""\d+\.\d{2}""")
+}
+
+/**
+ * The gateway amount contract: a 2-decimal string. Shared so a caller that must reject a bad amount
+ * BEFORE the order is built validates against this exact rule instead of a copy of it — a wallet
+ * sheet mints a single-use token, so an amount the order would refuse has to fail before the
+ * customer authorizes.
+ */
+internal fun requireAmountFormat(amount: String) {
+    if (!amount.matches(AMOUNT_FORMAT)) {
+        throw HiPayException(
+            code = HiPayErrorCode.VALIDATION,
+            message = "amount: must be a 2-decimal string (e.g. \"10.00\")",
+        )
     }
 }
+
+private val AMOUNT_FORMAT = Regex("""\d+\.\d{2}""")

@@ -5,6 +5,7 @@ import com.hipay.card.model.CardToken
 import com.hipay.card.validation.CardNetwork
 import com.hipay.card.validation.CardNetworks
 import com.hipay.core.HiPayConfig
+import com.hipay.core.HiPayErrorCode
 import com.hipay.core.HiPayException
 import com.hipay.core.gateway.GatewayClient
 import com.hipay.core.gateway.model.OrderRequest
@@ -18,9 +19,10 @@ import kotlin.coroutines.cancellation.CancellationException
  * The per-channel presentation layer captures the `PKPayment` token and calls [pay]; this engine is
  * platform-agnostic (a later Google Pay wallet can reuse it).
  *
- * Nominal path — biometric = SCA, so `eci=7` + `authentication_indicator=0` and no 3DS challenge.
- * The `forwarding`/step-up path is 17.4. When [HiPayApplePayConfig.applePayUsername] is present it
- * routes BOTH the tokenize and the order through that account (fixing the legacy asymmetry).
+ * Nominal path — biometric = SCA, so `eci=7` + `authentication_indicator=0` and no 3DS challenge;
+ * a gateway that answers `forwarding` anyway is a step-up, handled by the caller. When
+ * [HiPayApplePayConfig.applePayUsername] is present it routes BOTH the tokenize and the order through
+ * that account (fixing the legacy asymmetry).
  */
 public class WalletCoordinator internal constructor(
     private val config: HiPayConfig,
@@ -52,8 +54,11 @@ public class WalletCoordinator internal constructor(
         language: String = "en_GB",
     ): Transaction {
         // Route tokenize + order through the dedicated Apple Pay account when configured, else the
-        // classic account (same credentials on both calls — no legacy asymmetry).
+        // classic account (same credentials on both calls — no legacy asymmetry). A blank username is
+        // treated as absent: authenticating as ":password" would only 401 after the customer has
+        // already authorized.
         val effectiveConfig = applePayConfig.applePayUsername
+            ?.takeIf { it.isNotBlank() }
             ?.let { HiPayConfig(it, config.password, config.environment, config.settings) }
             ?: config
 
@@ -81,11 +86,18 @@ public class WalletCoordinator internal constructor(
 }
 
 /**
- * The `payment_product` for a wallet order, derived from the token's **resolved brand** (AC5):
- * prefer a known domestic co-brand (`domestic_network`, e.g. CB/BCMC) over the international brand,
- * mirroring the web `formatTokenizeResponse`. Only the one resolved network is transmitted; the
- * non-selected co-brand is not. Unknown/absent → `"visa"` (the SDK's existing fallback convention).
+ * The `payment_product` for a wallet order, derived from the token's **resolved brand**: prefer a
+ * known domestic co-brand (`domestic_network`, e.g. CB/BCMC) over the international brand, mirroring
+ * the web hosted-fields tokenize response. Only the one resolved network is transmitted; the
+ * non-selected co-brand is not.
+ *
+ * A brand the SDK does not map is passed through as-is (trimmed, lowercased) rather than replaced by
+ * a default. Unlike card entry — where an unrecognized brand is only a local UI guess — here the
+ * brand is what the Secure Vault resolved for the wallet token, so substituting another network would
+ * misdeclare the instrument to the gateway; letting the gateway reject an unknown code is the
+ * truthful outcome. A response carrying no brand at all is unusable and fails.
  */
+@Throws(HiPayException::class, CancellationException::class)
 internal fun walletPaymentProduct(token: CardToken): String {
     val resolved = token.domesticNetwork?.takeIf { CardNetworks.fromApiBrand(it) != null }
         ?: token.brand
@@ -96,6 +108,10 @@ internal fun walletPaymentProduct(token: CardToken): String {
         CardNetwork.MAESTRO -> "maestro"
         CardNetwork.CB -> "cb"
         CardNetwork.BCMC -> "bcmc"
-        CardNetwork.UNKNOWN, null -> "visa"
+        CardNetwork.UNKNOWN, null -> resolved?.trim()?.lowercase()?.takeIf { it.isNotEmpty() }
+            ?: throw HiPayException(
+                code = HiPayErrorCode.SERVER,
+                message = "Secure Vault returned no card brand for the wallet token",
+            )
     }
 }

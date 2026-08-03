@@ -6,6 +6,7 @@ import com.hipay.core.HiPayException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ApplePayConfigAndSheetTest {
@@ -14,14 +15,28 @@ class ApplePayConfigAndSheetTest {
         merchantIdentifier: String = "merchant.x",
         privateKeyPassword: String = "p12pass",
         merchantDisplayName: String = "MyShop",
-    ) = HiPayApplePayConfig(merchantIdentifier, privateKeyPassword, merchantDisplayName)
+        allowedNetworks: List<CardNetwork> = emptyList(),
+    ) = HiPayApplePayConfig(
+        merchantIdentifier = merchantIdentifier,
+        privateKeyPassword = privateKeyPassword,
+        merchantDisplayName = merchantDisplayName,
+        allowedNetworks = allowedNetworks,
+    )
+
+    private fun sheet(
+        config: HiPayApplePayConfig = config(),
+        resolvedNetworks: List<CardNetwork> = listOf(CardNetwork.VISA),
+        amount: String = "12.00",
+        currencyCode: String = "EUR",
+        countryCode: String = "FR",
+    ) = applePaySheetRequest(config, resolvedNetworks, amount, currencyCode, countryCode)
 
     @Test
     fun validConfigPasses() {
         config().ensureValid() // does not throw
     }
 
-    // AC2 — a missing merchant/store name fails init with an explicit VALIDATION error.
+    // A missing merchant/store name fails with an explicit VALIDATION error naming the field.
     @Test
     fun missingMerchantDisplayNameFailsValidation() {
         val e = assertFailsWith<HiPayException> { config(merchantDisplayName = "").ensureValid() }
@@ -41,42 +56,87 @@ class ApplePayConfigAndSheetTest {
         assertEquals(HiPayErrorCode.VALIDATION, e.code)
     }
 
-    // AC1 + AC3/AC4 — the sheet request carries the store-name label and exactly the resolved
-    // networks as the selectable set.
+    // The sheet request carries the store-name label and exactly the resolved networks as the
+    // selectable set; ISO codes reach PassKit uppercased.
     @Test
     fun sheetRequestCarriesStoreNameAndResolvedNetworks() {
         val resolved = listOf(CardNetwork.VISA, CardNetwork.CB)
-        val request = applePaySheetRequest(
-            config = config(merchantDisplayName = "MyShop"),
-            resolvedNetworks = resolved,
-            amount = "12.00",
-            currencyCode = "EUR",
-            countryCode = "FR",
-        )
+        val request = sheet(resolvedNetworks = resolved, currencyCode = "eur", countryCode = "fr")
         assertEquals("MyShop", request.merchantDisplayName)
         assertEquals(resolved, request.supportedNetworks)
         assertEquals("merchant.x", request.merchantIdentifier)
+        assertEquals("12.00", request.amount)
+        assertEquals("EUR", request.currencyCode)
+        assertEquals("FR", request.countryCode)
     }
 
-    // AC2 — building the sheet request also fails when a mandatory field is missing.
+    // Building the sheet request also fails when a mandatory config field is missing.
     @Test
     fun sheetRequestFailsWhenNameMissing() {
-        assertFailsWith<HiPayException> {
-            applePaySheetRequest(
-                config = config(merchantDisplayName = ""),
-                resolvedNetworks = listOf(CardNetwork.VISA),
-                amount = "1.00", currencyCode = "EUR", countryCode = "FR",
-            )
+        assertFailsWith<HiPayException> { sheet(config = config(merchantDisplayName = "")) }
+    }
+
+    // The wallet token is single-use: an amount the order would reject must fail BEFORE the sheet
+    // opens, not after the customer has authorized.
+    @Test
+    fun malformedAmountFailsBeforeTheSheetOpens() {
+        for (amount in listOf("", "12", "12,00", "9.999", "abc")) {
+            val e = assertFailsWith<HiPayException>(message = "accepted amount \"$amount\"") {
+                sheet(amount = amount)
+            }
+            assertEquals(HiPayErrorCode.VALIDATION, e.code)
         }
     }
 
-    // AC8 — the guard blocks a second concurrent begin until end() releases it.
+    @Test
+    fun malformedIsoCodesFailBeforeTheSheetOpens() {
+        val currency = assertFailsWith<HiPayException> { sheet(currencyCode = "") }
+        assertEquals(HiPayErrorCode.VALIDATION, currency.code)
+        assertTrue(currency.message!!.contains("currency"))
+
+        val country = assertFailsWith<HiPayException> { sheet(countryCode = "FRA") }
+        assertEquals(HiPayErrorCode.VALIDATION, country.code)
+        assertTrue(country.message!!.contains("country"))
+    }
+
+    // No selectable network → a sheet nobody can pay with. Fail with a named cause instead.
+    @Test
+    fun noSelectableNetworkFails() {
+        val e = assertFailsWith<HiPayException> { sheet(resolvedNetworks = emptyList()) }
+        assertEquals(HiPayErrorCode.VALIDATION, e.code)
+    }
+
+    // The merchant restriction narrows the account's routable set, and never widens it.
+    @Test
+    fun merchantRestrictionNarrowsTheSelectableNetworks() {
+        val routable = listOf(CardNetwork.VISA, CardNetwork.MASTERCARD, CardNetwork.CB)
+        assertEquals(
+            listOf(CardNetwork.VISA),
+            config(allowedNetworks = listOf(CardNetwork.VISA)).selectableNetworks(routable),
+        )
+        // A network the account does not route stays out, even if the merchant allows it.
+        assertEquals(
+            listOf(CardNetwork.VISA),
+            config(allowedNetworks = listOf(CardNetwork.VISA, CardNetwork.AMEX)).selectableNetworks(routable),
+        )
+        // No restriction configured → everything routable stays selectable.
+        assertEquals(routable, config().selectableNetworks(routable))
+    }
+
+    // A second tap while a payment is in flight is refused until the flow releases the slot.
     @Test
     fun inFlightGuardBlocksSecondTap() {
         val guard = PaymentInFlightGuard()
         assertTrue(guard.tryBegin())   // first tap acquires
-        assertTrue(!guard.tryBegin())  // second tap ignored while in flight
+        assertFalse(guard.tryBegin())  // second tap ignored while in flight
         guard.end()
         assertTrue(guard.tryBegin())   // released → acquires again
+    }
+
+    // The .p12 password must never appear in a string representation of the config.
+    @Test
+    fun configNeverPrintsThePrivateKeyPassword() {
+        val text = config(privateKeyPassword = "s3cr3t").toString()
+        assertFalse(text.contains("s3cr3t"))
     }
 }
