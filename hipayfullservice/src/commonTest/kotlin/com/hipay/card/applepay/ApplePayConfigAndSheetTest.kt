@@ -139,4 +139,57 @@ class ApplePayConfigAndSheetTest {
         val text = config(privateKeyPassword = "s3cr3t").toString()
         assertFalse(text.contains("s3cr3t"))
     }
+
+    private fun order(orderId: String = "AP-1", redirectScheme: String = "hipaydemo") = ApplePayOrder(
+        orderId = orderId,
+        amount = "12.00",
+        currency = "EUR",
+        countryCode = "FR",
+        description = "d",
+        redirectScheme = redirectScheme,
+    )
+
+    @Test
+    fun validOrderPasses() {
+        order().ensureValid() // does not throw
+    }
+
+    // A blank order id would be rejected by the gateway only after the single-use token was spent.
+    @Test
+    fun blankOrderIdIsRejectedBeforeTheSheetOpens() {
+        val e = assertFailsWith<HiPayException> { order(orderId = " ").ensureValid() }
+        assertEquals(HiPayErrorCode.VALIDATION, e.code)
+        assertTrue(e.message!!.contains("orderId"))
+    }
+
+    // A malformed scheme builds redirect URLs the gateway rejects and a challenge return that cannot
+    // be captured — both only discoverable after the customer has authorized.
+    @Test
+    fun malformedRedirectSchemeIsRejectedBeforeTheSheetOpens() {
+        listOf("", "  ", "1demo", "my scheme", "demo://").forEach { scheme ->
+            val e = assertFailsWith<HiPayException>("expected rejection of scheme '$scheme'") {
+                order(redirectScheme = scheme).ensureValid()
+            }
+            assertEquals(HiPayErrorCode.VALIDATION, e.code)
+            assertTrue(e.message!!.contains("redirectScheme"))
+        }
+    }
+
+    // Schemes RFC 3986 allows must keep working.
+    @Test
+    fun validSchemeShapesAreAccepted() {
+        listOf("hipaydemo", "hipay-demo", "hipay.demo", "hipay+demo", "h1").forEach { scheme ->
+            order(redirectScheme = scheme).ensureValid()
+        }
+    }
+
+    // The derived base URL is the one shape the SDK's own callback parser accepts, whitespace-trimmed
+    // so it can never disagree with the scheme the challenge is captured on.
+    @Test
+    fun callbackBaseUrlIsTheParseableShape() {
+        assertEquals(
+            "hipaydemo://hipay-fullservice/gateway/orders/AP-1",
+            order(redirectScheme = " hipaydemo ").callbackBaseUrl,
+        )
+    }
 }

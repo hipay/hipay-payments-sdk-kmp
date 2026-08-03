@@ -39,6 +39,7 @@ class WalletCoordinatorTest {
     private fun coordinator(
         tokenJson: String = "{\"token\":\"tok-123\",\"brand\":\"visa\"}",
         tokenStatus: HttpStatusCode = HttpStatusCode.OK,
+        orderStatus: HttpStatusCode = HttpStatusCode.OK,
         cfg: HiPayConfig = config,
     ): WalletCoordinator {
         val engine = MockEngine { request ->
@@ -52,7 +53,11 @@ class WalletCoordinatorTest {
                 path.endsWith("/order") -> {
                     orderRequest = request
                     calls += "order"
-                    respond(GOLDEN_ORDER_RESPONSE, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+                    respond(
+                        if (orderStatus == HttpStatusCode.OK) GOLDEN_ORDER_RESPONSE else "",
+                        orderStatus,
+                        headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
                 }
                 else -> error("unexpected request: ${request.url}")
             }
@@ -60,17 +65,24 @@ class WalletCoordinatorTest {
         return WalletCoordinator(cfg, engine)
     }
 
-    private suspend fun pay(coordinator: WalletCoordinator, applePayCfg: HiPayApplePayConfig = applePayConfig) =
-        coordinator.pay(
-            paymentData = PAYMENT_DATA,
-            applePayConfig = applePayCfg,
-            orderId = "AP-1",
-            amount = "12.00",
-            currency = "EUR",
-            description = "d",
-            acceptUrl = "a://x", declineUrl = "a://x", pendingUrl = "a://x",
-            exceptionUrl = "a://x", cancelUrl = "a://x",
-        )
+    private fun order(orderId: String = "AP-1", redirectScheme: String = "hipaydemo") = ApplePayOrder(
+        orderId = orderId,
+        amount = "12.00",
+        currency = "EUR",
+        countryCode = "FR",
+        description = "d",
+        redirectScheme = redirectScheme,
+    )
+
+    private suspend fun pay(
+        coordinator: WalletCoordinator,
+        applePayCfg: HiPayApplePayConfig = applePayConfig,
+        applePayOrder: ApplePayOrder = order(),
+    ) = coordinator.pay(
+        paymentData = PAYMENT_DATA,
+        applePayConfig = applePayCfg,
+        order = applePayOrder,
+    )
 
     private suspend fun HttpRequestData.form(): Parameters =
         body.toByteArray().decodeToString().parseUrlEncodedParameters()
@@ -169,6 +181,63 @@ class WalletCoordinatorTest {
             pay(coordinator(tokenJson = "{\"code\":1000,\"message\":\"nope\"}", tokenStatus = HttpStatusCode.BadRequest))
         }
         assertEquals(listOf("tokenize"), calls)
+    }
+
+    // The gateway redirect URLs are derived from the app scheme in the one shape the SDK can parse
+    // back — a challenge return in any other shape could not be read.
+    @Test
+    fun redirectUrlsAreDerivedFromTheAppScheme() = runTest {
+        pay(coordinator())
+
+        val order = orderRequest!!.form()
+        val base = "hipaydemo://hipay-fullservice/gateway/orders/AP-1"
+        assertEquals("$base/accept", order["accept_url"])
+        assertEquals("$base/decline", order["decline_url"])
+        assertEquals("$base/pending", order["pending_url"])
+        assertEquals("$base/exception", order["exception_url"])
+        assertEquals("$base/cancel", order["cancel_url"])
+    }
+
+    // A failed submission is reported once and never resubmitted: a silent retry is the one way the SDK
+    // could authorize the same order twice.
+    @Test
+    fun failedOrderIsNeverResubmitted() = runTest {
+        assertFailsWith<HiPayException> {
+            pay(coordinator(orderStatus = HttpStatusCode.InternalServerError))
+        }
+        assertEquals(listOf("tokenize", "order"), calls)
+    }
+
+    // Retrying the same payment reuses the same order id, which is what lets the gateway recognize the
+    // retry instead of authorizing twice. The wallet token differs (Apple Pay tokens are single-use),
+    // so the order id is the only thing tying the two attempts together.
+    @Test
+    fun retryOfTheSamePaymentReusesTheOrderId() = runTest {
+        val sameOrder = order(orderId = "AP-RETRY")
+
+        val first = coordinator()
+        pay(first, applePayOrder = sameOrder)
+        val firstOrderId = orderRequest!!.form()["orderid"]
+
+        val second = coordinator()
+        pay(second, applePayOrder = sameOrder)
+        val secondOrderId = orderRequest!!.form()["orderid"]
+
+        assertEquals("AP-RETRY", firstOrderId)
+        assertEquals(firstOrderId, secondOrderId)
+    }
+
+    // The wallet payload must never surface in anything a host may log — not in the SDK's own error
+    // messages, and not through the config that carries the .p12 password.
+    @Test
+    fun theWalletTokenNeverReachesErrorMessagesOrConfigText() = runTest {
+        val failure = assertFailsWith<HiPayException> {
+            pay(coordinator(tokenJson = "{\"code\":1000,\"message\":\"nope\"}", tokenStatus = HttpStatusCode.BadRequest))
+        }
+
+        assertTrue(PAYMENT_DATA !in failure.message.orEmpty())
+        assertTrue(PAYMENT_DATA !in failure.toString())
+        assertTrue("p12pass" !in applePayConfig.toString())
     }
 
     private companion object {

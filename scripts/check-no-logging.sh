@@ -6,6 +6,7 @@
 #
 # Scanned:
 #   - hipayfullservice/src/*/kotlin/com/hipay/card/**   (all source sets)
+#   - hipayfullservice/src/*/kotlin/com/hipay/core/threeds/**  (shared 3DS: forward URLs / references)
 #   - hipaycard/src/*/kotlin/com/hipay/card/**          (Android Compose card module, story 7.1)
 #   - hipaycard-cmp/src/*/kotlin/com/hipay/card/**      (Compose-MP card module, story 10.1)
 #   - swift/Sources/HiPayCard/**
@@ -34,6 +35,7 @@ scan() {
 }
 
 for src_set in "$ROOT"/hipayfullservice/src/*/kotlin/com/hipay/card \
+               "$ROOT"/hipayfullservice/src/*/kotlin/com/hipay/core/threeds \
                "$ROOT"/hipaycard/src/*/kotlin/com/hipay/card \
                "$ROOT"/hipaycard-cmp/src/*/kotlin/com/hipay/card; do
   scan "$src_set"

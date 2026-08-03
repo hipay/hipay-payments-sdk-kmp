@@ -9,15 +9,19 @@ import com.hipay.core.HiPayErrorCode
 import com.hipay.core.HiPayException
 import com.hipay.core.gateway.model.Transaction
 import com.hipay.core.gateway.model.TransactionState
+import com.hipay.core.threeds.ThreeDSResolver
+import com.hipay.core.threeds.defaultThreeDSLauncher
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.coroutines.CancellableContinuation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
 import platform.Foundation.create
@@ -40,13 +44,18 @@ import kotlin.coroutines.resumeWithException
  * Flow: narrow the selectable networks by the merchant restriction, validate the config and the order
  * inputs, build the `PKPaymentRequest` (store name, selectable networks, no contact fields), present
  * the sheet, on biometric authorization capture `paymentData`, run the [WalletCoordinator]
- * (tokenize → order → transaction), complete the sheet and return the [Transaction].
+ * (tokenize → order → transaction), complete the sheet and report the outcome.
  *
- * **Only a completed transaction resolves successfully.** Any other gateway state completes the sheet
- * as a failure and surfaces a [HiPayException], so the customer never sees Apple's success checkmark
- * for a payment the gateway did not accept. A user cancel surfaces as [CancellationException]. (Typed
- * decline outcomes, and resuming a step-up when the gateway asks for one, come with the resilience
- * work.)
+ * Every outcome the gateway can produce comes back as an [ApplePayPaymentResult] — a closed sheet is
+ * [ApplePayPaymentResult.Cancelled] and raises nothing, a refused authorization is
+ * [ApplePayPaymentResult.Declined] carrying its transaction. A [HiPayException] is reserved for
+ * invalid input and for a gateway the SDK could not reach at all.
+ *
+ * When the gateway asks for an authentication step-up the sheet is completed FIRST and the challenge is
+ * presented after it dismisses: a web challenge cannot appear over the system sheet. Apple's own result
+ * type has no "pending" case, so a step-up is completed as a success — the wallet did authorize; it is
+ * the gateway that still wants a challenge. Only a decline, an error or a missed deadline complete the
+ * sheet as a failure.
  *
  * While a payment is in flight a further call fails immediately without presenting a second sheet, so
  * a double tap cannot create two orders — the guarantee lives here rather than in each host.
@@ -57,9 +66,10 @@ public suspend fun runApplePayPayment(
     applePayConfig: HiPayApplePayConfig,
     resolvedNetworks: List<CardNetwork>,
     order: ApplePayOrder,
-): Transaction = withContext(Dispatchers.Main) {
+): ApplePayPaymentResult = withContext(Dispatchers.Main) {
     // PassKit and UIKit are main-thread only: the controller is built, delegated, presented and
     // dismissed here, and the delegate callbacks arrive on this same thread.
+    order.ensureValid()
     val sheet = applePaySheetRequest(
         config = applePayConfig,
         resolvedNetworks = applePayConfig.selectableNetworks(resolvedNetworks),
@@ -77,12 +87,13 @@ public suspend fun runApplePayPayment(
     }
     try {
         val coordinator = WalletCoordinator(config)
+        val resolver = coordinator.threeDSResolver(applePayConfig, defaultThreeDSLauncher())
         // The authorization job must survive a cancellation of THIS coroutine: PassKit owns the sheet
         // and must be answered exactly once, so the job gets its own scope instead of being a child
         // that cancellation would kill mid-order, leaving the sheet spinning forever.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
         suspendCancellableCoroutine { continuation ->
-            val delegate = PaymentDelegate(coordinator, applePayConfig, order, scope, continuation)
+            val delegate = PaymentDelegate(coordinator, resolver, applePayConfig, order, scope, continuation)
             val controller = PKPaymentAuthorizationController(paymentRequest = request)
             controller.delegate = delegate
             delegate.retain(controller)
@@ -93,12 +104,25 @@ public suspend fun runApplePayPayment(
             }
         }
     } finally {
+        // Released on every exit — completion, decline, cancel or failure — so the component is
+        // immediately usable for a new payment.
         paymentInFlight.end()
     }
 }
 
 /** One payment at a time, per process — the sheet is a single system-modal surface anyway. */
 private val paymentInFlight = PaymentInFlightGuard()
+
+/**
+ * How long the tokenize → order chain may take before the sheet is completed without a verdict.
+ *
+ * PassKit expects its authorization handler within roughly half a minute and dismisses the sheet on its
+ * own if it waits longer — at which point our answer arrives too late and the outcome can no longer be
+ * reported at all. A budget below that leaves the SDK in control: it reports an indeterminate
+ * [ApplePayPaymentResult.Pending] the host can reconcile, instead of losing the payment silently. A
+ * stage order was measured at about twelve seconds, so this leaves ample headroom.
+ */
+private const val WALLET_PAYMENT_DEADLINE_MS = 25_000L
 
 /**
  * `PKPaymentAuthorizationControllerDelegate` bridged to the suspended [continuation]. The controller
@@ -109,15 +133,17 @@ private val paymentInFlight = PaymentInFlightGuard()
  */
 private class PaymentDelegate(
     private val coordinator: WalletCoordinator,
+    private val resolver: ThreeDSResolver,
     private val applePayConfig: HiPayApplePayConfig,
     private val order: ApplePayOrder,
     private val scope: CoroutineScope,
-    private val continuation: CancellableContinuation<Transaction>,
+    private val continuation: CancellableContinuation<ApplePayPaymentResult>,
 ) : NSObject(), PKPaymentAuthorizationControllerDelegateProtocol {
 
     private var selfRef: PaymentDelegate? = null
     private var controller: PKPaymentAuthorizationController? = null
-    private var transaction: Transaction? = null
+    private var outcome: ApplePayPaymentResult? = null
+    private var stepUp: Transaction? = null
     private var failure: Throwable? = null
     private var authorizing = false
 
@@ -150,7 +176,7 @@ private class PaymentDelegate(
     ) {
         // PassKit keeps the sheet usable after a failure result, so a second authorization can
         // arrive: answer it, but never start a second order for the same order id.
-        if (authorizing || transaction != null) {
+        if (authorizing || outcome != null || stepUp != null) {
             handler(result(PKPaymentAuthorizationStatusFailure))
             return
         }
@@ -170,31 +196,33 @@ private class PaymentDelegate(
                         message = "Apple Pay returned an unreadable payment token",
                     )
                 }
-                val tx = coordinator.pay(
-                    paymentData = paymentData,
-                    applePayConfig = applePayConfig,
-                    orderId = order.orderId,
-                    amount = order.amount,
-                    currency = order.currency,
-                    description = order.description,
-                    acceptUrl = order.acceptUrl,
-                    declineUrl = order.declineUrl,
-                    pendingUrl = order.pendingUrl,
-                    exceptionUrl = order.exceptionUrl,
-                    cancelUrl = order.cancelUrl,
-                    language = order.language,
-                )
-                if (tx.state == TransactionState.COMPLETED) {
-                    transaction = tx
-                    status = PKPaymentAuthorizationStatusSuccess
-                } else {
-                    // The gateway answered, but not with a completed payment: the sheet must show a
-                    // failure, not a checkmark.
-                    failure = HiPayException(
-                        code = HiPayErrorCode.API,
-                        message = "Apple Pay payment not completed (state=${tx.state})",
+                val tx = withTimeout(WALLET_PAYMENT_DEADLINE_MS) {
+                    coordinator.pay(
+                        paymentData = paymentData,
+                        applePayConfig = applePayConfig,
+                        order = order,
                     )
                 }
+                when {
+                    tx.state == TransactionState.COMPLETED -> {
+                        outcome = ApplePayPaymentResult.Completed(tx)
+                        status = PKPaymentAuthorizationStatusSuccess
+                    }
+                    // The gateway wants an authentication challenge. It cannot be presented over the
+                    // sheet, so complete the sheet now and resolve it once the sheet has dismissed.
+                    resolver.willPresentChallenge(tx) -> {
+                        stepUp = tx
+                        status = PKPaymentAuthorizationStatusSuccess
+                    }
+                    // Declined, errored, or gateway-reported pending: the sheet must show a failure,
+                    // not a checkmark — but this is a result, not an exception.
+                    else -> outcome = tx.toApplePayPaymentResult()
+                }
+            } catch (_: TimeoutCancellationException) {
+                // Past the deadline the order may well have been created: reporting a failure would be
+                // a lie, so the outcome is explicitly indeterminate. No reference is available (the
+                // order call never answered), so the host reconciles on the order id it supplied.
+                outcome = ApplePayPaymentResult.Pending(Transaction.verificationPending(null))
             } catch (e: CancellationException) {
                 failure = e
                 throw e
@@ -217,20 +245,40 @@ private class PaymentDelegate(
 
     override fun paymentAuthorizationControllerDidFinish(controller: PKPaymentAuthorizationController) {
         controller.dismissWithCompletion(null)
-        resumeAndRelease(null)
+        val challenged = stepUp
+        if (challenged == null) {
+            resumeAndRelease(null)
+            return
+        }
+        // The sheet is gone — present the challenge now and resume with the server-confirmed outcome.
+        stepUp = null
+        scope.launch {
+            val final = try {
+                resolver.resolve(challenged, order.redirectScheme.trim())
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Throwable) {
+                // The resolver already degrades an unreadable state to a pending snapshot; anything
+                // else that fails here is equally indeterminate — never report a possible capture as
+                // failed.
+                Transaction.verificationPending(challenged.transactionReference)
+            }
+            outcome = final.toApplePayPaymentResult()
+            resumeAndRelease(null)
+        }
     }
 
     private fun resumeAndRelease(presentationFailure: Throwable?) {
         if (continuation.isActive) {
-            val tx = transaction
+            val settled = outcome
             val error = presentationFailure ?: failure
             when {
-                // A completed transaction wins over a later failure: the customer was charged, and
-                // reporting that payment as failed would be worse than any follow-up error.
-                tx != null -> continuation.resume(tx)
+                // A settled outcome wins over a later failure: if the customer was charged, reporting
+                // that payment as failed would be worse than any follow-up error.
+                settled != null -> continuation.resume(settled)
                 error != null -> continuation.resumeWithException(error)
-                // Nothing was ever authorized → the customer dismissed the sheet.
-                else -> continuation.resumeWithException(CancellationException("Apple Pay cancelled"))
+                // Nothing was ever authorized → the customer dismissed the sheet. Not an error.
+                else -> continuation.resume(ApplePayPaymentResult.Cancelled)
             }
         }
         release()
