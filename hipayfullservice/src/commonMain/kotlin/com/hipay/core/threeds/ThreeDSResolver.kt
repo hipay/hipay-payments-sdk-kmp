@@ -18,9 +18,20 @@ import kotlin.coroutines.resume
  * shows [url] in an in-app browser session bound to [callbackScheme] — the session captures the
  * `scheme://` redirect itself and dismisses — then invokes [onResult] with the callback URL, or with
  * `null` when the customer closed the session without one.
+ *
+ * [onResult] must be invoked exactly once, `null` included: an implementation that cannot present
+ * anything has to say so, or the payment it was awaiting never reports an outcome at all.
  */
 public interface ThreeDSLauncher {
     public fun launchInApp(url: String, callbackScheme: String, onResult: (String?) -> Unit)
+
+    /**
+     * Takes a challenge still on screen off it, because the caller stopped waiting for its outcome.
+     * Called at most once per [launchInApp] and never expected to invoke `onResult` — nobody is
+     * listening any more. Without it the customer would be left on a challenge page for a payment no
+     * one will read the verdict of. Implementations with nothing to dismiss may leave this empty.
+     */
+    public fun cancel() {}
 }
 
 /**
@@ -64,6 +75,9 @@ public class ThreeDSResolver(
         if (forwardUrl == null || !willPresentChallenge(transaction)) return transaction
 
         val callbackUrl: String? = suspendCancellableCoroutine { continuation ->
+            // Registered before presenting: a caller that stops awaiting the challenge must not leave
+            // it on screen, or the customer keeps authenticating a payment nobody will report.
+            continuation.invokeOnCancellation { launcher.cancel() }
             launcher.launchInApp(forwardUrl, callbackScheme) { url ->
                 if (continuation.isActive) continuation.resume(url)
             }

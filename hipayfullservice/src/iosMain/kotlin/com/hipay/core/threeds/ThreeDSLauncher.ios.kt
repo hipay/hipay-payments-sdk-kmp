@@ -8,6 +8,8 @@ import platform.Foundation.NSURL
 import platform.UIKit.UIApplication
 import platform.UIKit.UIWindow
 import platform.darwin.NSObject
+import platform.darwin.dispatch_async
+import platform.darwin.dispatch_get_main_queue
 
 /**
  * The iOS 3DS presenter: an in-app `ASWebAuthenticationSession` bound to the app's callback scheme.
@@ -24,7 +26,15 @@ private class WebAuthenticationLauncher : ThreeDSLauncher {
     private val contextProvider = AnchorProvider()
 
     override fun launchInApp(url: String, callbackScheme: String, onResult: (String?) -> Unit) {
-        val nsUrl = NSURL(string = url)
+        val nsUrl = NSURL.URLWithString(url)
+        val scheme = nsUrl?.scheme?.lowercase()
+        if (nsUrl == null || (scheme != "http" && scheme != "https")) {
+            // The session only accepts a parseable http(s) URL — handed anything else it is nil, and a
+            // nil the Kotlin binding would turn into a crash. Answering `null` instead is what matters:
+            // the caller is awaiting an already-authorized payment, and silence would hang it for good.
+            onResult(null)
+            return
+        }
         val started = ASWebAuthenticationSession(
             uRL = nsUrl,
             callbackURLScheme = callbackScheme,
@@ -35,7 +45,21 @@ private class WebAuthenticationLauncher : ThreeDSLauncher {
         started.presentationContextProvider = contextProvider
         started.prefersEphemeralWebBrowserSession = false
         session = started
-        started.start()
+        // The session refuses to start when it has no usable anchor window, when something else is
+        // still presented, or when the URL is not http(s) — and then never calls its completion
+        // handler at all. Reporting the refusal is the difference between a reconcilable outcome and
+        // a payment nobody can ever hear back about.
+        if (!started.start()) {
+            session = null
+            onResult(null)
+        }
+    }
+
+    override fun cancel() {
+        val current = session ?: return
+        session = null
+        // Dismissing the session is UIKit work, while a cancellation handler can run on any thread.
+        dispatch_async(dispatch_get_main_queue()) { current.cancel() }
     }
 }
 

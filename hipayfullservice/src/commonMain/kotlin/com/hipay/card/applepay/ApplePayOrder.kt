@@ -10,10 +10,11 @@ import kotlin.coroutines.cancellation.CancellationException
  * payment entry point stays readable. `amount` is a 2-decimal string (e.g. "12.00"); `countryCode`
  * is the ISO country for the `PKPaymentRequest`.
  *
- * @property orderId the merchant order id. **Reuse the same value when retrying a payment whose
- *   outcome is unknown**: the SDK never resubmits an order on its own, so a retry is always the host's
- *   deliberate act, and only a constant order id lets the gateway recognize it as the same payment
- *   instead of authorizing twice.
+ * @property orderId the merchant order id, limited to ASCII letters, digits, `-`, `_` and `.` because
+ *   it becomes a path segment of the redirect URLs below. **Reuse the same value when retrying a
+ *   payment whose outcome is unknown**: the SDK never resubmits an order on its own, so a retry is
+ *   always the host's deliberate act, and only a constant order id lets the gateway recognize it as the
+ *   same payment instead of authorizing twice.
  * @property redirectScheme the app's URL scheme. The five gateway redirect URLs are derived from it,
  *   and an authentication challenge captures its return on it — which is why the SDK owns their shape
  *   rather than taking them as free-form parameters: only
@@ -46,6 +47,19 @@ internal fun ApplePayOrder.ensureValid() {
         throw HiPayException(
             code = HiPayErrorCode.VALIDATION,
             message = "Apple Pay order: orderId is required",
+        )
+    }
+    // The order id is interpolated raw into the five redirect URLs and into the path a challenge return
+    // is captured on. A space, '/', '?' or '#' builds URLs the gateway rejects and a return
+    // `CallbackUrlParser` cannot read back — a failure that would otherwise surface only once the
+    // single-use wallet token has been spent.
+    val safeOrderId = orderId.all {
+        it in 'a'..'z' || it in 'A'..'Z' || it in '0'..'9' || it == '-' || it == '_' || it == '.'
+    }
+    if (!safeOrderId) {
+        throw HiPayException(
+            code = HiPayErrorCode.VALIDATION,
+            message = "Apple Pay order: orderId must use only ASCII letters, digits, '-', '_' or '.'",
         )
     }
     // A URL scheme is letters, digits, '+', '-' and '.', starting with a letter (RFC 3986). Anything

@@ -162,6 +162,28 @@ class ApplePayConfigAndSheetTest {
         assertTrue(e.message!!.contains("orderId"))
     }
 
+    // The order id becomes a path segment of the redirect URLs: a separator or a space would build URLs
+    // the gateway rejects and a return the callback parser cannot read back — again only discoverable
+    // once the single-use token is gone.
+    @Test
+    fun orderIdBreakingTheRedirectUrlIsRejectedBeforeTheSheetOpens() {
+        listOf("AP 1", "cart/42", "AP?1", "AP#1", "AP%201", "AP&1", "commandé-1").forEach { id ->
+            val e = assertFailsWith<HiPayException>("expected rejection of orderId '$id'") {
+                order(orderId = id).ensureValid()
+            }
+            assertEquals(HiPayErrorCode.VALIDATION, e.code)
+            assertTrue(e.message!!.contains("orderId"))
+        }
+    }
+
+    // The shapes real merchant order ids use must keep working.
+    @Test
+    fun usualOrderIdShapesAreAccepted() {
+        listOf("AP-1", "order_42", "2026.08.03-7", "abcDEF123").forEach { id ->
+            order(orderId = id).ensureValid()
+        }
+    }
+
     // A malformed scheme builds redirect URLs the gateway rejects and a challenge return that cannot
     // be captured — both only discoverable after the customer has authorized.
     @Test

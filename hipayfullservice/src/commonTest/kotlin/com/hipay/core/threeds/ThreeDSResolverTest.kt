@@ -11,6 +11,10 @@ import io.ktor.client.engine.mock.respondError
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -33,6 +37,20 @@ class ThreeDSResolverTest {
             presentedUrl = url
             presentedScheme = callbackScheme
             onResult(callbackUrl)
+        }
+    }
+
+    /** Presents and never answers — the challenge still on screen when the caller gives up. */
+    private class SilentLauncher : ThreeDSLauncher {
+        var launches = 0
+        var cancels = 0
+
+        override fun launchInApp(url: String, callbackScheme: String, onResult: (String?) -> Unit) {
+            launches++
+        }
+
+        override fun cancel() {
+            cancels++
         }
     }
 
@@ -192,6 +210,34 @@ class ThreeDSResolverTest {
 
         assertNull(fetchedPath)
         assertEquals(TransactionState.PENDING, final.state)
+    }
+
+    // A caller that stops awaiting the challenge must not leave it on screen: the customer would keep
+    // authenticating a payment whose outcome nobody will read, while the component is already free for
+    // a second one.
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun abandoningTheCallDismissesTheChallenge() = runTest {
+        val launcher = SilentLauncher()
+        val subject = resolver(launcher)
+
+        val job = launch { subject.resolve(forwarding(), callbackScheme = "hipaydemo") }
+        runCurrent()
+        job.cancelAndJoin()
+
+        assertEquals(1, launcher.launches)
+        assertEquals(1, launcher.cancels)
+    }
+
+    // A launcher that cannot present anything reports it as "no callback": the payment is reconciled
+    // from the gateway instead of hanging on a session that never answers.
+    @Test
+    fun aLauncherThatCannotPresentStillResolves() = runTest {
+        val launcher = FakeLauncher(callbackUrl = null)
+
+        val final = resolver(launcher).resolve(forwarding(), callbackScheme = "hipaydemo")
+
+        assertEquals(TransactionState.COMPLETED, final.state)
     }
 
     // The guard and the presentation decision are the same rule — they can never drift.

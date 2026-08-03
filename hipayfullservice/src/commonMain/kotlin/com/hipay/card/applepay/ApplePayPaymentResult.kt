@@ -24,9 +24,17 @@ public sealed class ApplePayPaymentResult {
      * The outcome is not yet known. Either the gateway itself reported `pending`, or the SDK could not
      * confirm the state (a 3DS return it could not read back, or the payment ran past the deadline the
      * Apple Pay sheet allows). The payment may still be captured server-side, so it must never be
-     * treated as a failure: re-query the transaction, and retry only with the SAME `orderId`.
+     * treated as a failure, and a retry must reuse the SAME [orderId].
+     *
+     * How to reconcile depends on what could be recovered: with a [Transaction.transactionReference]
+     * the transaction can be re-queried directly; without one the order call never answered, so
+     * [orderId] is the only handle on the payment and it has to be reconciled server-side (through the
+     * merchant backend or the notification, since the gateway offers no lookup by order id).
      */
-    public class Pending internal constructor(public val transaction: Transaction) : ApplePayPaymentResult()
+    public class Pending internal constructor(
+        public val transaction: Transaction,
+        public val orderId: String? = null,
+    ) : ApplePayPaymentResult()
 
     /**
      * The gateway answered, but with neither a capture nor a decline: an authentication challenge the
@@ -46,10 +54,13 @@ public sealed class ApplePayPaymentResult {
  * Maps a gateway transaction to its outcome. `FORWARDING` only reaches here once the challenge has
  * been resolved, where it means the customer abandoned it — a server-confirmed not-completed, which is
  * why it is never conflated with [ApplePayPaymentResult.Pending] (genuinely indeterminate).
+ *
+ * [orderId] is carried on the indeterminate outcome only: it is the one case where the host may have
+ * nothing else to reconcile on.
  */
-internal fun Transaction.toApplePayPaymentResult(): ApplePayPaymentResult = when (state) {
+internal fun Transaction.toApplePayPaymentResult(orderId: String? = null): ApplePayPaymentResult = when (state) {
     TransactionState.COMPLETED -> ApplePayPaymentResult.Completed(this)
     TransactionState.DECLINED -> ApplePayPaymentResult.Declined(this)
-    TransactionState.PENDING -> ApplePayPaymentResult.Pending(this)
+    TransactionState.PENDING -> ApplePayPaymentResult.Pending(this, orderId)
     TransactionState.FORWARDING, TransactionState.ERROR -> ApplePayPaymentResult.NotCompleted(this)
 }

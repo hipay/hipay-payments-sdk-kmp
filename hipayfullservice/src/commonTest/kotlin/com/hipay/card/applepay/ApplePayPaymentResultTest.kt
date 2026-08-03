@@ -4,6 +4,7 @@ import com.hipay.core.gateway.model.Transaction
 import com.hipay.core.gateway.model.TransactionState
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class ApplePayPaymentResultTest {
@@ -65,5 +66,22 @@ class ApplePayPaymentResultTest {
 
         assertTrue(result is ApplePayPaymentResult.Pending)
         assertEquals("TX-7", result.transaction.transactionReference)
+    }
+
+    // The one outcome the host may have nothing to re-query on carries the order id, so a payment whose
+    // order call never answered can still be reconciled server-side.
+    @Test
+    fun pendingCarriesTheOrderIdToReconcileOn() {
+        val result = Transaction.verificationPending(null).toApplePayPaymentResult(orderId = "AP-1")
+
+        assertTrue(result is ApplePayPaymentResult.Pending)
+        assertNull(result.transaction.transactionReference)
+        assertEquals("AP-1", result.orderId)
+    }
+
+    // A settled outcome needs no order id: it is identified by its own transaction.
+    @Test
+    fun settledOutcomesDoNotNeedTheOrderId() {
+        assertTrue(transaction("completed").toApplePayPaymentResult(orderId = "AP-1") is ApplePayPaymentResult.Completed)
     }
 }

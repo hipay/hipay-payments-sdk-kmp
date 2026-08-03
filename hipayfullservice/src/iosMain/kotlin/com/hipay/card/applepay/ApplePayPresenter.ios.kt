@@ -216,13 +216,14 @@ private class PaymentDelegate(
                     }
                     // Declined, errored, or gateway-reported pending: the sheet must show a failure,
                     // not a checkmark — but this is a result, not an exception.
-                    else -> outcome = tx.toApplePayPaymentResult()
+                    else -> outcome = tx.toApplePayPaymentResult(order.orderId)
                 }
             } catch (_: TimeoutCancellationException) {
                 // Past the deadline the order may well have been created: reporting a failure would be
                 // a lie, so the outcome is explicitly indeterminate. No reference is available (the
-                // order call never answered), so the host reconciles on the order id it supplied.
-                outcome = ApplePayPaymentResult.Pending(Transaction.verificationPending(null))
+                // order call never answered), so the outcome carries the order id the host supplied —
+                // its only handle on the payment.
+                outcome = indeterminate()
             } catch (e: CancellationException) {
                 failure = e
                 throw e
@@ -244,27 +245,39 @@ private class PaymentDelegate(
     }
 
     override fun paymentAuthorizationControllerDidFinish(controller: PKPaymentAuthorizationController) {
-        controller.dismissWithCompletion(null)
         val challenged = stepUp
         if (challenged == null) {
+            controller.dismissWithCompletion(null)
             resumeAndRelease(null)
             return
         }
-        // The sheet is gone — present the challenge now and resume with the server-confirmed outcome.
         stepUp = null
-        scope.launch {
-            val final = try {
-                resolver.resolve(challenged, order.redirectScheme.trim())
-            } catch (e: CancellationException) {
-                throw e
-            } catch (_: Throwable) {
-                // The resolver already degrades an unreadable state to a pending snapshot; anything
-                // else that fails here is equally indeterminate — never report a possible capture as
-                // failed.
-                Transaction.verificationPending(challenged.transactionReference)
+        // The dismissal is asynchronous, and a challenge cannot be presented while the sheet still owns
+        // the anchor window — a session started too early simply refuses to appear. So the challenge
+        // waits for the dismissal to complete rather than starting from here.
+        controller.dismissWithCompletion {
+            scope.launch {
+                try {
+                    val final = try {
+                        resolver.resolve(challenged, order.redirectScheme.trim())
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Throwable) {
+                        // The resolver already degrades an unreadable state to a pending snapshot;
+                        // anything else that fails here is equally indeterminate — never report a
+                        // possible capture as failed.
+                        Transaction.verificationPending(challenged.transactionReference)
+                    }
+                    outcome = final.toApplePayPaymentResult(order.orderId)
+                } finally {
+                    // The awaiting caller must be answered on every path, cancellation included, or the
+                    // payment hangs for the life of the process and the component stays blocked. The
+                    // wallet already authorized and the order exists, so an unresolved challenge is
+                    // indeterminate — never a cancel.
+                    if (outcome == null) outcome = indeterminate(challenged.transactionReference)
+                    resumeAndRelease(null)
+                }
             }
-            outcome = final.toApplePayPaymentResult()
-            resumeAndRelease(null)
         }
     }
 
@@ -277,12 +290,24 @@ private class PaymentDelegate(
                 // that payment as failed would be worse than any follow-up error.
                 settled != null -> continuation.resume(settled)
                 error != null -> continuation.resumeWithException(error)
+                // The sheet went away while the order was still running — PassKit tears it down on its
+                // own past roughly half a minute, ahead of our own deadline. The payment may have been
+                // accepted, so this is indeterminate, not a cancel; the outcome the in-flight call is
+                // about to produce can no longer be reported.
+                authorizing -> continuation.resume(indeterminate())
                 // Nothing was ever authorized → the customer dismissed the sheet. Not an error.
                 else -> continuation.resume(ApplePayPaymentResult.Cancelled)
             }
         }
         release()
     }
+
+    /** The indeterminate outcome, carrying whatever identifies the payment: a reference when the order
+     *  answered with one, and always the order id the host can reconcile on server-side. */
+    private fun indeterminate(reference: String? = null) = ApplePayPaymentResult.Pending(
+        transaction = Transaction.verificationPending(reference),
+        orderId = order.orderId,
+    )
 
     private fun release() {
         controller = null
