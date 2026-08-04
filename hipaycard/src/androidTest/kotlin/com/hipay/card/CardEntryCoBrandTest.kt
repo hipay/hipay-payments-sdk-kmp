@@ -27,7 +27,7 @@ class CardEntryCoBrandTest {
     private val bcmcMcPan = "5127880999999990"
 
     private fun controller(allowed: List<HiPayCardNetwork> = emptyList()) =
-        HiPayCardEntryController(HiPayConfig("test-user", "test-pass", Environment.STAGE), allowedNetworks = allowed)
+        HiPayCardEntryController(HiPayConfig("test-user", "test-pass", Environment.STAGE), allowedNetworks = allowed).withOfflineCeiling()
 
     // PI-6078 — Scénario : Carte CB/Visa — CB priorisé par défaut.
     //   Étant donné que les réseaux activés sont "cb" et "visa"

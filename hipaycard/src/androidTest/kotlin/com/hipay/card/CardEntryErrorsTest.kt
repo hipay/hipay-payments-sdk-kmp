@@ -22,6 +22,10 @@ class CardEntryErrorsTest {
     val composeRule = createComposeRule()
 
     private fun controller(allowed: List<HiPayCardNetwork> = emptyList()) =
+        HiPayCardEntryController(HiPayConfig("test-user", "test-pass", Environment.STAGE), allowedNetworks = allowed).withOfflineCeiling()
+
+    /** No permissive preset: the two tests below are ABOUT the account ceiling, so they must own it. */
+    private fun controllerWithoutCeiling(allowed: List<HiPayCardNetwork> = emptyList()) =
         HiPayCardEntryController(HiPayConfig("test-user", "test-pass", Environment.STAGE), allowedNetworks = allowed)
 
     @Test
@@ -63,6 +67,43 @@ class CardEntryErrorsTest {
         robot.assertTagExists(HiPayCardEntryTags.error("number"))
         robot.assertTextShown("Card type not allowed")
         robot.assertTextAbsent("Card number is incomplete")
+    }
+
+    // The account's own contract is the ceiling: a network it does not accept must be refused even
+    // when the integrator restricts nothing. Before the ceiling existed, an absent allow-list
+    // accepted every network and the refusal only came back as a gateway error at order time.
+    @Test
+    fun networkTheAccountDoesNotAcceptIsRefusedWithoutAnyIntegratorRestriction() {
+        val robot = CardEntryRobot(composeRule)
+        val controller = controllerWithoutCeiling() // no integrator restriction at all
+        controller.cardInfoResolver = { com.hipay.card.model.CardInfo(brand = "VISA") }
+        // Preset, not a resolver: the refusal must be asserted against a KNOWN ceiling, not against a
+        // fetch the assertion could outrun.
+        controller.presetAccountNetworks(
+            setOf(com.hipay.card.validation.CardNetwork.MASTERCARD, com.hipay.card.validation.CardNetwork.CB),
+        )
+        robot.setContent { HiPayCardEntry(controller, localeOverride = "en") }
+
+        // NB `type` appends: this is the whole Luhn-valid Visa PAN, which is what triggers the
+        // vault verdict the contractual error is gated on.
+        robot.type(HiPayCardEntryTags.NUMBER, "4111111111111111")
+
+        robot.assertTagExists(HiPayCardEntryTags.error("number"))
+        robot.assertTextShown("Card type not allowed")
+    }
+
+    // A technical failure of that query must never block entry: the ceiling stays open, no error.
+    @Test
+    fun aFailedAccountQueryLeavesEntryOpen() {
+        val robot = CardEntryRobot(composeRule)
+        val controller = controllerWithoutCeiling()
+        controller.cardInfoResolver = { com.hipay.card.model.CardInfo(brand = "VISA") }
+        controller.accountNetworksResolver = { throw IllegalStateException("offline") }
+        robot.setContent { HiPayCardEntry(controller, localeOverride = "en") }
+
+        robot.type(HiPayCardEntryTags.NUMBER, "4111111111111111")
+
+        robot.assertTagAbsent(HiPayCardEntryTags.error("number"))
     }
 
     @Test

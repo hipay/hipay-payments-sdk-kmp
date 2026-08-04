@@ -38,7 +38,7 @@ class CardEntryFieldHeightTest {
     private val maxIconFloorDelta = 2f
 
     private fun controller() =
-        HiPayCardEntryController(HiPayConfig("test-user", "test-pass", Environment.STAGE))
+        HiPayCardEntryController(HiPayConfig("test-user", "test-pass", Environment.STAGE)).withOfflineCeiling()
 
     // Clipped (visible) field bounds — reflects what the user actually sees.
     private fun heightOf(tag: String): Float =

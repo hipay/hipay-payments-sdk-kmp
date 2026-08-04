@@ -89,7 +89,7 @@ class OneClickEntryUiTest {
     @Test
     fun optInOff_rendersNoOneClickUi_evenWithASeededCard() {
         seedCard()
-        val controller = HiPayCardEntryController(config) // oneClickEnabled defaults to false
+        val controller = HiPayCardEntryController(config).withOfflineCeiling() // oneClickEnabled defaults to false
         composeRule.setContent { HiPayCardEntry(controller) }
         composeRule.onNodeWithTag(HiPayCardEntryTags.HOLDER).assertIsDisplayed()
         assertEquals(0, countTag(HiPayCardEntryTags.savedCard(0)))
@@ -99,7 +99,7 @@ class OneClickEntryUiTest {
     @Test
     fun withASavedCard_sectionsRenderAndTheCardIsPreselected_fieldsHidden() {
         seedCard()
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         // Pin EN so the "New card" collapsed/expanded state description is deterministic.
         composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
         awaitSections()
@@ -118,7 +118,7 @@ class OneClickEntryUiTest {
 
     @Test
     fun withoutCards_noHeaders_fieldsAndSwitchOnly() {
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller) }
         composeRule.onNodeWithTag(HiPayCardEntryTags.HOLDER).assertIsDisplayed()
         composeRule.onNodeWithTag(HiPayCardEntryTags.SAVE_SWITCH).assertIsDisplayed()
@@ -130,7 +130,7 @@ class OneClickEntryUiTest {
     @Test
     fun selectingNewCard_expandsFields_andTypedValuesSurviveTheRoundTrip() {
         seedCard()
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         // Pin EN so the "New card" expanded/collapsed state description is deterministic.
         composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
         awaitSections()
@@ -156,7 +156,7 @@ class OneClickEntryUiTest {
     @Test
     fun multipleCards_renderMostRecentFirst_andTheMruIsPreselected() {
         seedCards()
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller) }
         awaitSections()
         // All three cells render; MRU (last saved = 3333) is index 0 and pre-selected.
@@ -172,7 +172,7 @@ class OneClickEntryUiTest {
     @Test
     fun tappingAnotherCard_movesTheSelection() {
         seedCards()
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller) }
         awaitSections()
         composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(1)).performClick()
@@ -185,7 +185,7 @@ class OneClickEntryUiTest {
     @Test
     fun newCardBranch_collapsesListToMru_andHeaderChevronReexpands() {
         seedCards()
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
         awaitSections()
 
@@ -208,7 +208,7 @@ class OneClickEntryUiTest {
     @Test
     fun reenteringNewCard_afterAManualReexpand_collapsesTheListAgain() {
         seedCards()
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
         awaitSections()
         // Enter new-card, manually re-expand the list, then pick a card (leaves the new-card branch).
@@ -226,7 +226,7 @@ class OneClickEntryUiTest {
     @Test
     fun saveSwitch_togglesConsentState() {
         seedCard()
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller) }
         awaitSections()
         composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD).performClick()

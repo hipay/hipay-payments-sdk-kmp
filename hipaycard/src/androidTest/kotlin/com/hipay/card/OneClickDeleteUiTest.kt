@@ -87,7 +87,7 @@ class OneClickDeleteUiTest {
     @Test
     fun longPressThenConfirm_deletesTheCard() {
         seedCards()
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
         awaitSections()
         // Long-press the 2nd cell (CARD TWO / 2222) → confirmation appears.
@@ -102,7 +102,7 @@ class OneClickDeleteUiTest {
     @Test
     fun longPressThenCancel_keepsTheCard() {
         seedCards()
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
         awaitSections()
         composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(1)).performTouchInput { longClick() }
@@ -115,7 +115,7 @@ class OneClickDeleteUiTest {
     @Test
     fun deletingTheSelectedCard_fallsBackToNewCardBranch() {
         seedCards()
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
         awaitSections()
         // savedCard(0) is the pre-selected MRU. Deleting it must drop the selection to new-card.
@@ -129,7 +129,7 @@ class OneClickDeleteUiTest {
     @Test
     fun deletingTheLastCard_yieldsNoCardState() {
         seedCard()
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
         awaitSections()
         composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).performTouchInput { longClick() }
@@ -144,7 +144,7 @@ class OneClickDeleteUiTest {
     @Test
     fun cellExposesDeleteCustomAction_whichOpensTheConfirmation() {
         seedCard()
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
         awaitSections()
         // The mandatory a11y custom action exists (the only delete path for screen readers)…

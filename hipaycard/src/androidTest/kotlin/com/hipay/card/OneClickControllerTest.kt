@@ -34,7 +34,7 @@ class OneClickControllerTest {
         // refreshSavedCards is fail-soft by design (the component may call it before the
         // context binds); the STRICT precondition (clear IllegalStateException) stays on the
         // paying APIs — covered by paySaveCard_withoutBoundContext below.
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         runBlocking { controller.refreshSavedCards() } // must not throw
         assertTrue(controller.savedCards.isEmpty())
         assertEquals(null, controller.selectedSavedCard)
@@ -42,7 +42,7 @@ class OneClickControllerTest {
 
     @Test
     fun paySaveCard_withoutBoundContext_failsBeforeAnyNetworkCall() {
-        val controller = HiPayCardEntryController(config)
+        val controller = HiPayCardEntryController(config).withOfflineCeiling()
         val ex = runCatching {
             runBlocking {
                 controller.pay(
@@ -61,7 +61,7 @@ class OneClickControllerTest {
         // to its confined dispatcher so a Compose host can refresh directly
         // from the UI scope.
         clearNamespace()
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         controller.bindPresentationContext(context)
         try {
             runBlocking(Dispatchers.Main.immediate) { controller.refreshSavedCards() }
@@ -82,7 +82,7 @@ class OneClickControllerTest {
         runBlocking(Dispatchers.IO) {
             assertTrue(createSecureCardStore(context, config).save(card, consentGiven = true))
         }
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         controller.bindPresentationContext(context)
         try {
             runBlocking { controller.refreshSavedCards() }

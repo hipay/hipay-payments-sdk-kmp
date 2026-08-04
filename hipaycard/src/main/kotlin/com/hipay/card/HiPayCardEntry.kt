@@ -208,6 +208,10 @@ private fun CardEntryContent(
     val cvcJustFilled = controller.isCvcRequired && controller.cvc.length == controller.cvcMaxLength
     LaunchedEffect(cvcJustFilled) { if (showEntryFields && cvcJustFilled) focusManager.clearFocus() }
 
+    // Account network ceiling: resolved on composition, so what may be offered at all is known before
+    // the payer has typed a BIN — a brand icon must never be shown for a network the account refuses.
+    LaunchedEffect(controller) { controller.loadAccountNetworksIfNeeded() }
+
     // One-click: load the saved card once the presentation context is bound (fail-soft before).
     if (controller.oneClickEnabled) {
         LaunchedEffect(controller) { controller.refreshSavedCards() }
