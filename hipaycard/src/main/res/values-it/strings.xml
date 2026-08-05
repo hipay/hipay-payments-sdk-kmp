@@ -3,8 +3,8 @@
 <resources>
     <string name="LABEL_HOLDER">Nome del titolare</string>
     <string name="LABEL_NUMBER">Numero della carta</string>
-    <string name="LABEL_EXPIRY">Data di scadenza</string>
-    <string name="LABEL_CVV">Codice di sicurezza</string>
+    <string name="LABEL_EXPIRY">Scadenza</string>
+    <string name="LABEL_CVV">CVV</string>
 
     <string name="PLACEHOLDER_HOLDER">Nome sulla carta</string>
     <string name="PLACEHOLDER_NUMBER">1234 5678 9012 3456</string>
@@ -12,14 +12,14 @@
     <string name="PLACEHOLDER_CVV">CVV</string>
 
     <string name="CVV_OPTIONAL">Facoltativo</string>
-    <string name="CVV_TOOLTIP">Inserisci il CVV o codice di sicurezza della tua carta.</string>
+    <string name="CVV_TOOLTIP">Inserisci il CVV della tua carta.</string>
 
     <string name="ERROR_INVALID_NUMBER">Numero della carta non valido</string>
     <string name="ERROR_INCOMPLETE_NUMBER">Numero della carta incompleto</string>
     <string name="ERROR_INVALID_EXPIRY">Data di scadenza non valida</string>
     <string name="ERROR_EXPIRED">Questa carta è scaduta</string>
-    <string name="ERROR_INVALID_CVV">Codice di sicurezza non valido</string>
-    <string name="ERROR_INCOMPLETE_CVV">Codice di sicurezza incompleto</string>
+    <string name="ERROR_INVALID_CVV">CVV non valido</string>
+    <string name="ERROR_INCOMPLETE_CVV">CVV incompleto</string>
     <string name="ERROR_HOLDER_TOO_LONG">Nome del titolare troppo lungo</string>
     <string name="ERROR_HOLDER_TOO_SHORT">Minimo 3 caratteri</string>
     <string name="ERROR_NETWORK_NOT_AUTHORIZED">Tipo di carta non autorizzato</string>

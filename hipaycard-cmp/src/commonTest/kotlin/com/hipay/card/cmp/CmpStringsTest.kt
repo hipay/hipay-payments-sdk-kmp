@@ -26,8 +26,9 @@ class CmpStringsTest {
 
     @Test
     fun translated_keys_differ_from_english() {
-        // Placeholders like the number/CVV are identical across languages by design; label and
-        // message keys must actually be translated, not English copies.
+        // Some values are identical across languages by design — the number/CVV placeholders, and the
+        // CVV label, which is the same acronym everywhere. Every other label and message key must
+        // actually be translated, not an English copy.
         val translated = listOf(
             CardEntryStringKey.LABEL_HOLDER,
             CardEntryStringKey.LABEL_EXPIRY,
@@ -36,9 +37,14 @@ class CmpStringsTest {
             CardEntryStringKey.LABEL_SAVED_CARDS,
             CardEntryStringKey.ERROR_ONE_CLICK_DECLINED,
         )
+        // French spells "Expiration" exactly like English, so that ONE pair is legitimately identical.
+        // Exempting the pair rather than dropping the key keeps the Italian side under guard.
+        val sameInFrenchByLanguage = setOf(CardEntryStringKey.LABEL_EXPIRY)
         for (key in translated) {
             val en = cmpString(key, "en")
-            assertTrue(cmpString(key, "fr") != en, "not translated to French: $key")
+            if (key !in sameInFrenchByLanguage) {
+                assertTrue(cmpString(key, "fr") != en, "not translated to French: $key")
+            }
             assertTrue(cmpString(key, "it") != en, "not translated to Italian: $key")
         }
     }
@@ -48,20 +54,20 @@ class CmpStringsTest {
         val expected = mapOf(
             CardEntryStringKey.LABEL_HOLDER to "Cardholder name",
             CardEntryStringKey.LABEL_NUMBER to "Card number",
-            CardEntryStringKey.LABEL_EXPIRY to "Expiry date",
-            CardEntryStringKey.LABEL_CVV to "Security code",
+            CardEntryStringKey.LABEL_EXPIRY to "Expiration",
+            CardEntryStringKey.LABEL_CVV to "CVV",
             CardEntryStringKey.PLACEHOLDER_HOLDER to "Name on card",
             CardEntryStringKey.PLACEHOLDER_NUMBER to "1234 5678 9012 3456",
             CardEntryStringKey.PLACEHOLDER_EXPIRY to "MM/YY",
             CardEntryStringKey.PLACEHOLDER_CVV to "CVV",
             CardEntryStringKey.CVV_OPTIONAL to "Optional",
-            CardEntryStringKey.CVV_TOOLTIP to "Enter the CVV or security code on your card.",
+            CardEntryStringKey.CVV_TOOLTIP to "Enter the CVV on your card.",
             CardEntryStringKey.ERROR_INVALID_NUMBER to "Invalid card number",
             CardEntryStringKey.ERROR_INCOMPLETE_NUMBER to "Card number is incomplete",
             CardEntryStringKey.ERROR_INVALID_EXPIRY to "Invalid expiry date",
             CardEntryStringKey.ERROR_EXPIRED to "This card has expired",
-            CardEntryStringKey.ERROR_INVALID_CVV to "Invalid security code",
-            CardEntryStringKey.ERROR_INCOMPLETE_CVV to "Security code is incomplete",
+            CardEntryStringKey.ERROR_INVALID_CVV to "Invalid CVV",
+            CardEntryStringKey.ERROR_INCOMPLETE_CVV to "CVV is incomplete",
             CardEntryStringKey.ERROR_HOLDER_TOO_LONG to "Cardholder name is too long",
             CardEntryStringKey.ERROR_HOLDER_TOO_SHORT to "Minimum 3 characters",
             CardEntryStringKey.ERROR_NETWORK_NOT_AUTHORIZED to "Card type not allowed",
@@ -99,7 +105,7 @@ class CmpStringsTest {
     @Test
     fun french_spot_checks_match_the_native_catalogs_verbatim() {
         assertEquals("Nom du titulaire", cmpString(CardEntryStringKey.LABEL_HOLDER, "fr"))
-        assertEquals("Date d'expiration", cmpString(CardEntryStringKey.LABEL_EXPIRY, "fr"))
+        assertEquals("Expiration", cmpString(CardEntryStringKey.LABEL_EXPIRY, "fr"))
         assertEquals("MM/AA", cmpString(CardEntryStringKey.PLACEHOLDER_EXPIRY, "fr"))
         assertEquals("Numéro de carte invalide", cmpString(CardEntryStringKey.ERROR_INVALID_NUMBER, "fr"))
         assertEquals("Cartes enregistrées", cmpString(CardEntryStringKey.LABEL_SAVED_CARDS, "fr"))
@@ -112,7 +118,7 @@ class CmpStringsTest {
     @Test
     fun italian_spot_checks_match_the_native_catalogs_verbatim() {
         assertEquals("Nome del titolare", cmpString(CardEntryStringKey.LABEL_HOLDER, "it"))
-        assertEquals("Data di scadenza", cmpString(CardEntryStringKey.LABEL_EXPIRY, "it"))
+        assertEquals("Scadenza", cmpString(CardEntryStringKey.LABEL_EXPIRY, "it"))
         assertEquals("MM/AA", cmpString(CardEntryStringKey.PLACEHOLDER_EXPIRY, "it"))
         assertEquals("Questa carta è scaduta", cmpString(CardEntryStringKey.ERROR_EXPIRED, "it"))
         assertEquals("Carte salvate", cmpString(CardEntryStringKey.LABEL_SAVED_CARDS, "it"))

@@ -49,14 +49,15 @@ class RealStageCeilingUiTest {
         val pass = args.getString("hipayPass") ?: return
         val config = HiPayConfig(user, pass, Environment.STAGE)
 
-        // The ceiling this device actually resolves — reported so a network or clock problem cannot be
-        // mistaken for a broken feature.
+        // Resolve the ceiling from this device FIRST. It is what makes a network or clock problem
+        // impossible to mistake for a broken feature: an unreachable gateway throws here, with its own
+        // cause, instead of silently degrading the component into looking like the fix is absent.
+        // No logging on the card path (PCI) — the set travels in the assertion messages below.
         val accepted = runBlocking {
             GatewayClient(config).getAvailablePaymentProducts(CardNetworks.cardPaymentProductCodes, "EUR")
         }
-        println("[real-stage] account accepts $accepted")
         check(CardNetworks.fromApiBrand("visa") !in accepted) {
-            "this account accepts Visa, so it cannot demonstrate a refusal — point the test at another one"
+            "this account accepts Visa ($accepted), so it cannot demonstrate a refusal — use another one"
         }
 
         val robot = CardEntryRobot(composeRule)
@@ -69,7 +70,9 @@ class RealStageCeilingUiTest {
         composeRule.waitUntil(20_000) { controller.numberSlotErrorKey != null }
 
         robot.assertTextShown("Card type not allowed")
-        assert(controller.networks.isEmpty()) { "a refused network must not be offered: ${controller.networks}" }
+        assert(controller.networks.isEmpty()) {
+            "a refused network must not be offered: ${controller.networks} against a ceiling of $accepted"
+        }
         assert(!controller.isNetworkAuthorized)
     }
 }

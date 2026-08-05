@@ -59,7 +59,7 @@ class CardEntryFieldHeightTest {
     @Test
     fun cvcLabelStaysOneLine_whenCvcRequired() {
         composeRule.setContent { HiPayCardEntry(controller(), localeOverride = "en") }
-        // Incomplete Visa prefix → CVC required ("Security code" + "ⓘ"); no suffix on the label.
+        // Incomplete Visa prefix → CVC required ("CVV" + "ⓘ"); no suffix on the label.
         composeRule.onNodeWithTag(HiPayCardEntryTags.NUMBER).performTextInput("411111")
         assertCvcLabelDidNotWrap()
     }
@@ -68,14 +68,15 @@ class CardEntryFieldHeightTest {
     fun cvcLabelStaysOneLine_monoMaestro() {
         composeRule.setContent { HiPayCardEntry(controller(), localeOverride = "en") }
         // Incomplete Maestro prefix → mono Maestro → CVC required + enabled; the label stays
-        // "Security code" and the field keeps a single line.
+        // "CVV" and the field keeps a single line.
         composeRule.onNodeWithTag(HiPayCardEntryTags.NUMBER).performTextInput("5018")
         assertCvcLabelDidNotWrap()
     }
 
     @Test
-    fun cvcLabelStaysOneLine_frenchLongestLabel() {
-        // French "Code de sécurité" is the longest CVC label — worst case for one-line fit.
+    fun cvcLabelStaysOneLine_inFrench() {
+        // The CVC label is now the same acronym in every language, so French is no longer a worst
+        // case — this keeps guarding the localized path, and would catch a reintroduced long label.
         composeRule.setContent { HiPayCardEntry(controller(), localeOverride = "fr") }
         composeRule.onNodeWithTag(HiPayCardEntryTags.NUMBER).performTextInput("411111")
         assertCvcLabelDidNotWrap()
