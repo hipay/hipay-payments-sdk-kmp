@@ -32,6 +32,21 @@ module + the iOS SPM/xcframework).
 
 ### Changed
 
+- **The security-code field is now labelled "CVV" in every language** (was "Security code" / "Code de
+  sécurité" / "Codice di sicurezza"). Its error messages follow the same term ("Invalid CVV", "CVV
+  invalide", "CVV non valido"; "CVV is incomplete", "CVV incomplet", "CVV incompleto"), and the inline
+  help drops the now-redundant gloss ("Enter the CVV on your card."). No key added or removed.
+- **The expiry field is now labelled "Expiration"** ("Expiration" in French, "Scadenza" in Italian) —
+  the previous "Expiry date" / "Date d'expiration" / "Data di scadenza" could not fit the half-width
+  field at full type size.
+- **Field labels take the full text size while resting inside their field**, and shrink only when they
+  float to the top. They were pinned at the smaller floating size in both states, which read as
+  cramped next to the input text. Labels still never wrap: a label too wide for its field overflows
+  horizontally rather than growing the field, so the field heights and the Expiry/CVV row symmetry are
+  unchanged.
+- **More vertical space between the card fields** on Android and CMP (8dp → 12dp), the value the
+  SwiftUI surface already used — a floating label rises into the top of its own field and eats most of
+  the gap between two stacked fields.
 - **Invalid fields now tint their border with `invalidTextColor` while their inline error is
   visible** (blur-gated; immediate for the pattern/network errors), on all three platforms.
   iOS-native previously tinted borders live while typing (an incomplete number went red from the
@@ -40,6 +55,27 @@ module + the iOS SPM/xcframework).
 
 ### Fixed
 
+- **The allowed card networks now come from the merchant ACCOUNT, not only from the integrator.**
+  The component asks the account which card products it is contracted for
+  (`available-payment-products`) as soon as it appears on screen, and treats that answer as the
+  ceiling on what it may offer; an integrator-supplied `allowedNetworks` can only NARROW it, never
+  widen it. Previously the ceiling was never queried, so a component built without a restriction
+  accepted every network the BIN resolved to and the account's refusal only surfaced as a gateway
+  error after the payer had filled the form. A network the account does not accept now shows no brand
+  icon, raises the existing "Card type not allowed" message and blocks `canPay`.
+  - **No brand icon is shown while that first answer is in flight** — whether the detected network is
+    offerable at all is exactly what is unknown, and a logo shown then withdrawn is worse than a logo
+    shown a beat later. A **technical failure** of the query (offline, non-2xx, unusable body) leaves
+    the ceiling open and shows the locally detected icon, so a network hiccup never blocks entry; a
+    **successful empty answer** is a verdict, not a failure, and refuses every card.
+  - **Saved cards are filtered by the same ceiling**, and re-filtered once it lands — a stored card
+    on a network the account no longer accepts is dropped from the one-click list.
+  - New optional `currency` parameter on the three card controllers (defaults to `"EUR"`): a contract
+    can differ per currency, so it should match the currency the order will be created in. Additive —
+    existing call sites compile unchanged.
+  - `AllowedNetworks`' `allowed` parameter became **nullable**: `null` means "no restriction", an
+    EMPTY list means "authorizes nothing". Conflating the two is what allowed the original bug, so
+    the distinction is now explicit. Source-visible for anyone calling these helpers directly.
 - **CMP (iOS renderer): blur-gated inline errors could never appear** — the renderer never
   reported focus loss, so the number/expiry/CVC/holder errors stayed hidden. Fields now mark
   the blur exactly like native Android.
