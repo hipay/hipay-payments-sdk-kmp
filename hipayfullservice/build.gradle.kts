@@ -105,7 +105,7 @@ mavenPublishing {
         inceptionYear = "2026"
         // Repo NAME is settled (architecture-repos.md §2); the GitHub org/URL of the public
         // mirror is the part still to confirm before the first real publish.
-        url = "https://github.com/hipay/hipay_payments_sdk_kmp"
+        url = "https://github.com/hipay/hipay-payments-sdk-kmp"
         licenses {
             license {
                 name = "Apache-2.0"
@@ -122,9 +122,9 @@ mavenPublishing {
         }
         scm {
             // TODO(repo): interim — final SCM URL pending architecture-repos.md (§9).
-            url = "https://github.com/hipay/hipay_payments_sdk_kmp"
-            connection = "scm:git:https://github.com/hipay/hipay_payments_sdk_kmp.git"
-            developerConnection = "scm:git:ssh://git@github.com/hipay/hipay_payments_sdk_kmp.git"
+            url = "https://github.com/hipay/hipay-payments-sdk-kmp"
+            connection = "scm:git:https://github.com/hipay/hipay-payments-sdk-kmp.git"
+            developerConnection = "scm:git:ssh://git@github.com/hipay/hipay-payments-sdk-kmp.git"
         }
     }
 }

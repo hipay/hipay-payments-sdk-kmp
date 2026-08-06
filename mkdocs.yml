@@ -2,8 +2,8 @@ site_name: HiPay Payments SDK
 site_description: Integration guides for the HiPay Payments SDK (Kotlin Multiplatform, Android, iOS).
 # The public mirror hosts the built site; GitLab builds and pushes it (decision R6 — no publishing
 # from GitHub). Confirm the org before the first deploy: only the repo NAME is settled.
-repo_url: https://github.com/hipay/hipay_payments_sdk_kmp
-repo_name: hipay_payments_sdk_kmp
+repo_url: https://github.com/hipay/hipay-payments-sdk-kmp
+repo_name: hipay-payments-sdk-kmp
 edit_uri: edit/main/docs/
 
 theme:
