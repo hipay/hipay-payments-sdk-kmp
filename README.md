@@ -1,8 +1,10 @@
 # HiPay Fullservice KMP SDK
 
+**Integration guides:** [`docs/`](docs/index.md) — Android, iOS and Kotlin/Compose Multiplatform, plus the changelog. Published as a versioned site so you can read the documentation of the version you depend on.
+
 Kotlin Multiplatform SDK for HiPay Fullservice card payments — successor to the
 legacy native iOS/Android Fullservice SDKs. Single Kotlin codebase
-(`:hipayfullservice`, coordinates `com.hipay.fullservice:fullservice-kmp`),
+(`:hipayfullservice`, coordinates `com.hipay.payments:core`),
 consumed on iOS through a local Swift package.
 
 ## Layout

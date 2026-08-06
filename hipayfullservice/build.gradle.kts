@@ -9,7 +9,7 @@ plugins {
     alias(libs.plugins.vanniktech.mavenPublish)
 }
 
-group = "com.hipay.fullservice"
+group = "com.hipay.payments"
 // version: single source from gradle.properties — inherited as project.version.
 
 kotlin {
@@ -97,15 +97,15 @@ mavenPublishing {
         signAllPublications()
     }
 
-    coordinates(group.toString(), "fullservice-kmp", version.toString())
+    coordinates(group.toString(), "core", version.toString())
 
     pom {
-        name = "HiPay Fullservice KMP SDK"
-        description = "HiPay Fullservice payment SDK for Kotlin Multiplatform (card payment)."
+        name = "HiPay Payments SDK — core"
+        description = "Headless core of the HiPay payment SDK for Kotlin Multiplatform: configuration, gateway client, card tokenization and the shared validation contract. Targets the HiPay Fullservice platform."
         inceptionYear = "2026"
-        // TODO(repo): final repository URL not yet decided — see architecture-repos.md
-        // (§9, deferred: final repo names + GitLab/GitHub topology). Interim value.
-        url = "https://github.com/hipay/hipay-fullservice-kmp"
+        // Repo NAME is settled (architecture-repos.md §2); the GitHub org/URL of the public
+        // mirror is the part still to confirm before the first real publish.
+        url = "https://github.com/hipay/hipay_payments_sdk_kmp"
         licenses {
             license {
                 name = "Apache-2.0"
@@ -122,9 +122,9 @@ mavenPublishing {
         }
         scm {
             // TODO(repo): interim — final SCM URL pending architecture-repos.md (§9).
-            url = "https://github.com/hipay/hipay-fullservice-kmp"
-            connection = "scm:git:https://github.com/hipay/hipay-fullservice-kmp.git"
-            developerConnection = "scm:git:ssh://git@github.com/hipay/hipay-fullservice-kmp.git"
+            url = "https://github.com/hipay/hipay_payments_sdk_kmp"
+            connection = "scm:git:https://github.com/hipay/hipay_payments_sdk_kmp.git"
+            developerConnection = "scm:git:ssh://git@github.com/hipay/hipay_payments_sdk_kmp.git"
         }
     }
 }

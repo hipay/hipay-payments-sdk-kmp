@@ -12,8 +12,8 @@ plugins {
 }
 
 // Coordinates so a consumer (the Android demo, via composite build) can resolve this
-// module as "com.hipay.fullservice:hipaycard"
-group = "com.hipay.fullservice"
+// module as "com.hipay.payments:card"
+group = "com.hipay.payments"
 // version: single source from gradle.properties — inherited as project.version.
 
 android {
@@ -72,7 +72,7 @@ dependencies {
 }
 
 // Publication (story 8.1): the Android card module ships to Maven as
-// com.hipay.fullservice:hipaycard; its POM declares the core dependency (via `api`).
+// com.hipay.payments:card; its POM declares the core dependency (via `api`).
 // POM kept in sync with :hipayfullservice (license is a documented TODO(legal)).
 mavenPublishing {
     publishToMavenCentral()
@@ -80,14 +80,14 @@ mavenPublishing {
     if (project.hasProperty("signingInMemoryKey")) {
         signAllPublications()
     }
-    coordinates(group.toString(), "hipaycard", version.toString())
+    coordinates(group.toString(), "card", version.toString())
     pom {
-        name = "HiPay Fullservice — Android card UI"
-        description = "Jetpack Compose card-entry component for the HiPay Fullservice SDK."
+        name = "HiPay Payments SDK — Android card UI"
+        description = "Jetpack Compose card-entry component for the HiPay payment SDK (Android)."
         inceptionYear = "2026"
-        // TODO(repo): final repository URL not yet decided — see architecture-repos.md
-        // (§9, deferred: final repo names + GitLab/GitHub topology). Interim value.
-        url = "https://github.com/hipay/hipay-fullservice-kmp"
+        // Repo NAME is settled (architecture-repos.md §2); the GitHub org/URL of the public
+        // mirror is the part still to confirm before the first real publish.
+        url = "https://github.com/hipay/hipay_payments_sdk_kmp"
         licenses {
             license {
                 name = "Apache-2.0"
@@ -104,9 +104,9 @@ mavenPublishing {
         }
         scm {
             // TODO(repo): interim — final SCM URL pending architecture-repos.md (§9).
-            url = "https://github.com/hipay/hipay-fullservice-kmp"
-            connection = "scm:git:https://github.com/hipay/hipay-fullservice-kmp.git"
-            developerConnection = "scm:git:ssh://git@github.com/hipay/hipay-fullservice-kmp.git"
+            url = "https://github.com/hipay/hipay_payments_sdk_kmp"
+            connection = "scm:git:https://github.com/hipay/hipay_payments_sdk_kmp.git"
+            developerConnection = "scm:git:ssh://git@github.com/hipay/hipay_payments_sdk_kmp.git"
         }
     }
 }

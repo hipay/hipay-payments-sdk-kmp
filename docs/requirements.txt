@@ -1,0 +1,4 @@
+# Pinned so a CI build and a local build produce the same site.
+mkdocs==1.6.1
+mkdocs-material==9.5.49
+mike==2.1.3

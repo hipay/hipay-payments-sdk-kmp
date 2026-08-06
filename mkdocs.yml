@@ -1,0 +1,48 @@
+site_name: HiPay Payments SDK
+site_description: Integration guides for the HiPay Payments SDK (Kotlin Multiplatform, Android, iOS).
+# The public mirror hosts the built site; GitLab builds and pushes it (decision R6 — no publishing
+# from GitHub). Confirm the org before the first deploy: only the repo NAME is settled.
+repo_url: https://github.com/hipay/hipay_payments_sdk_kmp
+repo_name: hipay_payments_sdk_kmp
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.top
+    - content.code.copy
+    - content.action.edit
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      toggle: { icon: material/weather-night, name: Switch to dark mode }
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      toggle: { icon: material/weather-sunny, name: Switch to light mode }
+
+extra:
+  version:
+    # Serves one subtree per released version with a selector, so an integrator reads the
+    # documentation of the version they pinned. Deployed by `mike` on GA tags only.
+    provider: mike
+    default: latest
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc: { permalink: true }
+  - pymdownx.superfences
+  - pymdownx.highlight: { anchor_linenums: true }
+  - pymdownx.inlinehilite
+  # Lets docs/changelog.md include the repository CHANGELOG.md instead of duplicating it.
+  - pymdownx.snippets: { base_path: ["."] }
+
+nav:
+  - Home: index.md
+  - Integration:
+      - Android: integration/android.md
+      - iOS: integration/ios.md
+      - Kotlin / Compose Multiplatform: integration/kmp.md
+  - Changelog: changelog.md
