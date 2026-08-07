@@ -103,8 +103,6 @@ mavenPublishing {
         name = "HiPay Payments SDK — core"
         description = "Headless core of the HiPay payment SDK for Kotlin Multiplatform: configuration, gateway client, card tokenization and the shared validation contract. Targets the HiPay Fullservice platform."
         inceptionYear = "2026"
-        // Repo NAME is settled (architecture-repos.md §2); the GitHub org/URL of the public
-        // mirror is the part still to confirm before the first real publish.
         url = "https://github.com/hipay/hipay-payments-sdk-kmp"
         licenses {
             license {
@@ -121,7 +119,6 @@ mavenPublishing {
             }
         }
         scm {
-            // TODO(repo): interim — final SCM URL pending architecture-repos.md (§9).
             url = "https://github.com/hipay/hipay-payments-sdk-kmp"
             connection = "scm:git:https://github.com/hipay/hipay-payments-sdk-kmp.git"
             developerConnection = "scm:git:ssh://git@github.com/hipay/hipay-payments-sdk-kmp.git"
