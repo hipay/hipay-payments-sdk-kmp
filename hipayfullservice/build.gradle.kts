@@ -39,6 +39,12 @@ kotlin {
             // The default bundle ID is derived from the module name and is a
             // known App Store validation/collision source for shipped SDKs.
             binaryOption("bundleId", "com.hipay.fullservice")
+            // Without these the framework ships Kotlin/Native's defaults (1.0 / 1), so an
+            // inspected binary never says which SDK it is. The short string follows the
+            // project version; a pre-release suffix is stripped because Apple only accepts
+            // one to three dot-separated integers there.
+            binaryOption("bundleShortVersionString", version.toString().substringBefore('-'))
+            binaryOption("bundleVersion", "1")
             isStatic = true
             xcf.add(this)
         }
