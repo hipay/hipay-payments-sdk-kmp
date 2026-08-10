@@ -22,6 +22,9 @@
 #                         GitLab cannot mask a multi-line value; decoded into
 #                         ORG_GRADLE_PROJECT_signingInMemoryKey by the publish job
 #   GITHUB_TOKEN          group-level: write access to the PUBLIC mirror (Releases + assets)
+#   GITHUB_ORGANIZATION   group-level: GitHub org (hipay)
+#   GITHUB_PROJECT        monorepo mirror name (hipay-payments-sdk-kmp) — target of the
+#                         template's repository_dispatch AND of the companion Release
 #   GITHUB_SPM_REPO       owner/repo (SLUG, not a URL — build-release.sh interpolates it
 #                         into the binaryTarget download URL) hosting the SPM Release and
 #                         the XCFramework asset: the iOS repo, NOT the monorepo.
@@ -113,6 +116,18 @@ publish-release:
         build-output-local/spm/HiPayFullservice.xcframework.zip \
         build-output-local/spm/Package.swift \
         build-output-local/spm/checksum.txt
+    - |
+      # Companion Release on the monorepo: no asset (Android/KMP ship through Maven
+      # Central), but it is where those integrators land, and it is what fires
+      # .github/workflows/slack-message.yml — that workflow listens for a release
+      # published ON ITS OWN repository, so a release only on the iOS repo would post
+      # nothing. Start the template's `trigger-github-workflow` job BEFORE this one:
+      # it feeds the JIRA payload the Slack workflow reads.
+      export GH_TOKEN="$GITHUB_TOKEN"
+      SOURCE_REPO="$GITHUB_ORGANIZATION/$GITHUB_PROJECT"
+      gh release view "$CI_COMMIT_TAG" --repo "$SOURCE_REPO" >/dev/null 2>&1 \
+        || gh release create "$CI_COMMIT_TAG" --repo "$SOURCE_REPO" --verify-tag \
+             --title "$CI_COMMIT_TAG" --notes-file release_changelog.txt
 
     # 3. Maven Central LAST (irreversible) — signed with the GPG release subkey.
     #    The armored key is multi-line, which GitLab cannot mask, so it is stored
