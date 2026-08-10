@@ -1,261 +1,72 @@
-# Changelog — HiPay Fullservice KMP SDK
+# Changelog — HiPay Payments SDK for Kotlin Multiplatform
 
-Pre-1.0: the API may still move; per SemVer pre-1.0 a **minor** bump (0.1.0 → 0.2.0) can carry
-breaking changes. `version` is the single source of truth in `gradle.properties` (inherited by every
-module + the iOS SPM/xcframework).
+One version number covers the three delivery channels: the Android artifacts, the KMP artifacts and
+the iOS XCFramework/SPM package.
+
+<!-- Editing this file? Read CONTRIBUTING.md, section "Changelog — maintainer conventions".
+     A version heading must be EXACTLY "## x.y.z" — no date, no title. The release pipeline matches
+     that line verbatim, so any suffix produces empty release notes. Put the date on the line below. -->
 
 ## Unreleased
 
-### Added
+## 1.0.0
 
-- **Card-entry validation hardening** (all three platforms, shared rules in commonMain):
-  - **Immediate invalid-pattern detection** — the number field errors ("Invalid card number") as
-    soon as the typed digit prefix can no longer match any supported network (progressive check
-    over Amex/Visa/Mastercard/Bancontact/Maestro; CB is co-badged and needs no prefix of its own).
-    Not blur-gated: no amount of further typing can repair the prefix.
-  - **Immediate "Card type not allowed" on an UNAMBIGUOUS local mismatch** — when the
-    locally-detected network can never be a co-brand of any allowed network (e.g. Amex detected
-    with only CB allowed, or Visa detected with only Mastercard allowed), the "Card type not
-    allowed" error now shows during focus on local detection, without waiting for the backend.
-    The AMBIGUOUS cases — where an allowed domestic scheme (CB/BCMC) could ride the detected
-    international BIN, e.g. Visa detected with only CB allowed — stay backend-verdict-gated as
-    before, so a genuine co-branded card is never flashed as rejected while typing. Driven by the
-    new shared `CardNetworks.possibleResolutions` / `AllowedNetworks.isLocallyUnauthorized`.
-  - **Expiry horizon** — an expiry year more than 15 years ahead is invalid
-    ("Invalid expiry date"), shown on focus loss like the other expiry errors.
-  - **Cardholder minimum length** — a non-empty holder under 3 characters shows the new
-    "Minimum 3 characters" error on focus loss (new key `ERROR_HOLDER_TOO_SHORT`, FR/EN/IT in
-    the three catalogs; new `ValidationReason.HOLDER_TOO_SHORT`).
-  - **Cardholder input shaping** — one shared sanitizer (`CardValidators.sanitizeHolder`):
-    uppercased; letters, spaces and `- ' .` accepted; at most 8 digits in total; every other
-    character dropped at input; still hard-capped at 60 characters.
+_First public release._
 
-### Changed
+The `0.1.0` to `0.3.0` tags were internal developer previews, never published to Maven Central or
+SPM. There is no 0.x migration path. Integration steps and API reference: see the documentation for
+this version.
 
-- **The security-code field is now labelled "CVV" in every language** (was "Security code" / "Code de
-  sécurité" / "Codice di sicurezza"). Its error messages follow the same term ("Invalid CVV", "CVV
-  invalide", "CVV non valido"; "CVV is incomplete", "CVV incomplet", "CVV incompleto"), and the inline
-  help drops the now-redundant gloss ("Enter the CVV on your card."). No key added or removed.
-- **The expiry field is now labelled "Expiration"** ("Expiration" in French, "Scadenza" in Italian) —
-  the previous "Expiry date" / "Date d'expiration" / "Data di scadenza" could not fit the half-width
-  field at full type size.
-- **Field labels take the full text size while resting inside their field**, and shrink only when they
-  float to the top. They were pinned at the smaller floating size in both states, which read as
-  cramped next to the input text. Labels still never wrap: a label too wide for its field overflows
-  horizontally rather than growing the field, so the field heights and the Expiry/CVV row symmetry are
-  unchanged.
-- **More vertical space between the card fields** on Android and CMP (8dp → 12dp), the value the
-  SwiftUI surface already used — a floating label rises into the top of its own field and eats most of
-  the gap between two stacked fields.
-- **Invalid fields now tint their border with `invalidTextColor` while their inline error is
-  visible** (blur-gated; immediate for the pattern/network errors), on all three platforms.
-  iOS-native previously tinted borders live while typing (an incomplete number went red from the
-  first digit); Android/CMP previously never tinted the border. `canPay` also enforces the new
-  rules (holder ≥ 3 chars, viable prefix, expiry within the horizon).
+### Payment
 
-### Fixed
+- A single call runs the whole payment — tokenization, order, authentication and confirmation — and
+  returns the final result as confirmed by the server.
+- Card numbers and security codes stay inside the component. They never reach your code and are
+  never stored.
+- A headless mode remains available if you prefer to drive each step yourself.
+- The card fields lock themselves while a payment is in flight, so a double tap cannot start two.
 
-- **The allowed card networks now come from the merchant ACCOUNT, not only from the integrator.**
-  The component asks the account which card products it is contracted for
-  (`available-payment-products`) as soon as it appears on screen, and treats that answer as the
-  ceiling on what it may offer; an integrator-supplied `allowedNetworks` can only NARROW it, never
-  widen it. Previously the ceiling was never queried, so a component built without a restriction
-  accepted every network the BIN resolved to and the account's refusal only surfaced as a gateway
-  error after the payer had filled the form. A network the account does not accept now shows no brand
-  icon, raises the existing "Card type not allowed" message and blocks `canPay`.
-  - **No brand icon is shown while that first answer is in flight** — whether the detected network is
-    offerable at all is exactly what is unknown, and a logo shown then withdrawn is worse than a logo
-    shown a beat later. A **technical failure** of the query (offline, non-2xx, unusable body) leaves
-    the ceiling open and shows the locally detected icon, so a network hiccup never blocks entry; a
-    **successful empty answer** is a verdict, not a failure, and refuses every card.
-  - **Saved cards are filtered by the same ceiling**, and re-filtered once it lands — a stored card
-    on a network the account no longer accepts is dropped from the one-click list.
-  - New optional `currency` parameter on the three card controllers (defaults to `"EUR"`): a contract
-    can differ per currency, so it should match the currency the order will be created in. Additive —
-    existing call sites compile unchanged.
-  - `AllowedNetworks`' `allowed` parameter became **nullable**: `null` means "no restriction", an
-    EMPTY list means "authorizes nothing". Conflating the two is what allowed the original bug, so
-    the distinction is now explicit. Source-visible for anyone calling these helpers directly.
-- **CMP (iOS renderer): blur-gated inline errors could never appear** — the renderer never
-  reported focus loss, so the number/expiry/CVC/holder errors stayed hidden. Fields now mark
-  the blur exactly like native Android.
-- **iOS-native: number input is capped at the detected network's length** (Amex 15,
-  Visa/Mastercard/CB 16, Bancontact 17; 19 while undetected) instead of a flat 19 —
-  Android/CMP parity.
+### 3-D Secure
 
-## 0.3.0 — 2026-07-16
+- The SDK opens and handles the authentication challenge itself, in-app on iOS and in a Chrome
+  Custom Tab on Android. Android hosts declare one redirect intent-filter.
+- If the payer closes the challenge, or returns without a callback, the SDK asks the server for the
+  real state rather than assuming a cancellation — a captured payment is never reported as aborted.
+- When the server cannot be reached at that moment, the result is explicitly undetermined rather
+  than a wrong answer.
+- Authentication is not requested by default; the policy is chosen per payment.
 
-### Added
+### Card networks and validation
 
-- **Card-field styling: `HiPayCardEntryStyle`** (`com.hipay.card.style`, core module — exported
-  to Swift as `HiPayCardEntryStyle`). One shared, platform-neutral contract (ARGB `Long`
-  colors, `Float` metrics, font enums, `fontFamily` reserved/null = system font) with
-  `HiPayCardEntryStyle.hipayDefault` as the default look. New optional `style` parameter on the
-  CMP and native-Android `HiPayCardEntry` — additive with a default, so existing call sites are
-  source-compatible. Applied by the shared renderer on CMP-iOS, by the iOS-native SwiftUI
-  component, and by the native Android Compose component in this release; CMP-Android now
-  inherits the styled look by delegating to that native Android component. Style values are
-  validated at construction
-  (`IllegalArgumentException` on out-of-range colors/metrics) rather than rendered wrong;
-  from Swift, constructing the Kotlin style with invalid values terminates the process
-  (Kotlin initializer exceptions are not catchable from Swift) — prefer overriding on
-  `HiPayCardTheme`, whose metric setters enforce the same bounds fail-fast.
-  iOS-native: `HiPayCardEntryView`'s `theme` parameter is now a real appearance —
-  `HiPayCardTheme(style:)` bridges the shared contract to SwiftUI (`.default` is deprecated
-  in favor of `.hipayDefault`), and the theme's mutable properties give Swift per-property
-  overrides (Kotlin default arguments are not exported, so from Swift start from
-  `hipayDefault`). The custom placeholder color applies from iOS 17 (iOS 15/16 keep the
-  system placeholder gray, which the default matches).
-  Note: `hipayDefault` deliberately unifies small historical per-platform visual differences
-  into one cross-platform baseline — no behavioural change, but expect visual normalization:
-  corner radius and border/label colors are unified, the neutral card placeholder takes
-  `iconColor` (brand-network chips keep their alpha dimming — brand marks are never
-  re-tinted), and the text cursor follows `textColor` instead of the theme accent. The
-  baseline is LIGHT-mode on every platform — iOS previously inherited adaptive system
-  colors, so dark-mode hosts should pass a dark-adapted style until dedicated dark-theme
-  support ships.
+- The merchant account decides which card networks are accepted. A restriction set by the integrator
+  can only narrow that list, never extend it.
+- A card the account refuses is now rejected in the form — no brand icon, no way to submit — instead
+  of failing at the gateway once the payer has filled everything in.
+- If the account cannot be queried, card entry stays open rather than blocking the payer.
+- Co-branded cards (CB with Visa or Mastercard, Bancontact) offer both networks, with the domestic
+  one preselected.
+- Field errors appear as soon as they are certain, and wait for the server verdict as long as the
+  card could still turn out to be valid.
 
-- **One-click payments / saved cards — 🚧 EXPERIMENTAL (work-in-progress, opt-in).** A returning
-  payer can pay with a previously-saved card token without re-entering the PAN/CVV. **Off by
-  default** — enable per component with `oneClickEnabled = true` on the controller; when off, no
-  card store is created and nothing changes. Surface: `pay(…, saveCard = true)` offers to save on a
-  successful payment (with in-component consent); `payWithSavedCard(…)` pays from a stored token;
-  `savedCards` / `selectSavedCard` / `selectNewCard` / `deleteSavedCard` / `refreshSavedCards` drive
-  the saved-card list; `saveCardOptIn`, `lastSaveOutcome` and `lastOneClickError` expose the state
-  and outcome. Tokens are held in platform secure storage (Android Keystore + DataStore, iOS
-  Keychain); the PAN/CVV are never stored. **Status: WIP for 0.3.0 — the API and UX may still
-  change; the consent/legal copy, the out-of-checkout delete API, and the demos/docs/analytics are
-  not final. Not recommended for production yet.** Additive only: every new parameter defaults to
-  the off/false state, so existing integrations are unaffected.
+### Appearance and language
 
-- **SDK-wide settings: `HiPaySettings` on `HiPayConfig`.** Set the display language once instead of
-  per component — build a `HiPaySettings` and pass it as the new optional `HiPayConfig(settings = …)`
-  (iOS: `HiPayConfiguration(settings:)`). It is an injected instance, not a global (architecture D7).
-  **One shared type across every platform** — the same `HiPaySettings` on Android, CMP and iOS
-  (Android/CMP use the Kotlin type; iOS uses the same type through the SDK, with a Swift `Locale`
-  convenience). The language is **observable and mutable at runtime**: change it and every card
-  sharing the instance re-localizes live, with no re-init (Compose reads it via `collectAsState()`;
-  iOS bridges its change listener to a SwiftUI re-render). Precedence: per-component `localeOverride`
-  → `HiPaySettings` → device locale. Language matching is now **case-insensitive and region-tolerant**
-  (`"FR"` / `"fr-FR"` → `"fr"`) on every platform; the shared core stores a lowercased ISO-639
-  `String`. Set it with `setLocaleOverride("fr")` (or `setLocaleOverride(Locale(…))` on iOS / a
-  `Locale` overload on Android). Additive — omit `settings` and behaviour is unchanged.
-  (Note: constructing the internal Kotlin `HiPayConfig` *directly from Swift* now needs `settings:` —
-  Kotlin default arguments are not exported to Swift — but integrators use the `HiPayConfiguration`
-  facade, which defaults it, so there is no public break.)
+- The colors, sizes and fonts of the card fields are set through one shared style, identical on the
+  three platforms.
+- The default look is light-mode. Dark-mode apps should supply their own colors until dark theme
+  ships.
+- French, English and Italian, following the device language, with English as the fallback.
+- The language can be set once for the whole SDK and changed at runtime — every visible card
+  updates, with no re-initialization.
 
-### Fixed
+### One-click / saved cards — experimental
 
-- **iOS `HiPayCard`: CVV help dismissal.** The inline CVV explanation now closes when focus
-  moves to another entry field or a saved card is selected — it could previously stay open
-  (or re-appear unprompted after collapsing the entry fields). Focusing the CVV field itself
-  keeps the help open.
+- Disabled by default. Once enabled, a returning payer pays with a card saved on a previous
+  purchase, without retyping anything.
+- Only a token is stored, in the platform's secure storage — never the card number or the security
+  code. Saved cards follow the same account rules as new entries.
+- Still experimental: the interface and the consent wording may change. Not recommended for
+  production yet.
 
-- **CMP `hipaycard-cmp`: co-branding by backend network detection.** `CmpCardController` now
-  resolves the network set through the backend (`resolveCardInfo`) once the entered number is
-  complete and Luhn-valid — exactly like the native Android/iOS components — so a co-branded
-  card (CB+Visa, CB+Mastercard…) offers both networks with the domestic CB/BCMC chip
-  default-selected, as it always should have on CMP. Resolution failures degrade to the
-  locally-detected network and never block entry. No integrator change required:
-  `CmpCardController` gains an optional `scope` constructor parameter (defaulted) and
-  `dispose()` now cancels the controller-owned scope.
+### Distribution
 
-- **CMP `hipaycard-cmp`: locale-aware strings (fr/en/it).** The shared card component now
-  resolves its labels/placeholders/messages per locale — the device language, or the
-  `localeOverride` parameter of `HiPayCardEntry`, which existed but was ignored on the iOS
-  target (always English). Wording is copied verbatim from the validated native Android/iOS
-  catalogs; English stays the baseline and the fallback for unsupported languages.
-  **Behavioural change to be aware of:** an app running in French or Italian now shows the CMP
-  card component in that language instead of English. No API change — `localeOverride` keeps
-  its exact signature; pass `localeOverride = "en"` to keep the previous English-only rendering.
-
-- **iOS-native `HiPayCard`: device-locale strings.** The native iOS card component now follows the
-  device language (fr/en/it) too — it previously always rendered English because the SwiftUI
-  resource bundle's localization was capped to the package's development region rather than the
-  device locale. With this, **localized strings work across all targets** (iOS-native,
-  native-Android, and CMP). English stays the fallback for unsupported languages;
-  `HiPayCardStrings.localeOverride` still forces a specific language.
-
-- **Card fields: uniform compact height.** The security-code (CVV) and card-number fields no longer
-  render taller than the others. Their affordances — the CVV `ⓘ` help toggle and the
-  network/co-brand chips — are now overlaid inside the field instead of occupying Material's
-  trailing-icon slot, which had forced a 48dp floor. All entry fields now honor the styled
-  `fieldHeight` (compact 42dp by default) uniformly on native-Android and CMP; the tap affordances
-  keep a round 42dp target.
-
-### Deprecated
-
-- iOS `HiPayCardTheme.default` → use `HiPayCardTheme.hipayDefault` (renamed). `.default` still
-  compiles, with a deprecation warning.
-
-### Compatibility
-
-- **No breaking API changes vs 0.2.0 — source-compatible.** Every 0.3.0 addition (the `style`
-  parameter; one-click `oneClickEnabled` / `saveCard` / `payWithSavedCard` and the new saved-card
-  types) is additive with defaults, and `.default` is only deprecated, not removed — code that
-  compiled against 0.2.0 still compiles.
-  - Minor source note (not an API break): the new `HiPayErrorCode.CARD_NO_LONGER_VALID` (Kotlin) /
-    `HiPayError.cardNoLongerValid` (Swift) enum case can require a new branch in a Kotlin exhaustive
-    `when` used as an expression (a Swift `switch` on the non-frozen enum only warns). No public
-    symbol was removed, renamed, or re-typed.
-  - Behavioural changes to expect (not API breaks): CMP now follows the device locale and shows
-    co-branding; the default field look is unified to a light-mode baseline (see Added).
-
-## 0.2.0 — SDK-managed 3DS
-
-### ⚠️ BREAKING CHANGES (vs the tagged 0.1.0)
-
-**`pay(...)` now presents the 3DS challenge itself and returns the FINAL, server-confirmed
-transaction.** In 0.1.0 `pay()` returned a `FORWARDING` transaction and the host opened `forwardUrl`,
-caught the redirect, and called `getTransaction`. From 0.2.0 the SDK does all of that — existing
-`pay()` call sites change behaviour.
-
-- **iOS `HiPayCardEntryController.pay`**: new `threeDS: HiPayThreeDSMode = .inAppSession`
-  (`.inAppSession` = in-app `ASWebAuthenticationSession`; `.externalBrowser` = external Safari).
-- **Android `:hipaycard` `HiPayCardEntryController.pay`**: new `autoPresent3DS: Boolean = true`
-  (Chrome Custom Tabs). New transitive dep **`androidx.browser`**. Host must add the redirect
-  `intent-filter` (`VIEW`+`BROWSABLE`, scheme + host `hipay-fullservice`) and `launchMode="singleTop"`.
-- **CMP `hipaycard-cmp` `HiPayCardController.pay`**: new `threeDS: HiPayThreeDSMode = IN_APP_SESSION`
-  (enum `HiPayThreeDSMode { IN_APP_SESSION, EXTERNAL_BROWSER }`).
-- **New `resume3DS(url)`** — the single host touch-point for browser returns (iOS `.externalBrowser`
-  + all Android/CMP), called from `.onOpenURL` / `onNewIntent`. iOS in-app needs no wiring.
-
-### Added (non-breaking)
-
-- **`isProcessing`** (read-only, observable) on every controller: the card-entry view/component
-  locks its own fields while `pay()` is in flight (replaces the short-lived, never-tagged `enabled`
-  param). Mirror it on your Pay button (`!canPay || isProcessing`).
-- **Abort/return reconciliation** (FR9): on any non-callback return (in-app dismiss, Custom Tab
-  close, external-Safari back — every mode, every platform), the SDK queries `getTransaction` and
-  returns the authoritative state — never a false "aborted" when the payment was actually captured.
-  If the server is unreachable during reconciliation, it returns an indeterminate `PENDING` snapshot
-  (`Transaction.verificationPending`, "verification required") instead of a false abort or a thrown
-  error — re-query `getTransaction` to resolve.
-- iOS `HiPayFullservice.xcframework` regenerated from the current KMP core (incl. the co-brand-aware
-  CVC / per-network length / formatting refinements).
-
-### Behavioral notes (not source-breaking)
-
-- **No public symbol removed or renamed** vs 0.1.0 — only additions; the break is the changed
-  default behaviour of `pay()`. Adding `threeDS`/`autoPresent3DS` is source-compatible (defaulted).
-- Card fields self-lock during `pay()` (`isProcessing`) — UX difference, no code change needed.
-- **Android/CMP only:** read-only `controller.expiry` now exposes raw `MMYY` (was `"MM/YY"`; story
-  11.8, post-0.1.0). Low impact. iOS does not expose `expiry` publicly.
-
-### Unchanged
-
-- Headless core (`GatewayClient`/`CardTokenizer`) still returns `forwardUrl` as data (FR9) — the
-  manual path is fully preserved. HS auth (backend-computed signature), PCI boundary, Apache-2.0.
-
-### Migration
-
-- Remove your `forwardUrl` open + manual `getTransaction`; `pay()` returns the final tx.
-- Wire `resume3DS(url)` for browser returns (iOS `.externalBrowser` + all Android/CMP).
-- Android: add the `intent-filter` + `singleTop` (`androidx.browser` comes transitively).
-- Drop any `isPaying` flag — fields self-lock via `isProcessing`.
-- Need full manual control? iOS: use the headless core. Android: `pay(autoPresent3DS = false)`.
-
-## 0.1.0 — Initial developer preview (tagged)
-
-Headless core + native card UI (iOS SwiftUI / Android Compose) + shared CMP card UI. `pay()`
-returned `FORWARDING` for host-driven 3DS.
+- Android and KMP through Maven Central, iOS through Swift Package Manager. Apache-2.0.
