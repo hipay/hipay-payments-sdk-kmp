@@ -1,29 +1,42 @@
-# HiPay Fullservice — iOS integration (preview)
+# iOS integration
 
 SwiftUI card-entry + headless payment over a binary KMP `XCFramework`, exposed by a hand-written
 100%-Swift facade split into two SPM products: **`HiPayCore`** (headless) and **`HiPayCard`** (UI).
-**Preview 0.3.0** — see [README](../index.md). ⚠️ **0.2.0 changes 3DS** vs 0.1.0 — `pay()` now
-presents it and returns the final transaction (see [CHANGELOG](../changelog.md)). **0.3.0 is
-source-compatible with 0.2.0 (no breaking API changes).**
+`pay()` presents the 3DS challenge itself and returns the final, server-confirmed transaction.
 
 ## Requirements
 
 - Xcode (the toolchain used to build the v1 demo), Swift 5.9+/6
 - Targets: `iosArm64` (device) + `iosSimulatorArm64` (Apple-Silicon simulator)
-- `ios/` — a self-contained local SPM package: `Package.swift` + `Sources/HiPayCore` + `Sources/HiPayCard` + `HiPayFullservice.xcframework`
+- Two SPM products: `HiPayCore` (headless) and `HiPayCard` (UI), both resolved from the package below
 
 > **Why isn't `HiPayCard` in the `.xcframework`?** The `.xcframework` is **only** the compiled
 > KMP/Kotlin core (`HiPayFullservice`). `HiPayCore`/`HiPayCard` are the **hand-written Swift facade
 > (D4)** — Swift *source*, shipped in the package, depending on the binary. They cannot live inside a
 > KMP-compiled framework.
 
-## Add the SDK (local SPM package)
+## Add the SDK (Swift Package Manager)
 
-`build-output/ios/` IS the package. In your app: **File ▸ Add Package Dependencies ▸ Add Local…** →
-select **`build-output/ios/`**, then add the **`HiPayCore`** and **`HiPayCard`** products to your target.
+In Xcode: **File ▸ Add Package Dependencies…**, enter
+`https://github.com/hipay/hipay-payments-sdk-ios`, choose **Up to Next Major Version** from
+**1.0.0**, then add the **`HiPayCore`** and **`HiPayCard`** products to your target.
 
-> The bundled `HiPayFullservice.xcframework` is what `Package.swift`'s `binaryTarget` resolves
-> (`path: "HiPayFullservice.xcframework"`). Remote SPM (`binaryTarget(url:)`) is **Epic 9** (not published yet).
+From a `Package.swift`:
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/hipay/hipay-payments-sdk-ios.git", from: "1.0.0")
+],
+targets: [
+    .target(name: "YourApp", dependencies: [
+        .product(name: "HiPayCore", package: "hipay-payments-sdk-ios"),
+        .product(name: "HiPayCard", package: "hipay-payments-sdk-ios"),
+    ])
+]
+```
+
+> SwiftPM downloads the compiled `HiPayFullservice.xcframework` from the release assets and verifies
+> it against the checksum recorded in the tag's manifest, so a tampered binary fails to resolve.
 
 ## Use the component
 
@@ -96,7 +109,7 @@ Two behaviours worth knowing before you file a bug:
 
 Saved cards (one-click) are filtered by the same set.
 
-## Styling (since 0.3.0)
+## Styling
 
 `HiPayCardTheme` bridges the shared `HiPayCardEntryStyle` into Swift. Start from `.hipayDefault`
 and override per property — Kotlin default args aren't exported to Swift, so you build the theme by
@@ -109,14 +122,10 @@ theme.cornerRadius = 12
 HiPayCardEntryView(controller: controller, theme: theme)
 ```
 
-> **Notes.** `HiPayCardTheme.default` is deprecated → use `.hipayDefault`. A custom placeholder
-> color applies from iOS 17 (iOS 15/16 keep the system gray). The default baseline is light-mode —
-> pass a dark-adapted theme for dark hosts.
+> **Notes.** A custom placeholder color applies from iOS 17 (iOS 15/16 keep the system gray). The
+> default baseline is light-mode — pass a dark-adapted theme for dark hosts.
 
-## Localization (since 0.3.0)
-
-> The security-code field is labelled **"CVV"** in every language, and the expiry field
-> **"Expiration"** ("Scadenza" in Italian) — both changed in this candidate.
+## Localization
 
 The component follows the device language (fr/en/it; English fallback). The **recommended** way to
 force a language is SDK-wide via `HiPaySettings` on the configuration:
@@ -139,13 +148,18 @@ HiPayCardStrings.localeOverride = Locale(identifier: "fr")
 
 ## One-click / saved cards — 🚧 experimental (WIP, opt-in)
 
-**OFF by default and NOT production-ready in 0.3.0.** The API/UX may still change (consent/legal
+**OFF by default and NOT production-ready.** The API/UX may still change (consent/legal
 copy and the out-of-checkout delete API are not final) — don't ship it to production yet. Enable it
 with `oneClickEnabled: true` on the controller. Card **tokens** are held in the iOS Keychain; the
 PAN/CVV are never stored.
 
 Surface: `pay(…, saveCard: true)`, `payWithSavedCard(…)`, `savedCards`, `selectSavedCard`,
 `deleteSavedCard`, `lastOneClickError`.
+
+A stored token can stop being accepted by the gateway — the card expired, was replaced, or the
+issuer revoked it. `payWithSavedCard` then fails with `HiPayError.cardNoLongerValid`; the card is
+dropped from `savedCards`, and the payer must enter a card again. Handle that case explicitly: it
+is the one one-click failure that is not worth retrying.
 
 ## 3DS presentation (turnkey, default on)
 
@@ -232,3 +246,8 @@ A complete, runnable example is the demo at `src/HiPay-SDK-ios-Demo` (`PaymentSc
 - **Accessibility**: VoiceOver labels/traits, relative sort priority (opt-out `setsAccessibilityOrder: false`), inline errors announced politely, CVV tooltip.
 - **PCI**: the raw PAN and the vault token never leave the controller; never log card data.
 - **Facade only (D4)**: integrate via `HiPayCore`/`HiPayCard` — do not `import HiPayFullservice` (the raw KMP) directly.
+
+---
+
+**Other integration paths:** [Android](android.md) · [Compose Multiplatform](cmp.md)
+**See also:** [Overview](../index.md) · [Changelog](../changelog.md) · [Report an issue](https://github.com/hipay/hipay-payments-sdk-kmp/issues)

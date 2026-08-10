@@ -1,11 +1,22 @@
-# HiPay Fullservice KMP SDK
+# HiPay Payments Mobile SDK
 
-**Integration guides:** [`docs/`](docs/index.md) — Android, iOS and Kotlin/Compose Multiplatform, plus the changelog. Published as a versioned site so you can read the documentation of the version you depend on.
+Card payments for Android, iOS and Compose Multiplatform, from a single Kotlin codebase — successor
+to the legacy native iOS/Android SDKs. Android and KMP ship through Maven Central
+(`com.hipay.payments:core` / `:card` / `:card-cmp`); iOS ships through Swift Package Manager.
 
-Kotlin Multiplatform SDK for HiPay Fullservice card payments — successor to the
-legacy native iOS/Android Fullservice SDKs. Single Kotlin codebase
-(`:hipayfullservice`, coordinates `com.hipay.payments:core`),
-consumed on iOS through a local Swift package.
+**Integration guides — start here:**
+
+| Your app | Guide | What you depend on |
+|---|---|---|
+| Native **Android** (Jetpack Compose) | [Android](docs/integration/android.md) | `com.hipay.payments:card` |
+| Native **iOS** (SwiftUI) | [iOS](docs/integration/ios.md) | SPM products `HiPayCard` / `HiPayCore` |
+| **Kotlin / Compose Multiplatform** | [Compose Multiplatform](docs/integration/cmp.md) | `com.hipay.payments:card-cmp` |
+
+Also: [documentation home](docs/index.md) · [changelog](CHANGELOG.md) ·
+[contributing](CONTRIBUTING.md) · [report an issue](https://github.com/hipay/hipay-payments-sdk-kmp/issues)
+
+The guides are published as a **versioned site**, so you can always read the documentation of the
+version you actually depend on.
 
 ## Layout
 
@@ -75,8 +86,7 @@ theme.cornerRadius = 12
 HiPayCardEntryView(controller: controller, theme: theme)
 ```
 
-`HiPayCardTheme.default` is deprecated → use `.hipayDefault`. The custom
-placeholder color applies from iOS 17 (iOS 15/16 keep the system gray). The
+The custom placeholder color applies from iOS 17 (iOS 15/16 keep the system gray). The
 default baseline is light-mode — pass a dark-adapted style for dark hosts.
 
 ### Localization — `HiPaySettings` / `localeOverride`

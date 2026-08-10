@@ -1,12 +1,10 @@
-# HiPay Fullservice — KMP / Compose-Multiplatform integration (preview)
+# KMP / Compose-Multiplatform integration
 
 Add the **shared Compose-Multiplatform card UI** to your KMP app: one `@Composable HiPayCardEntry`
 from `commonMain` renders the HiPay card-entry component on **Android and iOS**, backed by
 `hipaycard-cmp`. The card token stays inside the controller (PCI); your host owns the Pay button and
 calls `pay(...)`, which presents the 3DS challenge and returns the final transaction.
-**Preview 0.3.0** — see [README](../index.md). **0.3.0 is source-compatible with 0.2.0 (no breaking
-API changes).** ⚠️ **0.2.0 changed 3DS** vs 0.1.0 — the CMP card controller now presents it
-(`threeDS` mode) and returns the final transaction (see [CHANGELOG](../changelog.md)).
+
 
 > Prefer to build your own UI (or drive payments from a backend)? A **headless core** is available
 > for full control — see **[Headless core (advanced)](#headless-core-advanced)** at the end.
@@ -25,18 +23,10 @@ A runnable reference consumer lives in the separate **`HiPay-SDK-CMP-Demo`** rep
 
 ## Add the SDK (commonMain)
 
-**Phase-1 (this delivery):** the SDK ships as a **self-contained Maven repo** in `kmp/maven-repo/`
-next to this doc — no registry access needed. Point a `maven { }` repo at it.
-
 ```kotlin
-// settings.gradle.kts
+// settings.gradle.kts — mavenCentral() is usually already there
 dependencyResolutionManagement {
-    repositories {
-        google(); mavenCentral()
-        // Phase-1: the bundled HiPay repo (adjust the path to where you copied kmp/maven-repo).
-        maven { url = uri("/absolute/path/to/kmp/maven-repo") }
-        // (Later: a published Maven Central coordinate replaces this bundled repo.)
-    }
+    repositories { google(); mavenCentral() }
 }
 
 // build.gradle.kts (your KMP/CMP module)
@@ -44,7 +34,7 @@ kotlin {
     androidTarget(); iosArm64(); iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
-            implementation("com.hipay.payments:card-cmp:0.3.0")   // card UI (+ core, transitively)
+            implementation("com.hipay.payments:card-cmp:1.0.0")   // card UI (+ core, transitively)
             // Needed to LAUNCH the suspend API (coroutines are `implementation` in the SDK).
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
         }
@@ -137,7 +127,7 @@ Saved cards (one-click) are filtered by the same set.
 `null` means "no restriction", an EMPTY list means "authorizes nothing". The two used to be the same
 value, which is what let a component accept networks its account could not process.
 
-## Styling (since 0.3.0)
+## Styling
 
 `HiPayCardEntryStyle` is a shared contract from `commonMain`: ARGB `Long` colors (`0xAARRGGBB`),
 `Float` metrics, font enums (`fontFamily` reserved = system font). Validated at construction
@@ -158,10 +148,7 @@ HiPayCardEntry(controller = controller, style = style)   // shared expect/actual
 
 Default baseline is light-mode — pass a dark-adapted style for dark hosts.
 
-## Localization (since 0.3.0)
-
-> The security-code field is labelled **"CVV"** in every language, and the expiry field
-> **"Expiration"** ("Scadenza" in Italian) — both changed in this candidate.
+## Localization
 
 Follows the device locale (fr/en/it; English fallback). Set the display language once for the whole
 SDK via `HiPaySettings` on the config:
@@ -181,7 +168,7 @@ HiPayCardEntry(controller = controller, localeOverride = "fr")
 
 ## One-click / saved cards — 🚧 experimental (WIP, opt-in)
 
-OFF by default and NOT production-ready in 0.3.0 (API/UX may change; consent/legal copy +
+OFF by default and NOT production-ready (API/UX may change; consent/legal copy +
 out-of-checkout delete API not final). Card tokens are held in platform secure storage (Android
 Keystore + DataStore, iOS Keychain); PAN/CVV never stored.
 
@@ -193,6 +180,11 @@ controller.payWithSavedCard(/* … */)         // pay from a stored token
 ```
 
 With `oneClickEnabled = false` (default) no card store is created and behavior is unchanged.
+
+A stored token can stop being accepted by the gateway — the card expired, was replaced, or the
+issuer revoked it. `payWithSavedCard` then fails with `HiPayErrorCode.CARD_NO_LONGER_VALID`; the
+card is dropped from `savedCards`, and the payer must enter a card again. Handle that code
+explicitly: it is the one one-click failure that is not worth retrying.
 
 ## 3DS presentation (turnkey, default on)
 
@@ -278,7 +270,7 @@ internal actual fun sha1Hex(input: String): String {
 - **Signature** — `controller.pay(…, signature)` takes a **backend-computed** HS signature; the SDK
   never computes it (see the stage-only helper above for a first test).
 - **PCI** — the raw PAN never leaves the controller; never log card data.
-- **Version** — `0.3.0`; pin the same number as the iOS SPM tag / Android AARs (single-version policy across platforms).
+- **Version** — `1.0.0`; pin the same number as the iOS SPM tag / Android AARs (single-version policy across platforms).
 
 ---
 
@@ -292,7 +284,7 @@ Add the headless artifact instead of (or alongside) the card UI:
 
 ```kotlin
 // commonMain — headless only
-implementation("com.hipay.payments:core:0.3.0")
+implementation("com.hipay.payments:core:1.0.0")
 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 ```
 
@@ -347,3 +339,8 @@ val finalTx = gateway.getTransaction(reference!!, signature) // authoritative ou
 
 > The headless core is also what the per-platform native UIs (Android `:hipaycard`, iOS `HiPayCard`)
 > and the CMP card UI build on — you can always drop to it for full control.
+
+---
+
+**Other integration paths:** [Android](android.md) · [iOS](ios.md)
+**See also:** [Overview](../index.md) · [Changelog](../changelog.md) · [Report an issue](https://github.com/hipay/hipay-payments-sdk-kmp/issues)

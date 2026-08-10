@@ -1,4 +1,4 @@
-site_name: HiPay Payments SDK
+site_name: HiPay Payments Mobile SDK
 site_description: Integration guides for the HiPay Payments SDK (Kotlin Multiplatform, Android, iOS).
 # The public mirror hosts the built site; GitLab builds and pushes it (decision R6 — no publishing
 # from GitHub). Confirm the org before the first deploy: only the repo NAME is settled.
@@ -44,5 +44,5 @@ nav:
   - Integration:
       - Android: integration/android.md
       - iOS: integration/ios.md
-      - Kotlin / Compose Multiplatform: integration/kmp.md
+      - Kotlin / Compose Multiplatform: integration/cmp.md
   - Changelog: changelog.md

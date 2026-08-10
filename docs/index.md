@@ -1,8 +1,8 @@
-# HiPay Payments SDK
+# HiPay Payments Mobile SDK
 
-Kotlin Multiplatform SDK for HiPay card payments — successor to the legacy native iOS and Android
-Fullservice SDKs. One Kotlin codebase serves the three integration paths below; on iOS it is consumed
-through a Swift facade so the multiplatform types never reach your code.
+Card payments for Android, iOS and Compose Multiplatform, from a single Kotlin codebase —
+successor to the legacy native iOS and Android SDKs. Pick your integration path below; on iOS a
+Swift facade keeps the multiplatform types out of your code.
 
 ## Pick your integration
 
@@ -10,7 +10,7 @@ through a Swift facade so the multiplatform types never reach your code.
 |---|---|---|
 | A native **Android** app (Jetpack Compose) | [Android](integration/android.md) | `com.hipay.payments:card` |
 | A native **iOS** app (SwiftUI) | [iOS](integration/ios.md) | SPM products `HiPayCard` / `HiPayCore` |
-| A **Kotlin/Compose Multiplatform** app | [KMP](integration/kmp.md) | `com.hipay.payments:card-cmp` |
+| A **Kotlin/Compose Multiplatform** app | [Compose Multiplatform](integration/cmp.md) | `com.hipay.payments:card-cmp` |
 
 Headless integrations — no card UI, you drive tokenization and orders yourself — depend on
 `com.hipay.payments:core` alone and are covered at the end of the KMP page.

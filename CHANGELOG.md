@@ -1,4 +1,4 @@
-# Changelog — HiPay Payments SDK for Kotlin Multiplatform
+# Changelog — HiPay Payments Mobile SDK
 
 One version number covers the three delivery channels: the Android artifacts, the KMP artifacts and
 the iOS XCFramework/SPM package.

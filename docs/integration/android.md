@@ -1,44 +1,33 @@
-# HiPay Fullservice — Android integration (preview)
+# Android integration
 
 Native Jetpack Compose card-entry + headless payment, consuming the shared KMP core directly in
-Kotlin (no facade). **Preview 0.3.0** — see [README](../index.md). **0.3.0 is source-compatible with
-0.2.0 (no breaking API changes).** ⚠️ **0.2.0 changed 3DS** vs 0.1.0 — `pay()` now presents it
-(Custom Tabs) + needs `androidx.browser` and an `intent-filter` (see [CHANGELOG](../changelog.md)).
+Kotlin (no facade). `pay()` presents the 3DS challenge itself through Custom Tabs, which needs
+`androidx.browser` and an `intent-filter` — see [3DS presentation](#3ds-presentation-turnkey-default-on).
 
 ## Requirements
 
 - Kotlin **2.2.20**, AGP **8.13.0**, Gradle **8.14.3**, Compose BOM **2025.06.01**
 - `minSdk 24`, `compileSdk 36`; `android.useAndroidX=true`
-- Two artifacts: `hipayfullservice.aar` (headless core) + `hipaycard.aar` (Compose UI; depends on the core)
+- Two artifacts on Maven Central: `com.hipay.payments:core` (headless) and
+  `com.hipay.payments:card` (Compose UI, which api-exposes the core)
 
 ## Add the SDK
 
-**Option A — local AARs** (drop `android/*.aar` into your app's `libs/`):
-
 ```kotlin
+// settings.gradle.kts — mavenCentral() is usually already there
+dependencyResolutionManagement {
+    repositories { google(); mavenCentral() }
+}
+
 // app/build.gradle.kts
 dependencies {
-    implementation(files("libs/hipayfullservice.aar"))
-    implementation(files("libs/hipaycard.aar"))
-    // transitive deps the AARs need at runtime:
-    implementation("io.ktor:ktor-client-okhttp:3.3.3")
-    implementation(platform("androidx.compose:compose-bom:2025.06.01"))
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.foundation:foundation")
-    implementation("androidx.compose.material3:material3")
+    implementation("com.hipay.payments:card:1.0.0")
 }
 ```
 
-**Option B — Gradle composite build** (recommended while iterating from source; the demo uses this):
-
-```kotlin
-// settings.gradle.kts
-includeBuild("../Hipay_FullService_KMP_SDK_POC")
-// app/build.gradle.kts
-dependencies { implementation("com.hipay.payments:card") } // api-exposes the core
-```
-
-> Remote Maven Central coordinates are **Epic 9** (not published yet).
+That single line is enough: the POM pulls the headless core, Ktor, Compose UI/Foundation/Material 3,
+`androidx.browser` (3DS Custom Tabs) and DataStore transitively. Add
+`com.hipay.payments:core:1.0.0` on its own only if you want the headless core without the UI.
 
 ## Use the component
 
@@ -113,7 +102,7 @@ Two behaviours worth knowing before you file a bug:
 
 Saved cards (one-click) are filtered by the same set.
 
-## Styling (since 0.3.0)
+## Styling
 
 `HiPayCardEntryStyle` is a shared contract: ARGB `Long` colors (`0xAARRGGBB`), `Float` metrics, font
 enums (`fontFamily` reserved = system font). Validated at construction (`IllegalArgumentException` on
@@ -134,10 +123,7 @@ HiPayCardEntry(controller = controller, style = style)
 
 Default baseline is light-mode — pass a dark-adapted style for dark hosts.
 
-## Localization (since 0.3.0)
-
-> The security-code field is labelled **"CVV"** in every language, and the expiry field
-> **"Expiration"** ("Scadenza" in Italian) — both changed in this candidate.
+## Localization
 
 Follows the device locale (fr/en/it; English fallback). Set the display language once for the whole
 SDK via `HiPaySettings` on the config:
@@ -157,7 +143,7 @@ HiPayCardEntry(controller = controller, localeOverride = "fr")
 
 ## One-click / saved cards — 🚧 experimental (WIP, opt-in)
 
-OFF by default and NOT production-ready in 0.3.0 (API/UX may change; consent/legal copy +
+OFF by default and NOT production-ready (API/UX may change; consent/legal copy +
 out-of-checkout delete API not final). Card tokens are held in platform secure storage (Android
 Keystore + DataStore); PAN/CVV never stored.
 
@@ -169,6 +155,11 @@ controller.payWithSavedCard(/* … */)         // pay from a stored token
 ```
 
 With `oneClickEnabled = false` (default) no card store is created and behavior is unchanged.
+
+A stored token can stop being accepted by the gateway — the card expired, was replaced, or the
+issuer revoked it. `payWithSavedCard` then fails with `HiPayErrorCode.CARD_NO_LONGER_VALID`; the
+card is dropped from `savedCards`, and the payer must enter a card again. Handle that code
+explicitly: it is the one one-click failure that is not worth retrying.
 
 ## 3DS presentation (turnkey, default on)
 
@@ -263,3 +254,8 @@ A complete, runnable example is the demo at `src/HiPay-SDK-android-Demo` (`Payme
 - **Accessibility**: TalkBack labels/state, relative traversal order (opt-out `setsAccessibilityOrder = false`), inline errors announced politely.
 - **PCI**: the raw PAN and the vault token never leave the controller; never log card data.
 - **Testing**: instrumented Compose UI tests must run on an **API ≤ 35** emulator (Compose ui-test 1.8.3 does not attach on API 37); your own app runs on any supported API.
+
+---
+
+**Other integration paths:** [iOS](ios.md) · [Compose Multiplatform](cmp.md)
+**See also:** [Overview](../index.md) · [Changelog](../changelog.md) · [Report an issue](https://github.com/hipay/hipay-payments-sdk-kmp/issues)
