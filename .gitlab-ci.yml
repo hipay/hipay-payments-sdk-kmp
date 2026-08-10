@@ -18,12 +18,40 @@
 #   ORG_GRADLE_PROJECT_mavenCentralPassword   Sonatype Central Portal token (secret)
 #   ORG_GRADLE_PROJECT_signingInMemoryKeyId   GPG release SUBKEY id (not the master)
 #   ORG_GRADLE_PROJECT_signingInMemoryKeyPassword
-#   ORG_GRADLE_PROJECT_signingInMemoryKey     armored GPG private (release subkey)
-#   GITHUB_RELEASE_TOKEN  fine-grained PAT, contents:write on the PUBLIC mirror repo ONLY
-#   GITHUB_REPO           owner/repo of the public GitHub mirror (e.g. hipay/hipay-...)
+#   SIGNING_KEY_B64       armored GPG private (release subkey), base64 on ONE line —
+#                         GitLab cannot mask a multi-line value; decoded into
+#                         ORG_GRADLE_PROJECT_signingInMemoryKey by the publish job
+#   GITHUB_TOKEN          group-level: write access to the PUBLIC mirror (Releases + assets)
+#   GITHUB_SPM_REPO       owner/repo (SLUG, not a URL — build-release.sh interpolates it
+#                         into the binaryTarget download URL) hosting the SPM Release and
+#                         the XCFramework asset: the iOS repo, NOT the monorepo.
+#                         Value: hipay/hipay-payments-sdk-ios
 #
 # Runner: macOS (XCFramework + `swift package compute-checksum`) with `gh` + JDK 21
 # available. Tag the runner `macos` (adjust to your fleet).
+
+# Shared team template (pi-ecommerce/cms/cms-template-ci — "cms" is historical, it is
+# transverse). It brings `pre-release` (creates the GitLab milestone) and `release-job`
+# (creates the GitLab Release, description = the `## <tag>` section of CHANGELOG.md).
+# It also pulls in `trigger-github-workflow`, which stays DORMANT here: its rule requires
+# GITHUB_ORGANIZATION + GITHUB_PROJECT, which this project does not define — our GitHub
+# Release is pushed directly by `publish-release` below, not by a GitHub Actions workflow
+# reacting to a repository_dispatch.
+include:
+  - project: "pi-ecommerce/cms/cms-template-ci"
+    ref: "1.4.0"
+    file: "release.yaml"
+    inputs:
+      template_version: "1.4.0"
+
+# Overrides the template's `workflow:` (which would create a pipeline on EVERY push).
+# This project has no build/test stage yet, so anything outside a tag or a release branch
+# would produce a jobless pipeline.
+workflow:
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_REF_NAME =~ /^(release|hotfix)\/\d+\.\d+\.\d+$/
+    - when: never
 
 stages:
   - release
@@ -45,21 +73,41 @@ publish-release:
     # runs first — a failure before the Maven step leaves no half-published release.
 
     # 1. Build the failure-prone, reversible iOS artifacts first.
-    - REPO_SLUG="$GITHUB_REPO" TAG="$CI_COMMIT_TAG" ./scripts/build-release.sh
+    - REPO_SLUG="$GITHUB_SPM_REPO" TAG="$CI_COMMIT_TAG" ./scripts/build-release.sh
     - swift package --package-path build-output-local/spm dump-package > /dev/null
 
     # 2. Push the GitHub Release + assets via the GitHub API. The token lives in GitLab;
     #    GitHub stores nothing. No --clobber: a re-run on a published tag fails on purpose
     #    (a re-release uses a NEW version — the Maven side is immutable).
     - |
-      export GH_TOKEN="$GITHUB_RELEASE_TOKEN"
-      gh release view "$CI_COMMIT_TAG" --repo "$GITHUB_REPO" >/dev/null 2>&1 \
-        || gh release create "$CI_COMMIT_TAG" --repo "$GITHUB_REPO" --verify-tag \
-             --title "$CI_COMMIT_TAG" --notes "Release $CI_COMMIT_TAG"
-      gh release upload "$CI_COMMIT_TAG" --repo "$GITHUB_REPO" \
+      # Same extraction as the shared template's release-job, so the GitHub Release notes
+      # and the GitLab Release description are identical. The match is EXACT on
+      # "## <tag>": a heading carrying a date or a title suffix silently yields nothing,
+      # hence the emptiness check — an unnoticed empty release note is worse than a
+      # failed job, and this stage is still reversible.
+      awk -v version="## $CI_COMMIT_TAG" '
+        $0 == version {printit=1; next}
+        printit && /^## [^#]/ {exit}
+        printit
+      ' CHANGELOG.md > release_changelog.txt
+      if [ ! -s release_changelog.txt ]; then
+        echo "CHANGELOG.md has no '## $CI_COMMIT_TAG' section (heading must be exactly that)" >&2
+        exit 1
+      fi
+      cat release_changelog.txt
+    - |
+      export GH_TOKEN="$GITHUB_TOKEN"
+      gh release view "$CI_COMMIT_TAG" --repo "$GITHUB_SPM_REPO" >/dev/null 2>&1 \
+        || gh release create "$CI_COMMIT_TAG" --repo "$GITHUB_SPM_REPO" --verify-tag \
+             --title "$CI_COMMIT_TAG" --notes-file release_changelog.txt
+      gh release upload "$CI_COMMIT_TAG" --repo "$GITHUB_SPM_REPO" \
         build-output-local/spm/HiPayFullservice.xcframework.zip \
         build-output-local/spm/Package.swift \
         build-output-local/spm/checksum.txt
 
     # 3. Maven Central LAST (irreversible) — signed with the GPG release subkey.
+    #    The armored key is multi-line, which GitLab cannot mask, so it is stored
+    #    base64-encoded on a single line and decoded here into the variable the
+    #    publish plugin reads.
+    - export ORG_GRADLE_PROJECT_signingInMemoryKey="$(printf '%s' "$SIGNING_KEY_B64" | base64 -d)"
     - ./gradlew publishToMavenCentral --no-configuration-cache
