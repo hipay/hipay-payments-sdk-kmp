@@ -58,15 +58,6 @@ this version.
 - The language can be set once for the whole SDK and changed at runtime — every visible card
   updates, with no re-initialization.
 
-### One-click / saved cards — experimental
-
-- Disabled by default. Once enabled, a returning payer pays with a card saved on a previous
-  purchase, without retyping anything.
-- Only a token is stored, in the platform's secure storage — never the card number or the security
-  code. Saved cards follow the same account rules as new entries.
-- Still experimental: the interface and the consent wording may change. Not recommended for
-  production yet.
-
 ### Distribution
 
 - Android and KMP through Maven Central, iOS through Swift Package Manager. Apache-2.0.

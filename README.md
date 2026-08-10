@@ -21,16 +21,16 @@ consumed on iOS through a local Swift package.
   package (see its header for the edit-Kotlin → run-demo loop)
 - Demo app: separate repo `../HiPay_Payments_Demo_iOS`
 
-Co-branding (CB/BCMC): since 0.3.0 all three card components — Android
+Co-branding (CB/BCMC): all three card components — Android
 (`:hipaycard`), iOS (`HiPayCard`) and Compose Multiplatform (`:hipaycard-cmp`)
 — resolve the offered network set through the backend, so a co-branded card
 offers both networks with the domestic one default-selected.
 
-i18n (fr/en/it): since 0.3.0 all three card components follow the device
+i18n (fr/en/it): all three card components follow the device
 locale, or the `localeOverride` parameter to force a language; English is the
 fallback for unsupported languages.
 
-Styling: since 0.3.0 the card component accepts an optional
+Styling: the card component accepts an optional
 `HiPayCardEntryStyle` (shared platform-neutral contract: colors, typography,
 field metrics) via the `style` parameter — rendered on CMP-iOS, on iOS-native
 (`HiPayCardTheme(style:)` bridges it to SwiftUI), on Android-native, and on
@@ -40,7 +40,7 @@ dark-adapted style until dedicated dark-theme support ships.
 
 ## Customizing the card component
 
-### Styling — `HiPayCardEntryStyle` (since 0.3.0)
+### Styling — `HiPayCardEntryStyle`
 
 A shared, platform-neutral contract: ARGB `Long` colors (`0xAARRGGBB`), `Float`
 metrics, and font enums (`fontFamily` is reserved — system font only in this
@@ -79,7 +79,7 @@ HiPayCardEntryView(controller: controller, theme: theme)
 placeholder color applies from iOS 17 (iOS 15/16 keep the system gray). The
 default baseline is light-mode — pass a dark-adapted style for dark hosts.
 
-### Localization — `HiPaySettings` / `localeOverride` (since 0.3.0)
+### Localization — `HiPaySettings` / `localeOverride`
 
 By default every component follows the device locale (fr/en/it; English is the
 fallback) and re-localizes automatically when the app language changes — no
@@ -110,7 +110,7 @@ A per-component override still wins for one-off cases:
 
 ### One-click / saved cards — 🚧 experimental (WIP, opt-in)
 
-**Off by default and not production-ready in 0.3.0** — the API/UX may still
+**Off by default and not production-ready** — the API/UX may still
 change, and the consent/legal copy and the out-of-checkout delete API are not
 final. To try it, enable it on the controller; card tokens are held in platform
 secure storage (Android Keystore + DataStore, iOS Keychain) and the PAN/CVV are
