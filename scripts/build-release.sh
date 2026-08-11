@@ -13,8 +13,8 @@
 # Version policy (story 8.2): the release tag = the single-source version in
 # gradle.properties. Never hardcode it here.
 #
-# Repo policy (deferred to architecture-repos.md): the asset URL host is a
-# placeholder until the distribution-repo topology is decided. Override with:
+# The asset lives on the iOS distribution repo (architecture-repos.md, R3 amended).
+# Override only to test against a fork:
 #   REPO_SLUG=owner/repo ./scripts/build-release.sh
 #
 # Output: build-output-local/spm/
@@ -45,14 +45,17 @@ VERSION="$(sed -n 's/^version[[:space:]]*=[[:space:]]*//p' "$ROOT/gradle.propert
 [ -n "$VERSION" ] || { echo "ERROR: could not read 'version=' from gradle.properties" >&2; exit 1; }
 TAG="${TAG:-$VERSION}"
 
-# --- Repo placeholder (deferred: architecture-repos.md) ----------------------
-REPO_SLUG="${REPO_SLUG:-OWNER/REPO}"
+# --- Distribution repo (settled: architecture-repos.md §2) -------------------
+# Defaults to the real repo. A wrong slug produces a manifest whose binaryTarget
+# URL 404s, and that only surfaces when a merchant tries to install the package —
+# so an unset variable must not silently yield a placeholder.
+REPO_SLUG="${REPO_SLUG:-hipay/hipay-payments-sdk-ios}"
+case "$REPO_SLUG" in
+  */*) ;;
+  *) echo "ERROR: REPO_SLUG must be owner/repo, got '$REPO_SLUG'" >&2; exit 1 ;;
+esac
 ASSET="HiPayFullservice.xcframework.zip"
 URL="https://github.com/${REPO_SLUG}/releases/download/${TAG}/${ASSET}"
-if [ "$REPO_SLUG" = "OWNER/REPO" ]; then
-  echo "WARNING: REPO_SLUG is the placeholder 'OWNER/REPO' — the final distribution repo is" >&2
-  echo "         pending architecture-repos.md. The generated URL is illustrative, not final." >&2
-fi
 
 # --- 1+2. Build XCFramework, then zip it (SPM layout) ------------------------
 echo "==> Building XCFramework (build-xcframework.sh)…"
