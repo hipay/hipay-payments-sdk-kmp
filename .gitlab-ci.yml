@@ -16,7 +16,11 @@
 # Required PROTECTED + MASKED CI/CD variables (Settings → CI/CD → Variables):
 #   ORG_GRADLE_PROJECT_mavenCentralUsername   Sonatype Central Portal token (user)
 #   ORG_GRADLE_PROJECT_mavenCentralPassword   Sonatype Central Portal token (secret)
-#   ORG_GRADLE_PROJECT_signingInMemoryKeyId   GPG release SUBKEY id (not the master)
+#   ORG_GRADLE_PROJECT_signingInMemoryKeyId   REQUIRED, not optional: short id (8 hex) of the
+#                         signing SUBKEY. SIGNING_KEY_B64 holds a subkey-only export, whose first
+#                         key is a `gnu-dummy` stub of the primary with NO private material. Without
+#                         this id the signing plugin picks that stub and dies on
+#                         "PGPPrivateKey.getPublicKeyPacket() because <parameter1> is null".
 #   ORG_GRADLE_PROJECT_signingInMemoryKeyPassword
 #   SIGNING_KEY_B64       armored GPG private (release subkey), base64 on ONE line —
 #                         GitLab cannot mask a multi-line value; decoded into
