@@ -29,7 +29,7 @@ class CardEntryStyleTest {
     val composeRule = createComposeRule()
 
     private fun controller() =
-        HiPayCardEntryController(HiPayConfig("test-user", "test-pass", Environment.STAGE))
+        HiPayCardEntryController(HiPayConfig("test-user", "test-pass", Environment.STAGE)).withOfflineCeiling()
 
     @Test
     fun customFieldHeight_growsTheEntryField() {

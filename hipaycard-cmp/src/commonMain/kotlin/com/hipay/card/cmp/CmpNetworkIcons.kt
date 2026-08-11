@@ -2,15 +2,15 @@
 package com.hipay.card.cmp
 
 import com.hipay.card.validation.CardNetwork
-import com.hipay.fullservice.hipaycard_cmp.generated.resources.Res
-import com.hipay.fullservice.hipaycard_cmp.generated.resources.hp_amex
-import com.hipay.fullservice.hipaycard_cmp.generated.resources.hp_bcmc
-import com.hipay.fullservice.hipaycard_cmp.generated.resources.hp_card_neutral
-import com.hipay.fullservice.hipaycard_cmp.generated.resources.hp_ic_trash
-import com.hipay.fullservice.hipaycard_cmp.generated.resources.hp_cb
-import com.hipay.fullservice.hipaycard_cmp.generated.resources.hp_maestro
-import com.hipay.fullservice.hipaycard_cmp.generated.resources.hp_mastercard
-import com.hipay.fullservice.hipaycard_cmp.generated.resources.hp_visa
+import com.hipay.card.cmp.resources.Res
+import com.hipay.card.cmp.resources.hp_amex
+import com.hipay.card.cmp.resources.hp_bcmc
+import com.hipay.card.cmp.resources.hp_card_neutral
+import com.hipay.card.cmp.resources.hp_cb
+import com.hipay.card.cmp.resources.hp_ic_trash
+import com.hipay.card.cmp.resources.hp_maestro
+import com.hipay.card.cmp.resources.hp_mastercard
+import com.hipay.card.cmp.resources.hp_visa
 import org.jetbrains.compose.resources.DrawableResource
 
 /**

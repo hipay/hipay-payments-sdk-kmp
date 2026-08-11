@@ -9,7 +9,7 @@ plugins {
     alias(libs.plugins.vanniktech.mavenPublish)
 }
 
-group = "com.hipay.fullservice"
+group = "com.hipay.payments"
 // version: single source from gradle.properties — inherited as project.version.
 
 kotlin {
@@ -39,6 +39,12 @@ kotlin {
             // The default bundle ID is derived from the module name and is a
             // known App Store validation/collision source for shipped SDKs.
             binaryOption("bundleId", "com.hipay.fullservice")
+            // Without these the framework ships Kotlin/Native's defaults (1.0 / 1), so an
+            // inspected binary never says which SDK it is. The short string follows the
+            // project version; a pre-release suffix is stripped because Apple only accepts
+            // one to three dot-separated integers there.
+            binaryOption("bundleShortVersionString", version.toString().substringBefore('-'))
+            binaryOption("bundleVersion", "1")
             isStatic = true
             xcf.add(this)
         }
@@ -97,15 +103,13 @@ mavenPublishing {
         signAllPublications()
     }
 
-    coordinates(group.toString(), "fullservice-kmp", version.toString())
+    coordinates(group.toString(), "core", version.toString())
 
     pom {
-        name = "HiPay Fullservice KMP SDK"
-        description = "HiPay Fullservice payment SDK for Kotlin Multiplatform (card payment)."
+        name = "HiPay Payments SDK — core"
+        description = "Headless core of the HiPay payment SDK for Kotlin Multiplatform: configuration, gateway client, card tokenization and the shared validation contract. Targets the HiPay Fullservice platform."
         inceptionYear = "2026"
-        // TODO(repo): final repository URL not yet decided — see architecture-repos.md
-        // (§9, deferred: final repo names + GitLab/GitHub topology). Interim value.
-        url = "https://github.com/hipay/hipay-fullservice-kmp"
+        url = "https://github.com/hipay/hipay-payments-sdk-kmp"
         licenses {
             license {
                 name = "Apache-2.0"
@@ -121,10 +125,9 @@ mavenPublishing {
             }
         }
         scm {
-            // TODO(repo): interim — final SCM URL pending architecture-repos.md (§9).
-            url = "https://github.com/hipay/hipay-fullservice-kmp"
-            connection = "scm:git:https://github.com/hipay/hipay-fullservice-kmp.git"
-            developerConnection = "scm:git:ssh://git@github.com/hipay/hipay-fullservice-kmp.git"
+            url = "https://github.com/hipay/hipay-payments-sdk-kmp"
+            connection = "scm:git:https://github.com/hipay/hipay-payments-sdk-kmp.git"
+            developerConnection = "scm:git:ssh://git@github.com/hipay/hipay-payments-sdk-kmp.git"
         }
     }
 }

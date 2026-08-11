@@ -12,5 +12,7 @@ xcuserdata
 #So we don't accidentally commit our private keys
 *.gpg
 # Generated SPM remote-release artifacts (story 9.1): zip + checksum + remote Package.swift
+site/
+.venv/
 build-output-local/
 .hipay_stage_env

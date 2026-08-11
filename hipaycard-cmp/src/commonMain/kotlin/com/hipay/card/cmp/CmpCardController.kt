@@ -81,9 +81,17 @@ public class CmpCardController(
      *  Additive, default [DEFAULT_SAVED_CARDS_DISPLAY_COUNT] (3), clamped 1..10; bounds display only
      *  — every saved card is still persisted. */
     savedCardsDisplayCount: Int = DEFAULT_SAVED_CARDS_DISPLAY_COUNT,
+    /** Currency the account's accepted card products are resolved for — a contract can differ per
+     *  currency, so this should match the currency the order will be created in. Only used for that
+     *  resolution; [pay] still takes its own currency. */
+    currency: String = "EUR",
 ) {
     /** The clamped (1..10) saved-cards display count — see the constructor parameter. */
     public val savedCardsDisplayCount: Int = coerceSavedCardsDisplayCount(savedCardsDisplayCount)
+
+    // Held under its own name: `pay()` has a `currency` parameter of its own, and a property it
+    // silently shadowed would be a trap for the next reader.
+    private val accountCurrency: String = currency
 
     public enum class Field { HOLDER, NUMBER, EXPIRY, CVC }
 
@@ -244,7 +252,7 @@ public class CmpCardController(
 
     /** Saved cards whose resolved network the merchant accepts (empty allow-list → all kept). */
     private fun List<SavedCard>.allowedByMerchant(): List<SavedCard> =
-        filter { AllowedNetworks.isAuthorized(CardNetworks.fromApiBrand(it.network) ?: CardNetwork.UNKNOWN, allowed) }
+        filter { AllowedNetworks.isAuthorized(CardNetworks.fromApiBrand(it.network) ?: CardNetwork.UNKNOWN, effectiveAllowed) }
 
     private suspend fun reloadQuietly(reselectMostRecent: Boolean) {
         try {
@@ -284,6 +292,38 @@ public class CmpCardController(
     private var lastDetected: CardNetwork = CardNetwork.UNKNOWN
     // Last PAN sent to the backend resolution — one resolve per distinct valid PAN.
     private var lastResolvedDigits: String? = null
+    // Networks the vault resolved for [lastResolvedDigits], so a later-arriving account ceiling can
+    // be applied to that verdict without a second vault call.
+    private var lastResolvedNetworks: List<CardNetwork> = emptyList()
+
+    // ---- Account network ceiling ----
+    // The card products this ACCOUNT is contracted for. null = not known yet (query pending, or it
+    // failed) → the ceiling stays open and [allowed] is used as-is. An EMPTY set is a verdict, not an
+    // absence: the account accepts no card at all.
+    private var accountNetworks: Set<CardNetwork>? by mutableStateOf<Set<CardNetwork>?>(null)
+    // Guards the one query per controller; reset on failure so a later attempt retries.
+    private var accountQueryStarted by mutableStateOf(false)
+    // Set once the first attempt has failed, and never cleared: from then on the component behaves as
+    // it did before the ceiling existed. Without it a retry would hide the brand icon again, so the
+    // payer would watch it blink on every attempt.
+    private var accountQueryFailed by mutableStateOf(false)
+
+    /**
+     * The ceiling is being fetched and nothing is known yet. While this holds, local BIN detection
+     * must NOT show a brand icon: whether that network is offerable at all is exactly what is in
+     * flight, and showing a logo we may have to take back is worse than showing it a beat later.
+     * True only during the FIRST attempt — a failed query degrades to the pre-ceiling behaviour.
+     */
+    private val accountCeilingPending: Boolean
+        get() = accountQueryStarted && accountNetworks == null && !accountQueryFailed
+
+    /** The allowed set every check must read: the account ceiling, narrowed by [allowed]. */
+    private val effectiveAllowed: List<CardNetwork>?
+        get() = AllowedNetworks.effectiveAllowed(accountNetworks, allowed)
+
+    /** In-module test seam for the account ceiling — same spirit as [cardInfoResolver]; null in
+     *  production, where the real [gateway] is queried. */
+    internal var accountNetworksResolver: (suspend () -> Set<CardNetwork>)? = null
 
     // PAN whose backend BIN verdict left NO allowed network — the only trigger for the
     // "not authorized" error. Local detection alone must never show
@@ -306,7 +346,7 @@ public class CmpCardController(
     public val isNumberComplete: Boolean get() = CardNetworks.isNumberComplete(panDigits)
     public val isExpiryComplete: Boolean get() = expiryDigits.length == 4
     public val isCvcComplete: Boolean get() = !isCvcRequired || cvc.length == cvcMaxLength
-    public val isNetworkAuthorized: Boolean get() = AllowedNetworks.isAuthorized(network, allowed)
+    public val isNetworkAuthorized: Boolean get() = AllowedNetworks.isAuthorized(network, effectiveAllowed)
 
     /** A selected saved card is always payable — field state is irrelevant on that branch. */
     public val canPay: Boolean
@@ -367,7 +407,7 @@ public class CmpCardController(
     // set so a resolved allowed co-brand always wins.
     private val localNetworkErrorKey: CardEntryStringKey?
         get() = if (networks.isEmpty() &&
-            AllowedNetworks.isLocallyUnauthorized(CardNetworks.detect(panDigits), allowed))
+            AllowedNetworks.isLocallyUnauthorized(CardNetworks.detect(panDigits), effectiveAllowed))
             CardEntryStringKey.ERROR_NETWORK_NOT_AUTHORIZED else null
 
     /** Number-slot error: network-not-authorized takes precedence over the number's own error (D1). */
@@ -393,9 +433,16 @@ public class CmpCardController(
         // applyOffered so the immediate icon never waits on the network. Partial/invalid input
         // re-arms the next resolve.
         val pan = panDigits
-        if (!disposed && CardValidators.isCardNumberValid(pan) && pan != lastResolvedDigits) {
-            lastResolvedDigits = pan
-            scope.launch { resolve(pan) }
+        if (!disposed && CardValidators.isCardNumberValid(pan)) {
+            // The ceiling is asked once per controller, the BIN verdict once per distinct PAN.
+            ensureAccountNetworks()
+            if (pan != lastResolvedDigits) {
+                lastResolvedDigits = pan
+                // A verdict belongs to the PAN it was resolved for: drop the previous one now, or a
+                // ceiling landing before the new verdict would apply the old card's networks.
+                lastResolvedNetworks = emptyList()
+                scope.launch { resolve(pan) }
+            }
         } else if (!CardValidators.isCardNumberValid(pan)) {
             lastResolvedDigits = null
         }
@@ -443,8 +490,11 @@ public class CmpCardController(
             cvc = if (!CardNetworks.isCvcRequired(detected)) "" else cvc.take(CardNetworks.cvcLength(detected))
         }
         // Local offered set (immediate); the backend verdict in [resolve] refines it once available.
-        val offered = AllowedNetworks.offered(listOfNotNull(detected.takeIf { it != CardNetwork.UNKNOWN }), allowed)
-        applyOffered(offered)
+        // Nothing is offered while the account ceiling is still pending — see [accountCeilingPending].
+        val locallyDetected =
+            if (accountCeilingPending) emptyList()
+            else listOfNotNull(detected.takeIf { it != CardNetwork.UNKNOWN })
+        applyOffered(AllowedNetworks.offered(locallyDetected, effectiveAllowed))
     }
 
     private fun applyOffered(offered: List<CardNetwork>) {
@@ -473,22 +523,96 @@ public class CmpCardController(
                 ?: tokenizer.resolveCardInfo(digits, "12", nextYear())
             if (digits != panDigits) return // user kept typing — drop the stale result
             val resolved = info.resolvedNetworks()
-            val offered = AllowedNetworks.offered(resolved, allowed)
-            when {
-                offered.isNotEmpty() -> {
-                    unauthorizedDigits = null
-                    applyOffered(offered)
-                }
-                // The vault identified the card but the merchant allows none of its
-                // networks → the contractual "not authorized" error (networkErrorKey).
-                resolved.isNotEmpty() -> unauthorizedDigits = digits
-            }
+            // Kept so a later-arriving account ceiling can be applied to this verdict without
+            // paying for a second vault call.
+            lastResolvedNetworks = resolved
+            applyVerdict(digits, resolved)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             // Degrade: keep the locally detected icon; allow a retry on the next edit.
             if (digits == panDigits) lastResolvedDigits = null
         }
+    }
+
+    /** Applies a vault verdict against the current allowed set — the ONE place that decides between
+     *  "offer these networks" and the contractual not-authorized error, so the vault path and the
+     *  account-ceiling path can never drift. */
+    private fun applyVerdict(digits: String, resolved: List<CardNetwork>) {
+        // The vault identified nothing: keep the locally detected icon, decide nothing.
+        if (resolved.isEmpty()) return
+        // Whether these networks are offerable at all is still in flight. Applying them now would
+        // show a brand icon we may have to take back the moment the ceiling lands — the very thing
+        // the pending state exists to prevent. The verdict is kept in [lastResolvedNetworks] and
+        // [reapplyCeiling] applies it as soon as the ceiling is known.
+        if (accountCeilingPending) return
+        val offered = AllowedNetworks.offered(resolved, effectiveAllowed)
+        // Applied even when EMPTY: the card is not offerable, so its chips must go — and they may
+        // have been shown before an account ceiling arrived and disallowed them.
+        applyOffered(offered)
+        // Nothing left → the contractual "not authorized" error (networkErrorKey).
+        unauthorizedDigits = if (offered.isEmpty()) digits else null
+    }
+
+    /** One account-ceiling query per controller. Fired as soon as the component is composed — the
+     *  earliest moment a scope certainly exists — and again from the number field as a fallback for a
+     *  headless host that never composes anything. */
+    private fun ensureAccountNetworks() {
+        if (disposed || accountQueryStarted) return
+        accountQueryStarted = true
+        scope.launch { loadAccountNetworks() }
+    }
+
+    /** Called from the Composable on first composition, so the ceiling is being resolved while the
+     *  payer is still reading the form rather than after they have typed a BIN. */
+    internal suspend fun loadAccountNetworksIfNeeded() {
+        if (disposed || accountQueryStarted) return
+        accountQueryStarted = true
+        loadAccountNetworks()
+    }
+
+    /** Resolves the networks this account is contracted for — the ceiling the merchant restriction
+     *  narrows. A technical failure leaves the ceiling OPEN (unchanged behaviour, entry never
+     *  blocked, no error) and re-arms a retry on the next edit, exactly like [resolve]. A successful
+     *  EMPTY answer is a verdict, not a failure: the account takes no card. */
+    private suspend fun loadAccountNetworks() {
+        try {
+            accountNetworks = accountNetworksResolver?.invoke()
+                ?: gateway.getAvailablePaymentProducts(CardNetworks.cardPaymentProductCodes, accountCurrency)
+            reapplyCeiling()
+        } catch (e: CancellationException) {
+            // The caller's coroutine died — the component left composition, the screen was navigated
+            // away from. The ceiling is neither resolved nor failed, so the one-shot guard MUST be
+            // released: leaving it set would keep the component pending, icon-less and unable to ever
+            // retry for the rest of its life.
+            accountQueryStarted = false
+            throw e
+        } catch (e: Exception) {
+            // Degrade to the pre-ceiling behaviour and re-arm a retry, without ever hiding the brand
+            // icon again (see [accountQueryFailed]).
+            accountQueryFailed = true
+            accountQueryStarted = false
+            reapplyCeiling()
+            return
+        }
+        // Deliberately OUTSIDE the try above: the saved-card list is filtered by the same allowed set
+        // and is loaded by a sibling effect reading the local store — a race the network always
+        // loses — so it must be re-filtered once the ceiling is known, and its own failure must not
+        // undo the ceiling we just resolved.
+        if (oneClickEnabled) reloadQuietly(reselectMostRecent = false)
+    }
+
+    /** The ceiling can land after the payer has already typed: re-derive the offered set and the
+     *  not-authorized verdict for the number currently in the field, reusing the vault verdict
+     *  already obtained for it — never a second network call. */
+    private fun reapplyCeiling() {
+        // Prefer the vault verdict for the number in the field: it is strictly better information
+        // than local detection, [applyVerdict] clears the chips by itself when the ceiling disallows
+        // them, and going through [recomputeNetworks] first would reassign `selectedNetwork` from the
+        // local mono network — silently discarding a co-brand the payer had explicitly chosen.
+        val pan = panDigits
+        if (lastResolvedDigits == pan && lastResolvedNetworks.isNotEmpty()) applyVerdict(pan, lastResolvedNetworks)
+        else recomputeNetworks()
     }
 
     // The resolution expiry is required-but-non-authoritative (the backend resolves on the BIN);
@@ -499,7 +623,7 @@ public class CmpCardController(
      * Tokenizes the card and creates the order. The vault token is consumed here and never
      * exposed (PCI/NFR2). Card fields are cleared after a successful order.
      *
-     * 3DS (story 11.13) on a FORWARDING outcome, by [threeDS] mode (iOS):
+     * 3DS on a FORWARDING outcome, by [threeDS] mode (iOS):
      * - [HiPayThreeDSMode.IN_APP_SESSION] (default): in-app `ASWebAuthenticationSession`,
      *   self-captures the callback, no host wiring; cancel → reconciled with the server.
      * - [HiPayThreeDSMode.EXTERNAL_BROWSER]: external Safari; `pay()` suspends until the host
@@ -583,6 +707,7 @@ public class CmpCardController(
         holder = ""; cardNumber = ""; expiry = ""; cvc = ""
         networks = emptyList(); selectedNetwork = null
         userSelectedNetwork = false; lastDetected = CardNetwork.UNKNOWN; lastResolvedDigits = null
+        lastResolvedNetworks = emptyList()
         holderBlurred = false; numberBlurred = false; expiryBlurred = false; cvcBlurred = false
 
         val final = resolve3DS(transaction, redirectScheme, signature, threeDS)

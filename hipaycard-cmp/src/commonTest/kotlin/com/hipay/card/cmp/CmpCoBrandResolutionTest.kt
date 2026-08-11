@@ -32,6 +32,7 @@ class CmpCoBrandResolutionTest {
     @Test
     fun backendVerdictExpandsOfferedSet_domesticCoBrandDefaultSelected() = runTest {
         val c = CmpCardController(config(), scope = this)
+        c.accountNetworksResolver = { CardNetwork.entries.toSet() } // permissive ceiling: co-branding is what is under test
         c.cardInfoResolver = { CardInfo(brand = "VISA", domesticNetwork = "cb") }
         c.onNumberChange(cbVisaPan)
         // The local single-network detection drives the icon immediately, before the verdict.
@@ -45,6 +46,7 @@ class CmpCoBrandResolutionTest {
     @Test
     fun userSelectionIsPreservedAcrossRefinement() = runTest {
         val c = CmpCardController(config(), scope = this)
+        c.accountNetworksResolver = { CardNetwork.entries.toSet() } // permissive ceiling: co-branding is what is under test
         c.cardInfoResolver = { CardInfo(brand = "VISA", domesticNetwork = "cb") }
         c.onNumberChange(cbVisaPan)
         advanceUntilIdle()
@@ -59,6 +61,7 @@ class CmpCoBrandResolutionTest {
     @Test
     fun staleVerdictIsDropped() = runTest {
         val c = CmpCardController(config(), scope = this)
+        c.accountNetworksResolver = { CardNetwork.entries.toSet() } // permissive ceiling: co-branding is what is under test
         c.cardInfoResolver = { CardInfo(brand = "VISA", domesticNetwork = "cb") }
         c.onNumberChange(cbVisaPan) // queues a resolve for this PAN
         c.onNumberChange("4111") // payer kept typing another number before the verdict landed
@@ -72,6 +75,7 @@ class CmpCoBrandResolutionTest {
     fun resolvesOncePerDistinctValidPan() = runTest {
         var calls = 0
         val c = CmpCardController(config(), scope = this)
+        c.accountNetworksResolver = { CardNetwork.entries.toSet() } // permissive ceiling: co-branding is what is under test
         c.cardInfoResolver = { calls++; CardInfo(brand = "VISA", domesticNetwork = "cb") }
         c.onNumberChange(cbVisaPan)
         advanceUntilIdle()
@@ -87,6 +91,7 @@ class CmpCoBrandResolutionTest {
     fun failureKeepsLocalIconSurfacesNoErrorAndRearmsRetry() = runTest {
         var calls = 0
         val c = CmpCardController(config(), scope = this)
+        c.accountNetworksResolver = { CardNetwork.entries.toSet() } // permissive ceiling: co-branding is what is under test
         c.cardInfoResolver = {
             calls++
             throw IllegalStateException("offline") // any failure shape — the degrade path is typed-agnostic
@@ -111,6 +116,7 @@ class CmpCoBrandResolutionTest {
     @Test
     fun bancontactMastercardCoBrand_bancontactDefaultSelected() = runTest {
         val c = CmpCardController(config(), allowed = listOf(CardNetwork.BCMC, CardNetwork.MASTERCARD), scope = this)
+        c.accountNetworksResolver = { CardNetwork.entries.toSet() } // permissive ceiling: co-branding is what is under test
         c.cardInfoResolver = { CardInfo(brand = "MASTERCARD", domesticNetwork = "bcmc") }
         c.onNumberChange(bcmcMcPan)
         // Local detection shows the international brand until the verdict lands.
@@ -126,6 +132,7 @@ class CmpCoBrandResolutionTest {
     @Test
     fun coBrandedMaestroDropsTheCvcRequirement() = runTest {
         val c = CmpCardController(config(), scope = this)
+        c.accountNetworksResolver = { CardNetwork.entries.toSet() } // permissive ceiling: co-branding is what is under test
         c.cardInfoResolver = { CardInfo(brand = "MAESTRO", domesticNetwork = "cb") }
         c.onNumberChange(cbMcPan)
         c.onCvcChange("123")

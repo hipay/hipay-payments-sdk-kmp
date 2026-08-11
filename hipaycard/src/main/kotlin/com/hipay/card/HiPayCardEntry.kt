@@ -225,6 +225,10 @@ private fun CardEntryContent(
     val cvcJustFilled = controller.isCvcRequired && controller.cvc.length == controller.cvcMaxLength
     LaunchedEffect(cvcJustFilled) { if (showEntryFields && cvcJustFilled) focusManager.clearFocus() }
 
+    // Account network ceiling: resolved on composition, so what may be offered at all is known before
+    // the payer has typed a BIN — a brand icon must never be shown for a network the account refuses.
+    LaunchedEffect(controller) { controller.loadAccountNetworksIfNeeded() }
+
     // One-click: load the saved card once the presentation context is bound (fail-soft before).
     if (controller.oneClickEnabled) {
         LaunchedEffect(controller) { controller.refreshSavedCards() }
@@ -245,7 +249,10 @@ private fun CardEntryContent(
                 else Modifier,
             )
             .then(if (setsAccessibilityOrder) Modifier.semantics { isTraversalGroup = true } else Modifier),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        // A floating label rises into the top of its own field, which eats most of the visual gap
+        // between two stacked fields: 8.dp read as cramped. 12.dp is the value the SwiftUI surface
+        // already ships, so this also brings the three surfaces back into line.
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         // Also composed when the list just emptied with a section-level one-click error to show
         // (the last card was purged as no longer valid) — the payer must learn why it vanished.
@@ -766,10 +773,16 @@ private fun SaveCardSwitch(controller: HiPayCardEntryController, enabled: Boolea
 }
 
 /**
- * Field label forced onto a single line at the smaller (floating) type size (story 11.3).
- * Keeping the resting label at the floating size — plus `maxLines = 1` / no soft-wrap — stops the
- * longer localized labels ("Code de sécurité (facultatif)", "Codice di sicurezza") from wrapping to
- * two lines, which previously inflated the CVC field height and broke row symmetry with Expiry.
+ * Field label kept on a SINGLE LINE, at the size the decoration box chooses for its state: the full
+ * text size while resting inside the field (where it reads as the placeholder's peer) and the smaller
+ * floating size once it rises to the top. Overriding the style here would freeze it at the floating
+ * size in both states.
+ *
+ * `maxLines = 1` + no soft-wrap are what actually protect the field height: a label longer than its
+ * field used to wrap to two lines and inflate that field, breaking the Expiry/CVC row symmetry. It can
+ * no longer wrap at any size — a label too wide for its field overflows horizontally instead. The
+ * narrow CVC field is the one to watch, which is also why its label is now the "CVV" acronym in every
+ * language. Mirrors the CMP `FieldLabel`.
  */
 @Composable
 private fun FieldLabel(text: String) {
@@ -778,7 +791,6 @@ private fun FieldLabel(text: String) {
         maxLines = 1,
         softWrap = false,
         overflow = TextOverflow.Visible,
-        style = MaterialTheme.typography.bodySmall,
     )
 }
 

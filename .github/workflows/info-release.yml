@@ -1,0 +1,23 @@
+name: Infos release artifacts
+
+# Receives the payload pushed by the GitLab `trigger-github-workflow` job
+# (event type `trigger-artifact-workflow`) and stores it for `slack-message.yml`,
+# which cannot read it directly because it runs on a different trigger.
+
+on:
+  repository_dispatch:
+    types: [trigger-artifact-workflow]
+
+jobs:
+  store_artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Access data from GitLab payload
+        run: |
+          echo '${{ toJSON(github.event.client_payload) }}' > artifact.json
+          cat artifact.json
+      - name: Upload JSON as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitlab-data-artifact
+          path: artifact.json

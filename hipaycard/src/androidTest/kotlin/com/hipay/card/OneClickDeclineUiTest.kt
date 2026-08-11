@@ -81,7 +81,7 @@ class OneClickDeclineUiTest {
     @Test
     fun declinedError_rendersInlineOnTheCell_fallbackReachable_cardRetryable() {
         seed(testCard())
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
         awaitSections()
 
@@ -106,7 +106,7 @@ class OneClickDeclineUiTest {
     @Test
     fun error_isClearedOnSelectingNewCard() {
         seed(testCard())
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
         awaitSections()
 
@@ -122,7 +122,7 @@ class OneClickDeclineUiTest {
     @Test
     fun error_isClearedOnANewCardFieldEdit() {
         seed(testCard())
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
         awaitSections()
 
@@ -143,7 +143,7 @@ class OneClickDeclineUiTest {
     fun tokenInvalid_lastCardPurged_sectionMessageShows_entryFieldsUsable() {
         val card = testCard()
         seed(card)
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
         awaitSections()
 
@@ -170,7 +170,7 @@ class OneClickDeclineUiTest {
     fun tokenInvalid_withAnotherCardRemaining_sectionMessageAboveTheList() {
         val purged = testCard(suffix = "2222", token = 'u')
         seed(testCard(), purged) // MRU-first list: [2222, 1111]
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
         awaitSections()
 
@@ -189,7 +189,7 @@ class OneClickDeclineUiTest {
     @Test
     fun realPayFailure_setsGenericError_keepsTheCard_andRethrows() {
         seed(testCard())
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         controller.bindPresentationContext(context)
         runBlocking { controller.refreshSavedCards() }
         val card = controller.savedCards.first()

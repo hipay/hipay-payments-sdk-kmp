@@ -67,7 +67,11 @@ internal fun resolveRoutableNetworks(
     allowedNetworks: List<CardNetwork>,
 ): List<CardNetwork> {
     val routable = ApplePayNetworks.routable.filter { it in accepted }
-    return AllowedNetworks.offered(routable, allowedNetworks)
+    // Translate at the boundary: this surface documents "empty restriction = every routable
+    // network", while AllowedNetworks reads an empty NON-NULL list as "authorizes nothing" and
+    // reserves `null` for "no restriction". Passing the empty list straight through would report
+    // Apple Pay unavailable for every merchant that does not enumerate its networks — the default.
+    return AllowedNetworks.offered(routable, allowedNetworks.takeIf { it.isNotEmpty() })
 }
 
 /**
