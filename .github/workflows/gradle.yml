@@ -43,6 +43,16 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
+    # The iOS tests attach to a RUNNING simulator: they exercise the Keychain, and securityd
+    # is unavailable to a standalone-spawned process. A GitHub runner boots none by default,
+    # so the build guard fails the task before a single test runs.
+    - name: Boot an iOS simulator
+      if: runner.os == 'macOS'
+      run: |
+        UDID=$(xcrun simctl list devices available | grep -m1 'iPhone' | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/')
+        test -n "$UDID" || { echo "No available iPhone simulator on this runner" >&2; exit 1; }
+        xcrun simctl boot "$UDID"
+        xcrun simctl bootstatus "$UDID" -b
     - name: Build with Gradle
       uses: gradle/gradle-build-action@ce999babab2de1c4b649dc15f0ee67e6246c994f
       with:
