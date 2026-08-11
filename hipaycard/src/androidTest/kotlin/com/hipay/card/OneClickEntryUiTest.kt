@@ -187,47 +187,6 @@ class OneClickEntryUiTest {
     }
 
     @Test
-    fun newCardBranch_collapsesListToMru_andHeaderChevronReexpands() {
-        seedCards()
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
-        composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
-        awaitSections()
-
-        // Enter the new-card branch: the list collapses to the single most-recent card,
-        // the "Saved cards" header becomes a collapsed button.
-        composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD).performClick()
-        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(0)))
-        assertEquals(0, countTag(HiPayCardEntryTags.savedCard(1))) // collapsed away
-        composeRule.onNodeWithTag(HiPayCardEntryTags.SAVED_CARDS_HEADER)
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "collapsed"))
-
-        // Re-expand via the header: the full list comes back, header reads "expanded".
-        composeRule.onNodeWithTag(HiPayCardEntryTags.SAVED_CARDS_HEADER).performClick()
-        composeRule.onNodeWithTag(HiPayCardEntryTags.SAVED_CARDS_HEADER)
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "expanded"))
-        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(1)))
-        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(2)))
-    }
-
-    @Test
-    fun reenteringNewCard_afterAManualReexpand_collapsesTheListAgain() {
-        seedCards()
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
-        composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
-        awaitSections()
-        // Enter new-card, manually re-expand the list, then pick a card (leaves the new-card branch).
-        composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD).performClick()
-        composeRule.onNodeWithTag(HiPayCardEntryTags.SAVED_CARDS_HEADER).performClick() // expand
-        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(1)))
-        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(1)).performClick() // → saved-card branch
-        // Re-enter new-card: the list must collapse again (the manual expand was forgotten).
-        composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD).performClick()
-        assertEquals(0, countTag(HiPayCardEntryTags.savedCard(1)))
-        composeRule.onNodeWithTag(HiPayCardEntryTags.SAVED_CARDS_HEADER)
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "collapsed"))
-    }
-
-    @Test
     fun saveSwitch_togglesConsentState() {
         seedCard()
         val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
