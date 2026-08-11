@@ -105,7 +105,7 @@ class CardEntryValidationGherkinTest {
         robot.assertTagAbsent(HiPayCardEntryTags.error("cvc"))
         robot.focus(HiPayCardEntryTags.HOLDER) // blur the CVC field
         robot.assertTagExists(HiPayCardEntryTags.error("cvc"))
-        robot.assertTextShown("Security code is incomplete")
+        robot.assertTextShown("CVV is incomplete")
     }
 
     // Scénario : CVV désactivé pour Bancontact

@@ -23,7 +23,7 @@ class CardEntrySettingsLocaleTest {
     val composeRule = createComposeRule()
 
     private fun controllerWith(settings: HiPaySettings) =
-        HiPayCardEntryController(HiPayConfig("test-user", "test-pass", Environment.STAGE, settings))
+        HiPayCardEntryController(HiPayConfig("test-user", "test-pass", Environment.STAGE, settings)).withOfflineCeiling()
 
     @Test
     fun settingsLocale_drivesLanguage_andFlipsLiveWithoutReinit() {

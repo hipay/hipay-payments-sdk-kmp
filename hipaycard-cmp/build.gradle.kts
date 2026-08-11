@@ -13,7 +13,7 @@ plugins {
     alias(libs.plugins.vanniktech.mavenPublish)
 }
 
-group = "com.hipay.fullservice"
+group = "com.hipay.payments"
 // version: single source from gradle.properties — inherited as project.version.
 
 kotlin {
@@ -101,21 +101,26 @@ android {
 }
 
 // Publication (Epic 10): the CMP card module ships to Maven as
-// com.hipay.fullservice:hipaycard-cmp; its POM declares :hipaycard (via `api`).
+// com.hipay.payments:card-cmp; its POM declares :hipaycard (via `api`).
+// The Compose resources accessor package defaults to "<group>.<module>.generated.resources", which
+// tied a SOURCE package to a PUBLICATION coordinate — renaming the group broke every import. Pinned
+// here so the two can move independently.
+compose.resources {
+    packageOfResClass = "com.hipay.card.cmp.resources"
+}
+
 mavenPublishing {
     publishToMavenCentral()
     // Sign only on the gated release path (keyless publishToMavenLocal must work).
     if (project.hasProperty("signingInMemoryKey")) {
         signAllPublications()
     }
-    coordinates(group.toString(), "hipaycard-cmp", version.toString())
+    coordinates(group.toString(), "card-cmp", version.toString())
     pom {
-        name = "HiPay Fullservice — Compose-Multiplatform card UI"
+        name = "HiPay Payments SDK — Compose-Multiplatform card UI"
         description = "Shared Compose-Multiplatform card-entry component for the HiPay Fullservice SDK."
         inceptionYear = "2026"
-        // TODO(repo): final repository URL not yet decided — see architecture-repos.md
-        // (§9, deferred: final repo names + GitLab/GitHub topology). Interim value.
-        url = "https://github.com/hipay/hipay-fullservice-kmp"
+        url = "https://github.com/hipay/hipay-payments-sdk-kmp"
         licenses {
             license {
                 name = "Apache-2.0"
@@ -131,10 +136,9 @@ mavenPublishing {
             }
         }
         scm {
-            // TODO(repo): interim — final SCM URL pending architecture-repos.md (§9).
-            url = "https://github.com/hipay/hipay-fullservice-kmp"
-            connection = "scm:git:https://github.com/hipay/hipay-fullservice-kmp.git"
-            developerConnection = "scm:git:ssh://git@github.com/hipay/hipay-fullservice-kmp.git"
+            url = "https://github.com/hipay/hipay-payments-sdk-kmp"
+            connection = "scm:git:https://github.com/hipay/hipay-payments-sdk-kmp.git"
+            developerConnection = "scm:git:ssh://git@github.com/hipay/hipay-payments-sdk-kmp.git"
         }
     }
 }

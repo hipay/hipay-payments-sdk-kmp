@@ -96,6 +96,25 @@ public object CardNetworks {
     }
 
     /**
+     * The card payment-product codes to ask the account about, so the answer covers every network
+     * this SDK can enter. Sent as the `payment_product` filter of
+     * `GatewayClient.getAvailablePaymentProducts`: the endpoint answers with the subset the account
+     * is actually contracted for, which is the ceiling a card component may offer.
+     *
+     * Kept as a wire-code list rather than [CardNetwork] values because it IS a wire parameter, and
+     * deliberately covers all six networks — narrowing here would silently hide a network the
+     * merchant does accept.
+     */
+    public val cardPaymentProductCodes: List<String> = listOf(
+        "visa",
+        "mastercard",
+        "american-express",
+        "maestro",
+        "cb",
+        "bcmc",
+    )
+
+    /**
      * Maps a HiPay API brand / domestic-network string (e.g. "VISA",
      * "mastercard", "cb", "bcmc", "american-express") to a [CardNetwork].
      * Returns null for an unknown or null value. Case-insensitive.

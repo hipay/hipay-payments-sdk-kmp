@@ -42,7 +42,7 @@ class CardEntryStyleGherkinTest {
         // Étant donné / Quand — instantiated with hipayDefault and displayed on screen.
         composeRule.setContent {
             HiPayCardEntry(
-                HiPayCardEntryController(HiPayConfig("test-user", "test-pass", Environment.STAGE)),
+                HiPayCardEntryController(HiPayConfig("test-user", "test-pass", Environment.STAGE)).withOfflineCeiling(),
                 style = HiPayCardEntryStyle.hipayDefault,
             )
         }

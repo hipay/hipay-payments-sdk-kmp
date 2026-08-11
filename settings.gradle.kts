@@ -13,7 +13,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "hipay-fullservice-kmp"
+rootProject.name = "hipay-payments-sdk-kmp"
 include(":hipayfullservice")
 include(":hipaycard")
 include(":hipaycard-cmp")
