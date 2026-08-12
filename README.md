@@ -141,14 +141,14 @@ credentials skip silently when `.hipay_stage_env` is absent.
   cleared after tokenization; `HiPayException` messages are SDK-synthesized
   (no backend text echo).
 
-## Publication
+## Distribution
 
-Published. One version number covers both channels: **Maven Central**
-(`com.hipay.payments:core` / `:card` / `:card-cmp`) and **Swift Package Manager**
-(the `HiPayFullservice.xcframework` binary target, resolved from a release tag on
-`hipay-payments-sdk-ios`).
+One version number covers both channels.
 
-The release runs from **GitLab CI**, never from GitHub: every publishing secret — the
-Sonatype Portal token and the GPG signing subkey — lives inside HiPay's perimeter, and
-GitHub only hosts the public mirror and the Releases. See `.gitlab-ci.yml`
-(`publish-release`) and the release procedure in the planning workspace.
+| Channel | Artifacts |
+|---|---|
+| Maven Central | `com.hipay.payments:core`, `:card`, `:card-cmp` |
+| Swift Package Manager | products `HiPayCore` and `HiPayCard`, from `hipay-payments-sdk-ios` |
+
+Every published artifact is GPG-signed; the SPM binary is pinned by checksum. See the
+[integration guides](docs/index.md) to add it to a project.
