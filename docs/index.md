@@ -19,8 +19,7 @@ Headless integrations — no card UI, you drive tokenization and orders yourself
 
 A card-entry component with live validation, network detection and co-branding (CB/BCMC resolved
 against the backend, the domestic network selected by default), FR/EN/IT localization following the
-device locale, an optional visual style contract shared by the three surfaces, turnkey 3DS, and
-optional one-click payments with a saved-card store.
+device locale, an optional visual style contract shared by the three surfaces, and turnkey 3DS.
 
 The card data never leaves the SDK: your app receives a token, never a PAN, and nothing on the card
 path is ever logged.
@@ -30,8 +29,8 @@ path is ever logged.
 One number covers everything — the Android artifacts, the iOS XCFramework and its SPM tag. Pin the
 same version on every platform of a project.
 
-This site is versioned: use the selector at the top to read the documentation of the version you
-depend on. Release candidates are internal and are not published here; what changed between two
+These pages ship with the code, so the documentation you read is the documentation of the version
+you depend on. Release candidates are internal and are not documented here; what changed between two
 releases is in the [changelog](changelog.md), which covers every change shipped in between.
 
 Deprecations are announced by the compiler, at your call site — `@Deprecated` in Kotlin,

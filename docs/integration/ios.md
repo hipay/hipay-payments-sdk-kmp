@@ -107,8 +107,6 @@ Two behaviours worth knowing before you file a bug:
   network hiccup. It also means that "the restriction does nothing" is usually a connectivity problem
   on the device, not a broken SDK — check that the device can reach the gateway first.
 
-Saved cards (one-click) are filtered by the same set.
-
 ## Styling
 
 `HiPayCardTheme` bridges the shared `HiPayCardEntryStyle` into Swift. Start from `.hipayDefault`
@@ -145,21 +143,6 @@ presenting — it wins over `HiPaySettings`:
 ```swift
 HiPayCardStrings.localeOverride = Locale(identifier: "fr")
 ```
-
-## One-click / saved cards — 🚧 experimental (WIP, opt-in)
-
-**OFF by default and NOT production-ready.** The API/UX may still change (consent/legal
-copy and the out-of-checkout delete API are not final) — don't ship it to production yet. Enable it
-with `oneClickEnabled: true` on the controller. Card **tokens** are held in the iOS Keychain; the
-PAN/CVV are never stored.
-
-Surface: `pay(…, saveCard: true)`, `payWithSavedCard(…)`, `savedCards`, `selectSavedCard`,
-`deleteSavedCard`, `lastOneClickError`.
-
-A stored token can stop being accepted by the gateway — the card expired, was replaced, or the
-issuer revoked it. `payWithSavedCard` then fails with `HiPayError.cardNoLongerValid`; the card is
-dropped from `savedCards`, and the payer must enter a card again. Handle that case explicitly: it
-is the one one-click failure that is not worth retrying.
 
 ## 3DS presentation (turnkey, default on)
 
