@@ -15,8 +15,8 @@ to the legacy native iOS/Android SDKs. Android and KMP ship through Maven Centra
 Also: [documentation home](docs/index.md) · [changelog](CHANGELOG.md) ·
 [contributing](CONTRIBUTING.md) · [report an issue](https://github.com/hipay/hipay-payments-sdk-kmp/issues)
 
-The guides are published as a **versioned site**, so you can always read the documentation of the
-version you actually depend on.
+The guides live next to the code, so the version you are reading always matches the version you
+depend on. A rendered, versioned site is planned; until it is deployed, read them here.
 
 ## Layout
 
@@ -118,24 +118,6 @@ A per-component override still wins for one-off cases:
 - Android / CMP: `HiPayCardEntry(controller, localeOverride = "fr")`
 - iOS-native: `HiPayCardStrings.localeOverride = Locale(identifier: "fr")`
 
-### One-click / saved cards — 🚧 experimental (WIP, opt-in)
-
-**Off by default and not production-ready** — the API/UX may still
-change, and the consent/legal copy and the out-of-checkout delete API are not
-final. To try it, enable it on the controller; card tokens are held in platform
-secure storage (Android Keystore + DataStore, iOS Keychain) and the PAN/CVV are
-never stored:
-
-```kotlin
-val controller = HiPayCardEntryController(config, oneClickEnabled = true)
-controller.pay(/* … */, saveCard = true)     // offer to save on success (with consent)
-controller.payWithSavedCard(/* … */)          // pay from a stored token
-// list / manage: controller.savedCards, selectSavedCard(…), deleteSavedCard(…)
-```
-
-With `oneClickEnabled = false` (the default) no card store is created and
-behavior is unchanged.
-
 ## Build & test
 
 ```sh
@@ -158,16 +140,15 @@ credentials skip silently when `.hipay_stage_env` is absent.
 - Card data (PAN/CVC) is confined to the card module, never logged, and
   cleared after tokenization; `HiPayException` messages are SDK-synthesized
   (no backend text echo).
-- One-click saved cards (Android): the card-token blob is AES/GCM-encrypted
-  with a non-exportable Android Keystore key and stored in the SDK's DataStore
-  file (`hipay_saved_cards`). A backup or device transfer cannot carry the key,
-  so a restored blob is undecryptable and purged on first read. Recommended
-  hardening: exclude `datastore/hipay_saved_cards.preferences_pb` from backup
-  in your app's `dataExtractionRules` / `fullBackupContent`.
 
-## Publication
+## Distribution
 
-Not published yet. Before the first release: fix POM license/developers/scm
-placeholders, adopt a real versioning scheme, and gate
-`.github/workflows/publish.yml` (see the deferred-work register in the
-planning workspace).
+One version number covers both channels.
+
+| Channel | Artifacts |
+|---|---|
+| Maven Central | `com.hipay.payments:core`, `:card`, `:card-cmp` |
+| Swift Package Manager | products `HiPayCore` and `HiPayCard`, from `hipay-payments-sdk-ios` |
+
+Every published artifact is GPG-signed; the SPM binary is pinned by checksum. See the
+[integration guides](docs/index.md) to add it to a project.
