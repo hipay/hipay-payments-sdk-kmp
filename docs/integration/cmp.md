@@ -121,8 +121,6 @@ Two behaviours worth knowing before you file a bug:
   network hiccup. It also means that "the restriction does nothing" is usually a connectivity problem
   on the device, not a broken SDK — check that the device can reach the gateway first.
 
-Saved cards (one-click) are filtered by the same set.
-
 **Headless callers** of `AllowedNetworks` should note that its `allowed` parameter is now nullable:
 `null` means "no restriction", an EMPTY list means "authorizes nothing". The two used to be the same
 value, which is what let a component accept networks its account could not process.
@@ -165,26 +163,6 @@ per-component `localeOverride` still wins. For a one-off, force a language on a 
 ```kotlin
 HiPayCardEntry(controller = controller, localeOverride = "fr")
 ```
-
-## One-click / saved cards — 🚧 experimental (WIP, opt-in)
-
-OFF by default and NOT production-ready (API/UX may change; consent/legal copy +
-out-of-checkout delete API not final). Card tokens are held in platform secure storage (Android
-Keystore + DataStore, iOS Keychain); PAN/CVV never stored.
-
-```kotlin
-val controller = HiPayCardController(config, oneClickEnabled = true)
-controller.pay(/* … */, saveCard = true)   // offer to save on success (with consent)
-controller.payWithSavedCard(/* … */)         // pay from a stored token
-// list / manage: controller.savedCards, selectSavedCard(…), deleteSavedCard(…)
-```
-
-With `oneClickEnabled = false` (default) no card store is created and behavior is unchanged.
-
-A stored token can stop being accepted by the gateway — the card expired, was replaced, or the
-issuer revoked it. `payWithSavedCard` then fails with `HiPayErrorCode.CARD_NO_LONGER_VALID`; the
-card is dropped from `savedCards`, and the payer must enter a card again. Handle that code
-explicitly: it is the one one-click failure that is not worth retrying.
 
 ## 3DS presentation (turnkey, default on)
 
