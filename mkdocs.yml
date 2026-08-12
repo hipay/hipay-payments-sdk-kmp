@@ -46,4 +46,5 @@ nav:
       - Android: integration/android.md
       - iOS: integration/ios.md
       - Kotlin / Compose Multiplatform: integration/cmp.md
+  - Apple Pay: integration/apple-pay.md
   - Changelog: changelog.md

@@ -164,6 +164,48 @@ per-component `localeOverride` still wins. For a one-off, force a language on a 
 HiPayCardEntry(controller = controller, localeOverride = "fr")
 ```
 
+## One-click / saved cards
+
+A returning payer pays with a card saved on a previous purchase — no card number, no security code.
+**Off by default**; nothing is stored and no card store is created until you enable it.
+
+```kotlin
+val controller = HiPayCardController(config, oneClickEnabled = true)
+```
+
+Offer to save on a successful payment — the component asks the payer for consent:
+
+```kotlin
+val tx = controller.pay(/* … */, saveCard = true)
+controller.lastSaveOutcome   // SAVED / NOT_ELIGIBLE / STORAGE_FAILED
+```
+
+**Paying with a saved card needs no new call.** When the payer selects one, your existing `pay(...)`
+routes through the stored token by itself, so your Pay button stays a single touch-point:
+
+```kotlin
+controller.savedCards          // List<SavedCard>: maskedPan, network, holder, expiry
+controller.selectSavedCard(card)
+controller.selectNewCard()     // back to card entry
+controller.deleteSavedCard(card)
+controller.refreshSavedCards()
+```
+
+`payWithSavedCard(...)` exists for headless hosts that drive the choice themselves.
+
+The payer's card list is filtered by the same account rules as a new entry: a stored card on a
+network your account no longer accepts is dropped from the list.
+
+Only a **token** is stored — never the card number, never the security code. On Android it is
+AES/GCM-encrypted with a non-exportable Keystore key and kept in the SDK's DataStore file; on iOS it
+is held in the Keychain. **Android hardening:** exclude
+`datastore/hipay_saved_cards.preferences_pb` from backup in your app's `dataExtractionRules` /
+`fullBackupContent`, so a device transfer cannot carry an undecryptable blob.
+
+A stored token can stop being accepted: the card expired, was replaced, or the issuer revoked it.
+The payment then fails with `HiPayErrorCode.CARD_NO_LONGER_VALID`, the card is dropped from the list, and the payer must enter a
+card again. Handle that case explicitly — it is the one one-click failure that is not worth retrying.
+
 ## 3DS presentation (turnkey, default on)
 
 By default `pay(...)` presents the 3DS challenge and returns the **final**, server-confirmed

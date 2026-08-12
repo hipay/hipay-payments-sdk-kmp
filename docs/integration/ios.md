@@ -144,6 +144,49 @@ presenting — it wins over `HiPaySettings`:
 HiPayCardStrings.localeOverride = Locale(identifier: "fr")
 ```
 
+## One-click / saved cards
+
+A returning payer pays with a card saved on a previous purchase — no card number, no security code.
+**Off by default**; nothing is stored and no card store is created until you enable it.
+
+```swift
+@StateObject var card = HiPayCardEntryController(
+    configuration: config,
+    oneClickEnabled: true,
+    // Optional (default 3, clamped 1...10): how many cards show before "Show more".
+    savedCardsDisplayCount: 3
+)
+```
+
+Offer to save on a successful payment — the component asks the payer for consent:
+
+```swift
+let tx = try await card.pay(/* … */, saveCard: true)
+card.lastSaveOutcome        // saved / notEligible / storageFailed
+```
+
+**Paying with a saved card needs no new call.** When the payer selects one, your existing `pay(...)`
+routes through the stored token by itself, so your Pay button stays a single touch-point:
+
+```swift
+card.savedCards             // [HiPaySavedCard]: maskedPan, network, holder, expiry
+card.selectSavedCard(saved)
+card.selectNewCard()        // back to card entry
+await card.deleteSavedCard(saved)
+await card.refreshSavedCards()
+```
+
+`payWithSavedCard(...)` exists for headless hosts that drive the choice themselves.
+
+The payer's card list is filtered by the same account rules as a new entry: a stored card on a
+network your account no longer accepts is dropped from the list.
+
+Only a **token** is stored — never the card number, never the security code. On iOS the token is held in the Keychain.
+
+A stored token can stop being accepted: the card expired, was replaced, or the issuer revoked it.
+The payment then fails with `HiPayError.cardNoLongerValid`, the card is dropped from the list, and the payer must enter a
+card again. Handle that case explicitly — it is the one one-click failure that is not worth retrying.
+
 ## 3DS presentation (turnkey, default on)
 
 By default `pay(...)` **presents the 3DS challenge itself** and returns the **final**,

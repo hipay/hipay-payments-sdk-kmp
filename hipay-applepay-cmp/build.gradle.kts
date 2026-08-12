@@ -12,7 +12,7 @@ plugins {
     alias(libs.plugins.vanniktech.mavenPublish)
 }
 
-group = "com.hipay.fullservice"
+group = "com.hipay.payments"
 // version: single source from gradle.properties — inherited as project.version.
 
 kotlin {
@@ -54,19 +54,19 @@ android {
 }
 
 // Publication: the CMP Apple Pay module ships to Maven as
-// com.hipay.fullservice:hipay-applepay-cmp; its POM declares :hipayfullservice (via `api`).
+// com.hipay.payments:applepay-cmp; its POM declares :hipayfullservice (via `api`).
 mavenPublishing {
     publishToMavenCentral()
     // Sign only on the gated release path (keyless publishToMavenLocal must work).
     if (project.hasProperty("signingInMemoryKey")) {
         signAllPublications()
     }
-    coordinates(group.toString(), "hipay-applepay-cmp", version.toString())
+    coordinates(group.toString(), "applepay-cmp", version.toString())
     pom {
         name = "HiPay Fullservice — Compose-Multiplatform Apple Pay button"
         description = "Opt-in Compose-Multiplatform Apple Pay button (iOS) for the HiPay Fullservice SDK."
         inceptionYear = "2026"
-        url = "https://github.com/hipay/hipay-fullservice-kmp"
+        url = "https://github.com/hipay/hipay-payments-sdk-kmp"
         licenses {
             license {
                 name = "Apache-2.0"
@@ -82,8 +82,8 @@ mavenPublishing {
             }
         }
         scm {
-            url = "https://github.com/hipay/hipay-fullservice-kmp"
-            connection = "scm:git:https://github.com/hipay/hipay-fullservice-kmp.git"
+            url = "https://github.com/hipay/hipay-payments-sdk-kmp"
+            connection = "scm:git:https://github.com/hipay/hipay-payments-sdk-kmp.git"
             developerConnection = "scm:git:ssh://git@github.com/hipay/hipay-fullservice-kmp.git"
         }
     }
