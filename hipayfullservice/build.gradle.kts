@@ -75,6 +75,14 @@ kotlin {
     }
 }
 
+// The real-stage customer-field probe books actual stage transactions, so it must never
+// ride along on a routine `check`. Credential presence is not a sufficient gate: any
+// developer holding `.hipay_stage_env` would spend real orders on every build. Opting in
+// forwards the flag to the forked test JVM, which does not inherit -D on its own.
+tasks.withType<Test>().configureEach {
+    systemProperty("hipay.stage.probe", providers.gradleProperty("hipay.stage.probe").getOrElse("false"))
+}
+
 // PCI anti-logging gate (story 2.4): fails the build on any logging primitive
 // under com.hipay.card or HiPay_Payments_SDK_iOS/Sources/HiPayCard.
 val checkCardNoLogging = tasks.register<Exec>("checkCardNoLogging") {
