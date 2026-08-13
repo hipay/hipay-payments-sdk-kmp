@@ -136,6 +136,10 @@ expect class HiPayCardController(
 /**
  * Shared card-entry composable. Call from your CMP `commonMain`.
  *
+ * Scrolling is the HOST's job: this never scrolls itself. With one-click enabled the payer can reveal
+ * every stored card at once ("Show more"), so place it inside a `verticalScroll` container or the
+ * controls below the list can end up unreachable.
+ *
  * @param localeOverride optional ISO language ("fr"/"en"/"it"); null → device locale. An
  * unsupported language (anything else, e.g. "de") falls back to English — not to the device
  * locale. Note: before 0.3.0 the iOS target ignored this and always rendered English — from

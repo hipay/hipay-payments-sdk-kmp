@@ -20,6 +20,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.hipay.card.store.MAX_SAVED_CARDS_DISPLAY_COUNT
 import com.hipay.card.store.SavedCard
 import com.hipay.card.store.createSecureCardStore
 import com.hipay.core.Environment
@@ -283,11 +284,51 @@ class OneClickEntryUiTest {
         assertEquals(0, countTag(HiPayCardEntryTags.SHOW_MORE))
     }
 
+    // A forced expansion is DERIVED from the selection, not latched: once the selection returns within
+    // the fold the list collapses again, because the payer never asked for it to be open. Distinct from
+    // `selectingCardBeyondFold_...`, where the payer DID tap "Show more" first and it must stay open.
     @Test
-    fun displayCount_isClampedToOneToTen() {
-        assertEquals(1, HiPayCardEntryController(config, savedCardsDisplayCount = 0).savedCardsDisplayCount)
-        assertEquals(10, HiPayCardEntryController(config, savedCardsDisplayCount = 99).savedCardsDisplayCount)
-        assertEquals(2, HiPayCardEntryController(config, savedCardsDisplayCount = 2).savedCardsDisplayCount)
+    fun forcedExpansion_releasesWhenTheSelectionReturnsWithinTheFold() {
+        seedNCards(4) // default display count = 3
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
+        composeRule.setContent { HiPayCardEntry(controller) }
+        awaitSections()
+        assertEquals(0, countTag(HiPayCardEntryTags.savedCard(3))) // collapsed, never toggled
+        // Host-driven selection of a card beyond the fold (the public headless path).
+        composeRule.runOnIdle { controller.selectSavedCard(controller.savedCards[3]) }
+        composeRule.waitUntil(5_000) { countTag(HiPayCardEntryTags.savedCard(3)) == 1 }
+        composeRule.onNodeWithTag(HiPayCardEntryTags.SHOW_MORE).assertIsNotEnabled()
+        // Back within the fold: the list collapses on its own and "Show less" is usable again.
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).performClick()
+        composeRule.waitUntil(5_000) { countTag(HiPayCardEntryTags.savedCard(3)) == 0 }
+        composeRule.onNodeWithTag(HiPayCardEntryTags.SHOW_MORE).assertIsEnabled()
+    }
+
+    // With a single card the screen carries no disclosure control at all.
+    @Test
+    fun showMore_absentWithASingleCard() {
+        seedNCards(1)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
+        composeRule.setContent { HiPayCardEntry(controller) }
+        awaitSections()
+        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(0)))
+        assertEquals(0, countTag(HiPayCardEntryTags.SHOW_MORE))
+    }
+
+    // The UPPER bound reaches the rendered list, not just the controller property: an over-large count
+    // clamps to 10, which still exceeds the 4 stored cards, so nothing is hidden.
+    @Test
+    fun displayCountAboveTheUpperBound_clampsAndHidesNothing() {
+        seedNCards(4)
+        val controller =
+            HiPayCardEntryController(config, oneClickEnabled = true, savedCardsDisplayCount = 99)
+                .withOfflineCeiling()
+        // The controller clamped it (the rendered assertions below cannot tell 10 from 99 on their own).
+        assertEquals(MAX_SAVED_CARDS_DISPLAY_COUNT, controller.savedCardsDisplayCount)
+        composeRule.setContent { HiPayCardEntry(controller) }
+        awaitSections()
+        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(3)))
+        assertEquals(0, countTag(HiPayCardEntryTags.SHOW_MORE))
     }
 
     @Test

@@ -81,6 +81,8 @@ class CmpStringsTest {
             CardEntryStringKey.A11Y_COLLAPSED to "collapsed",
             CardEntryStringKey.LABEL_SHOW_MORE to "Show more",
             CardEntryStringKey.LABEL_SHOW_LESS to "Show less",
+            CardEntryStringKey.A11Y_SHOW_LESS_BLOCKED to
+                "Unavailable while the selected card is further down the list",
             CardEntryStringKey.LABEL_DELETE_CARD to "Delete card",
             CardEntryStringKey.CONFIRM_DELETE_CARD to
                 "Remove this saved card? You can save it again next time you pay.",

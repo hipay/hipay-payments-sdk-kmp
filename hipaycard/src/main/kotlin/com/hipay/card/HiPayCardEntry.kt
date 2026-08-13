@@ -143,6 +143,10 @@ public object HiPayCardEntryTags {
  * DisposableEffect(controller) { onDispose { controller.dispose() } }
  * ```
  * (No-op if you supplied your own `scope`.)
+ *
+ * Scrolling is the HOST's job: this is a plain [Column] and never scrolls itself. With one-click
+ * enabled the payer can reveal every stored card at once ("Show more"), so place it inside a
+ * `verticalScroll` container or the controls below the list can end up unreachable.
  */
 @Composable
 public fun HiPayCardEntry(
@@ -420,8 +424,11 @@ private fun SavedCardsSections(
     // selection, e.g. the new-card branch) is never beyond the fold.
     val selectedIndex = cards.indexOfFirst { it == controller.selectedSavedCard }
     val selectionBeyondFold = selectedIndex >= displayCount
-    var expanded by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(selectionBeyondFold) { if (selectionBeyondFold) expanded = true }
+    // Expansion is DERIVED, never latched: `showAll` holds the payer's own choice and nothing else,
+    // so the forced expansion releases by itself once the selection returns within the fold, and a
+    // stale choice cannot survive the list shrinking back to (or below) the display count.
+    var showAll by rememberSaveable { mutableStateOf(false) }
+    val expanded = (showAll && hasMore) || selectionBeyondFold
     val visibleCards = if (expanded) cards else cards.take(displayCount)
 
     // Delete is a gesture (long-press) / a11y-action affordance. The pending card drives the
@@ -458,7 +465,8 @@ private fun SavedCardsSections(
             ShowMoreToggle(
                 expanded = expanded,
                 enabled = if (expanded) enabled && !selectionBeyondFold else enabled,
-            ) { expanded = !expanded }
+                collapseBlocked = selectionBeyondFold,
+            ) { showAll = !showAll }
         }
         NewCardHeader(controller, enabled)
     }
@@ -674,12 +682,21 @@ private fun NewCardHeader(controller: HiPayCardEntryController, enabled: Boolean
 /** "Show more / Show less" disclosure toggle: reveals or hides the saved cards beyond
  *  the display count. A centered button whose expanded/collapsed state carries the meaning for a11y
  *  (the chevron is decorative); it stays present across toggles so screen-reader focus is retained.
- *  When [enabled] is false while expanded, "Show less" is inert (the selection sits beyond the fold). */
+ *  When [enabled] is false while expanded, "Show less" is inert (the selection sits beyond the fold);
+ *  [collapseBlocked] then adds the reason to the state description, so a screen-reader user is not
+ *  left with an unexplained dimmed control. */
 @Composable
-private fun ShowMoreToggle(expanded: Boolean, enabled: Boolean, onToggle: () -> Unit) {
+private fun ShowMoreToggle(
+    expanded: Boolean,
+    enabled: Boolean,
+    collapseBlocked: Boolean,
+    onToggle: () -> Unit,
+) {
     val expandState = cardString(
         if (expanded) CardEntryStringKey.A11Y_EXPANDED else CardEntryStringKey.A11Y_COLLAPSED,
     )
+    val blockedReason = cardString(CardEntryStringKey.A11Y_SHOW_LESS_BLOCKED)
+    val stateText = if (collapseBlocked && expanded) "$expandState, $blockedReason" else expandState
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
@@ -688,7 +705,7 @@ private fun ShowMoreToggle(expanded: Boolean, enabled: Boolean, onToggle: () -> 
             .heightIn(min = 48.dp)
             .clickable(enabled = enabled, role = Role.Button, onClick = onToggle)
             .testTag(HiPayCardEntryTags.SHOW_MORE)
-            .semantics(mergeDescendants = true) { stateDescription = expandState },
+            .semantics(mergeDescendants = true) { stateDescription = stateText },
     ) {
         Text(
             text = cardString(

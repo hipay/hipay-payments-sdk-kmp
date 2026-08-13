@@ -302,9 +302,9 @@ internal fun CmpCardEntry(
 }
 
 /**
- * The two one-click zones sharing one section-header treatment: "Saved cards" (the list of ≤3
- * saved cards, most-recent first) and "New card" (an actionable header whose chevron shows the
- * expanded state). The cells form a single-selection group — exactly one selection at all times
+ * The two one-click zones sharing one section-header treatment: "Saved cards" (the most-recent
+ * `savedCardsDisplayCount` cards, most-recent first) and "New card" (an actionable header whose
+ * chevron shows the expanded state). The cells form a single-selection group — exactly one selection at all times
  * (a card, or "New card"); no visual radio indicator by design.
  *
  * The most-recent `savedCardsDisplayCount` cards are shown (MRU-first, the most recent pre-selected);
@@ -341,8 +341,11 @@ private fun CmpSavedCardsSections(
     // selection, e.g. the new-card branch) is never beyond the fold.
     val selectedIndex = cards.indexOfFirst { it == controller.selectedSavedCard }
     val selectionBeyondFold = selectedIndex >= displayCount
-    var expanded by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(selectionBeyondFold) { if (selectionBeyondFold) expanded = true }
+    // Expansion is DERIVED, never latched: `showAll` holds the payer's own choice and nothing else,
+    // so the forced expansion releases by itself once the selection returns within the fold, and a
+    // stale choice cannot survive the list shrinking back to (or below) the display count.
+    var showAll by rememberSaveable { mutableStateOf(false) }
+    val expanded = (showAll && hasMore) || selectionBeyondFold
     val visibleCards = if (expanded) cards else cards.take(displayCount)
 
     // Delete is a gesture (long-press) / a11y-action affordance. The pending card drives the
@@ -379,7 +382,8 @@ private fun CmpSavedCardsSections(
             CmpShowMoreToggle(
                 expanded = expanded,
                 enabled = if (expanded) enabled && !selectionBeyondFold else enabled,
-            ) { expanded = !expanded }
+                collapseBlocked = selectionBeyondFold,
+            ) { showAll = !showAll }
         }
         CmpNewCardHeader(controller, enabled)
     }
@@ -583,13 +587,24 @@ private fun CmpNewCardHeader(controller: CmpCardController, enabled: Boolean) {
 /** "Show more / Show less" disclosure toggle: reveals or hides the saved cards beyond
  *  the display count. A centered button whose expanded/collapsed state carries the meaning for a11y
  *  (the chevron is decorative); it stays present across toggles so screen-reader focus is retained.
- *  When [enabled] is false while expanded, "Show less" is inert (the selection sits beyond the fold).
- *  The test tag mirrors Android's `hipay.card.savedcards.showmore` for a shared UI-test identifier. */
+ *  When [enabled] is false while expanded, "Show less" is inert (the selection sits beyond the fold);
+ *  [collapseBlocked] then adds the reason to the state description, so a screen-reader user is not
+ *  left with an unexplained dimmed control.
+ *  The test tag mirrors Android's `hipay.card.savedcards.showmore` for a shared UI-test identifier.
+ *  It is a literal because `HiPayCardEntryTags` lives in the Android-only `:hipaycard` module and is
+ *  unreachable from `commonMain`. */
 @Composable
-private fun CmpShowMoreToggle(expanded: Boolean, enabled: Boolean, onToggle: () -> Unit) {
+private fun CmpShowMoreToggle(
+    expanded: Boolean,
+    enabled: Boolean,
+    collapseBlocked: Boolean,
+    onToggle: () -> Unit,
+) {
     val expandState = cmpString(
         if (expanded) CardEntryStringKey.A11Y_EXPANDED else CardEntryStringKey.A11Y_COLLAPSED,
     )
+    val blockedReason = cmpString(CardEntryStringKey.A11Y_SHOW_LESS_BLOCKED)
+    val stateText = if (collapseBlocked && expanded) "$expandState, $blockedReason" else expandState
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
@@ -598,7 +613,7 @@ private fun CmpShowMoreToggle(expanded: Boolean, enabled: Boolean, onToggle: () 
             .heightIn(min = 48.dp)
             .clickable(enabled = enabled, role = Role.Button, onClick = onToggle)
             .testTag("hipay.card.savedcards.showmore")
-            .semantics(mergeDescendants = true) { stateDescription = expandState },
+            .semantics(mergeDescendants = true) { stateDescription = stateText },
     ) {
         Text(
             text = cmpString(
