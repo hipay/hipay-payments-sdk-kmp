@@ -12,7 +12,17 @@ the iOS XCFramework/SPM package.
 ### Added
 
 - **Apple Pay on iOS.** A ready-made button, an eligibility check that answers *why* it is
-  unavailable, and the full payment. Ships as a separate artifact — add it only if you want it.
+  unavailable, and the full payment — the SDK presents the sheet, so you never touch PassKit. Ships as
+  a separate artifact — add it only if you want it.
+  - **Swift:** `HiPayApplePayPayment.pay(configuration:applePay:order:)`,
+    `.isAvailable(configuration:currency:)` and `.availability(configuration:currency:)` — the last
+    returning the reason plus the networks the sheet would offer, so an absent button is explainable.
+    With `HiPayApplePayConfiguration`, `HiPayApplePayOrder` and `HiPayApplePayOutcome`.
+  - **Compose Multiplatform:** `runHiPayApplePayPayment(...)`,
+    `resolveHiPayApplePayAvailability(...)` and `hiPayApplePaySupported()`. Apple Pay is iOS-only, so
+    the Android side of the shared code throws rather than pretending to work.
+  - `ApplePayOrder` now carries a **`signature`**, computed by your backend exactly as for a card
+    order. An account that requires signed orders refuses an unsigned wallet order.
 - **One-click payments are generally available.** A returning payer pays from a card saved on a
   previous purchase, with no card number and no security code. Still off by default.
 - Compose Multiplatform can now set the **currency** its account restrictions are resolved for, and

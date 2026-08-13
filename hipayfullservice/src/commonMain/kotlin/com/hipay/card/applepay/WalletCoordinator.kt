@@ -72,7 +72,7 @@ public class WalletCoordinator internal constructor(
             eci = 7,
             authenticationIndicator = 0,
         )
-        return GatewayClient(effectiveConfig, engine).requestNewOrder(orderRequest)
+        return GatewayClient(effectiveConfig, engine).requestNewOrder(orderRequest, order.signature)
     }
 
     /**

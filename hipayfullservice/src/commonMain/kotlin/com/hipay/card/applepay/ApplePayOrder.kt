@@ -28,6 +28,13 @@ public class ApplePayOrder(
     public val description: String,
     public val redirectScheme: String,
     public val language: String = "en_GB",
+    /**
+     * The gateway HS signature for this order, computed by the MERCHANT BACKEND exactly as for a card
+     * payment — the SDK never computes one and the passphrase must never enter the app. Optional only
+     * because an account may not require signed orders; when the account does, an unsigned wallet order
+     * is refused just like an unsigned card order would be.
+     */
+    public val signature: String? = null,
 )
 
 /** The gateway redirect URLs for this order, in the one shape the SDK can parse back. The scheme is
