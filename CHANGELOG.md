@@ -7,17 +7,24 @@ the iOS XCFramework/SPM package.
      A version heading must be EXACTLY "## x.y.z" — no date, no title. The release pipeline matches
      that line verbatim, so any suffix produces empty release notes. Put the date on the line below. -->
 
-## Unreleased
+## 1.1.0
 
 ### Added
 
 - **Apple Pay on iOS.** A ready-made button, an eligibility check that answers *why* it is
   unavailable, and the full payment — the SDK presents the sheet, so you never touch PassKit. Ships as
   a separate artifact — add it only if you want it.
-  - **Swift:** `HiPayApplePayPayment.pay(configuration:applePay:order:)`,
-    `.isAvailable(configuration:currency:)` and `.availability(configuration:currency:)` — the last
-    returning the reason plus the networks the sheet would offer, so an absent button is explainable.
-    With `HiPayApplePayConfiguration`, `HiPayApplePayOrder` and `HiPayApplePayOutcome`.
+  - **Swift:** `HiPayApplePayPayment.pay(configuration:applePay:order:customerCountry:)`,
+    `.isAvailable(...)` and `.availability(...)` — the last returning the reason **and** the networks the
+    sheet would offer, so an absent button is explainable rather than mysterious. With
+    `HiPayApplePayConfiguration`, `HiPayApplePayOrder`, `HiPayApplePayOutcome` and
+    `HiPayApplePayNetwork`.
+  - **Restricting networks** is expressed with `HiPayApplePayConfiguration.allowedNetworks`, applied to
+    both the availability answer and the sheet so the button and the sheet always agree. The type covers
+    only what Apple Pay can route at HiPay (Visa, Mastercard, Maestro, CB), so a restriction that could
+    never match is not expressible.
+  - **`HiPayApplePayOutcome.unknown`** is returned for an outcome this version does not model. Never
+    treat it as success or as a cancellation — reconcile on the order id.
   - **Compose Multiplatform:** `runHiPayApplePayPayment(...)`,
     `resolveHiPayApplePayAvailability(...)` and `hiPayApplePaySupported()`. Apple Pay is iOS-only: on
     Android a payment attempt throws rather than pretending to work, and availability always answers
@@ -32,9 +39,23 @@ the iOS XCFramework/SPM package.
 ### Changed
 
 - One-click is no longer flagged experimental and is documented as a supported feature.
+- **Apple Pay availability must be supplied to the button.** Left unset, `isAvailable` falls back to
+  `PKPaymentAuthorizationController.canMakePayments()`, which is `true` on any Apple-Pay-capable device
+  *even with no card provisioned* — so the button appears and then disappears. Resolve availability with
+  `availability(...)` / `resolveHiPayApplePayAvailability(...)`, start from "unavailable", and pass the
+  result in. The integration guide shows the shape.
 - **The saved-card list no longer collapses** when the payer opens the new-card form, and the
   "Saved cards" header is no longer a toggle. A "Show more" control now reveals the cards beyond the
   first few, and the expand state moved onto the "New card" row.
+- **Up to 20 cards are now kept on the device, instead of 3.** A valid card is no longer evicted just
+  because the payer saved another one; eviction (least recently used) starts only at the 20th. Only
+  tokens are stored, in the same encrypted store as before — but a payer can now accumulate noticeably
+  more of them, which is worth knowing if your data-retention policy has something to say about it.
+  Downgrading to an SDK with the lower ceiling is not supported: the older build truncates the list on
+  its next write.
+- **The saved-card component expects a scrollable host.** It never scrolled itself, but until now the
+  list could not exceed three cards, so it fit anywhere. Now that "Show more" can reveal up to 20, place
+  the component inside a scroll container — the integration guides show the shape for each platform.
 
 ### Removed
 

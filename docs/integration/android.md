@@ -153,6 +153,19 @@ val controller = HiPayCardEntryController(
 )
 ```
 
+**Give the component a scrollable host.** `HiPayCardEntry` renders a plain `Column` and never scrolls
+on its own. With one-click enabled the payer can reveal every stored card at once via "Show more" (up
+to 20 are kept), so the component can grow past a screen height. Put it inside a `verticalScroll`
+container — otherwise "Show less", "New card" and your own Pay button end up off-screen with no way
+back:
+
+```kotlin
+Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+    HiPayCardEntry(controller)
+    // your Pay button
+}
+```
+
 Offer to save on a successful payment — the component asks the payer for consent:
 
 ```kotlin

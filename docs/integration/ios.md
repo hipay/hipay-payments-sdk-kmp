@@ -158,6 +158,18 @@ A returning payer pays with a card saved on a previous purchase — no card numb
 )
 ```
 
+**Give the component a scrollable host.** `HiPayCardEntryView` renders a plain `VStack` and never
+scrolls on its own. With one-click enabled the payer can reveal every stored card at once via "Show
+more" (up to 20 are kept), so the view can grow past a screen height. Put it inside a `ScrollView` —
+otherwise "Show less", "New card" and your own Pay button end up off-screen with no way back:
+
+```swift
+ScrollView {
+    HiPayCardEntryView(controller: card)
+    // your Pay button
+}
+```
+
 Offer to save on a successful payment — the component asks the payer for consent:
 
 ```swift

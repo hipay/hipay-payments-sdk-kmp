@@ -2,7 +2,7 @@
 package com.hipay.card.store
 
 /**
- * Saved-cards DISPLAY count (story 12-9) — how many saved cards a one-click component shows before a
+ * Saved-cards DISPLAY count — how many saved cards a one-click component shows before a
  * "Show more" control. This is distinct from the STORAGE cap (`SecureCardStore`, 20): storage keeps
  * every valid card; the display count only bounds what is shown by default.
  *

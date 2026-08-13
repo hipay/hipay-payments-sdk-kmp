@@ -5,13 +5,20 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * Max saved cards kept on the device. Raised 3 → 20 (story 12-9): a valid card is never evicted
- * below this ceiling; LRU eviction bites only at the 20th-card boundary. The number of cards the UI
- * *shows* is a separate, integrator-configurable display count (default 3) — see the card component.
+ * Max saved cards kept on the device: a valid card is never evicted below this ceiling; LRU eviction
+ * bites only at the 20th-card boundary. The number of cards the UI *shows* is a separate,
+ * integrator-configurable display count (default 3) — see the card component.
  */
 private const val MAX_CARDS = 20
 
-/** Storage format version — bump and migrate when the persisted shape changes. */
+/**
+ * Storage format version — bump and migrate when the persisted shape changes.
+ *
+ * Deliberately NOT bumped when [MAX_CARDS] was raised: the envelope shape did not change, and the
+ * version gate below is fail-closed (an unknown version discards the blob), so a bump would destroy
+ * every payer's saved cards on the way *up*. The cost of that choice is that downgrading the SDK to a
+ * build with a lower ceiling truncates the list on its next write — downgrades are not supported.
+ */
 internal const val SAVED_CARDS_VERSION = 1
 
 /** A saved card plus its recency rank (`seq`); `seq` is store-managed, never exposed publicly. */
