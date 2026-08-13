@@ -2,6 +2,7 @@ package com.hipay.card.cmp
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import com.hipay.card.store.DEFAULT_SAVED_CARDS_DISPLAY_COUNT
 import com.hipay.card.store.SavedCard
 import com.hipay.card.style.HiPayCardEntryStyle
 import com.hipay.card.store.SavedCardOutcome
@@ -26,6 +27,12 @@ expect class HiPayCardController(
     /** Explicit integrator opt-in for the one-click (saved cards) UI — off by default: without it
      *  the component renders and behaves exactly as before and no card store is ever created. */
     oneClickEnabled: Boolean = false,
+    /** How many saved cards the one-click UI shows before a "Show more" control. Clamped 1..10;
+     *  bounds the DISPLAY only — every saved card is still persisted. */
+    savedCardsDisplayCount: Int = DEFAULT_SAVED_CARDS_DISPLAY_COUNT,
+    /** Currency the account's accepted card products are resolved for — a contract can differ per
+     *  currency, so this should match the currency the order will be created in. */
+    currency: String = "EUR",
 ) {
     /** True when every required field is valid, or a saved card is selected (Compose-observable). */
     val canPay: Boolean

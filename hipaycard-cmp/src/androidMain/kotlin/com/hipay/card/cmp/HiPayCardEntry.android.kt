@@ -23,6 +23,8 @@ actual class HiPayCardController actual constructor(
     config: HiPayConfig,
     allowedNetworks: List<CardNetwork>,
     oneClickEnabled: Boolean,
+    savedCardsDisplayCount: Int,
+    currency: String,
 ) {
     internal val delegate = NativeController(
         config = config,
@@ -30,6 +32,8 @@ actual class HiPayCardController actual constructor(
         // (UNKNOWN / unmappable → dropped).
         allowedNetworks = allowedNetworks.mapNotNull { HiPayCardNetwork.from(it) },
         oneClickEnabled = oneClickEnabled,
+        savedCardsDisplayCount = savedCardsDisplayCount,
+        currency = currency,
     )
 
     actual val canPay: Boolean get() = delegate.canPay
