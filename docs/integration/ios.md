@@ -170,6 +170,11 @@ ScrollView {
 }
 ```
 
+**Known limitation.** A saved-card row handles a left-swipe itself (to reveal the delete action), and
+that gesture takes precedence over the enclosing scroll view. A drag that *starts on a saved-card row*
+therefore does not scroll the page — start it anywhere else and scrolling behaves normally. This affects
+only the one-click list; Android and Compose Multiplatform are unaffected.
+
 Offer to save on a successful payment — the component asks the payer for consent:
 
 ```swift

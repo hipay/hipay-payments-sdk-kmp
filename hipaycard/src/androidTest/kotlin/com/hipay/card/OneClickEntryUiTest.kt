@@ -208,6 +208,9 @@ class OneClickEntryUiTest {
         composeRule.setContent { HiPayCardEntry(controller) }
         awaitSections()
         val before = controller.savedCards.size
+        // Which card must survive — asserting only the count would pass even if the WRONG card went.
+        val swiped = controller.savedCards[0]
+        val survivor = controller.savedCards[1]
         assertEquals(0, countTag(HiPayCardEntryTags.savedCardDelete(0))) // no trash at rest
         composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).performTouchInput { swipeLeft() }
         composeRule.waitUntil(5_000) { countTag(HiPayCardEntryTags.savedCardDelete(0)) == 1 }
@@ -215,7 +218,8 @@ class OneClickEntryUiTest {
         composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_DELETE).assertExists()
         composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_DELETE).performClick()
         composeRule.waitUntil(5_000) { controller.savedCards.size == before - 1 }
-        assertEquals(before - 1, controller.savedCards.size)
+        assertEquals(listOf(survivor), controller.savedCards)
+        assertEquals(false, controller.savedCards.contains(swiped))
     }
 
     @Test
@@ -224,12 +228,16 @@ class OneClickEntryUiTest {
         val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller) }
         awaitSections()
-        val before = controller.savedCards.size
+        val cardsBefore = controller.savedCards
         composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).performTouchInput { swipeLeft() }
         composeRule.waitUntil(5_000) { countTag(HiPayCardEntryTags.savedCardDelete(0)) == 1 }
         composeRule.onNodeWithTag(HiPayCardEntryTags.savedCardDelete(0)).performClick()
         composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_CANCEL).performClick()
-        assertEquals(before, controller.savedCards.size)
+        // Deletion is asynchronous: without settling first, this would pass even if cancel had
+        // wrongly enqueued one. Settle, then assert the list is untouched card for card.
+        composeRule.waitForIdle()
+        assertEquals(cardsBefore, controller.savedCards)
+        assertEquals(0, countTag(HiPayCardEntryTags.CONFIRM_DELETE)) // dialog dismissed
     }
 
     // collapse-to-MRU model is replaced by a display count + a "Show more / Show less" toggle.

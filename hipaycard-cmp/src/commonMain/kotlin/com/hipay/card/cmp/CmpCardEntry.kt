@@ -342,10 +342,12 @@ private fun CmpSavedCardsSections(
     val selectedIndex = cards.indexOfFirst { it == controller.selectedSavedCard }
     val selectionBeyondFold = selectedIndex >= displayCount
     // Expansion is DERIVED, never latched: `showAll` holds the payer's own choice and nothing else,
-    // so the forced expansion releases by itself once the selection returns within the fold, and a
-    // stale choice cannot survive the list shrinking back to (or below) the display count.
+    // so the forced expansion releases by itself once the selection returns within the fold. The
+    // choice is also dropped outright once the list no longer overflows, otherwise deleting a card
+    // down to the fold and saving a new one later would silently reopen the list unasked.
     var showAll by rememberSaveable { mutableStateOf(false) }
-    val expanded = (showAll && hasMore) || selectionBeyondFold
+    LaunchedEffect(hasMore) { if (!hasMore) showAll = false }
+    val expanded = showAll || selectionBeyondFold
     val visibleCards = if (expanded) cards else cards.take(displayCount)
 
     // Delete is a gesture (long-press) / a11y-action affordance. The pending card drives the
