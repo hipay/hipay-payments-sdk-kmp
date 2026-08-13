@@ -11,9 +11,13 @@ to the legacy native iOS/Android SDKs. Android and KMP ship through Maven Centra
 | Native **Android** (Jetpack Compose) | [Android](docs/integration/android.md) | `com.hipay.payments:card` |
 | Native **iOS** (SwiftUI) | [iOS](docs/integration/ios.md) | SPM products `HiPayCard` / `HiPayCore` |
 | **Kotlin / Compose Multiplatform** | [Compose Multiplatform](docs/integration/cmp.md) | `com.hipay.payments:card-cmp` |
+| Adding **Apple Pay** (iOS) | [Apple Pay](docs/integration/apple-pay.md) | `com.hipay.payments:applepay-cmp` |
 
 Also: [documentation home](docs/index.md) · [changelog](CHANGELOG.md) ·
 [contributing](CONTRIBUTING.md) · [report an issue](https://github.com/hipay/hipay-payments-sdk-kmp/issues)
+
+Rendered and searchable, with a version selector:
+<https://hipay.github.io/hipay-payments-sdk-kmp/>
 
 The guides live next to the code, so the version you are reading always matches the version you
 depend on. A rendered, versioned site is planned; until it is deployed, read them here.

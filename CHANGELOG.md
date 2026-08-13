@@ -9,6 +9,28 @@ the iOS XCFramework/SPM package.
 
 ## Unreleased
 
+### Added
+
+- **Apple Pay on iOS.** A ready-made button, an eligibility check that answers *why* it is
+  unavailable, and the full payment. Ships as a separate artifact — add it only if you want it.
+- **One-click payments are generally available.** A returning payer pays from a card saved on a
+  previous purchase, with no card number and no security code. Still off by default.
+- Compose Multiplatform can now set the **currency** its account restrictions are resolved for, and
+  how many saved cards show before "Show more". The two native platforms already could.
+
+### Changed
+
+- One-click is no longer flagged experimental and is documented as a supported feature.
+- **The saved-card list no longer collapses** when the payer opens the new-card form, and the
+  "Saved cards" header is no longer a toggle. A "Show more" control now reveals the cards beyond the
+  first few, and the expand state moved onto the "New card" row.
+
+### Removed
+
+- **`HiPayCardEntryTags.SAVED_CARDS_HEADER`** → use `HiPayCardEntryTags.SHOW_MORE`. The collapsible
+  header it identified no longer exists. Android UI tests are the only code that can reference it;
+  application code is unaffected.
+
 ## 1.0.0
 
 _First public release._

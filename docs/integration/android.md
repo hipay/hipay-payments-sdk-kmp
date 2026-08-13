@@ -272,6 +272,15 @@ override fun onNewIntent(intent: Intent) {
 
 A complete, runnable example is the demo at `src/HiPay-SDK-android-Demo` (`PaymentViewModel` + `MainActivity`).
 
+## Upgrading from 1.0.0
+
+One source break, and it can only reach your **UI tests**: `HiPayCardEntryTags.SAVED_CARDS_HEADER`
+is gone. The collapsible "Saved cards" header it identified no longer exists — the list now shows
+the most recent cards with a "Show more" control (`HiPayCardEntryTags.SHOW_MORE`), and the
+expand/collapse state moved onto the "New card" row. Application code is unaffected.
+
+Behaviour to expect: opening the new-card form no longer collapses the saved-card list.
+
 ## Notes
 
 - **Localization**: FR/EN/IT (default EN) ship in the card module's `strings.xml`; device locale by default, overridable SDK-wide via `HiPaySettings` on the config or per component via `HiPayCardEntry(..., localeOverride = "fr")` (which wins).

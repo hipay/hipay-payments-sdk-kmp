@@ -266,6 +266,11 @@ import HiPayCore
 
 A complete, runnable example is the demo at `src/HiPay-SDK-ios-Demo` (`PaymentScreen.swift`).
 
+## Upgrading from 1.0.0
+
+No source break and no behaviour change on iOS. One-click is no longer flagged experimental, and
+Apple Pay is new — see [Apple Pay](apple-pay.md).
+
 ## Notes
 
 - **Localization**: FR/EN/IT (default EN) ship in the `HiPayCard` resource bundle; **device locale** (no per-view `localeOverride` on iOS — that knob is Android-only).

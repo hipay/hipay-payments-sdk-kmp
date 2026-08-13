@@ -98,10 +98,10 @@ composed, and only offers those. You do not configure this, and you cannot widen
 `allowed` list you pass **narrows** that set.
 
 ```kotlin
-val controller = CmpCardController(
-    config = config,
+val controller = HiPayCardController(
+    config,
     // Optional. Narrows what the account already accepts — never widens it.
-    allowed = listOf(CardNetwork.VISA, CardNetwork.MASTERCARD),
+    allowedNetworks = listOf(CardNetwork.VISA, CardNetwork.MASTERCARD),
     // Optional (default "EUR"). A contract can differ per currency, so pass the currency the
     // order will be created in.
     currency = "EUR",
@@ -170,7 +170,12 @@ A returning payer pays with a card saved on a previous purchase — no card numb
 **Off by default**; nothing is stored and no card store is created until you enable it.
 
 ```kotlin
-val controller = HiPayCardController(config, oneClickEnabled = true)
+val controller = HiPayCardController(
+    config,
+    oneClickEnabled = true,
+    // Optional (default 3, clamped 1..10): how many cards show before "Show more".
+    savedCardsDisplayCount = 3,
+)
 ```
 
 Offer to save on a successful payment — the component asks the payer for consent:
@@ -282,6 +287,15 @@ internal actual fun sha1Hex(input: String): String {
     return out.joinToString("") { it.toString(16).padStart(2, '0') }
 }
 ```
+
+## Upgrading from 1.0.0
+
+No source break. One behaviour change: opening the new-card form no longer collapses the saved-card
+list, and the "Saved cards" header is no longer a toggle — a "Show more" control reveals the cards
+beyond the display count.
+
+The controller also accepts `currency` and `savedCardsDisplayCount`, both optional with defaults, so
+existing call sites compile unchanged.
 
 ## Notes
 
