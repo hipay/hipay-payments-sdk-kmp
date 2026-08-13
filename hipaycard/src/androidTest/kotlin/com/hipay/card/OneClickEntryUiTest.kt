@@ -111,8 +111,6 @@ class OneClickEntryUiTest {
         // "New card" is a button that reads its expanded/collapsed state (no radio selection).
         composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "collapsed"))
-        // A single card has no collapsible "Saved cards" header (identical to the single-card layout).
-        assertEquals(0, countTag(HiPayCardEntryTags.SAVED_CARDS_HEADER))
         // Bullet-masked display, last4 only — the BIN never shows.
         composeRule.onNodeWithText("•••• •••• •••• 1111").assertIsDisplayed()
         // Entry fields are not rendered while the saved card is selected.

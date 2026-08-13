@@ -102,7 +102,6 @@ public object HiPayCardEntryTags {
     public const val CVC: String = "hipay.card.cvc"
     public const val CVC_INFO: String = "hipay.card.cvc.info"
     public const val CVC_TOOLTIP: String = "hipay.card.cvc.tooltip"
-    public const val SAVED_CARDS_HEADER: String = "hipay.card.savedcards.header"
 
     /** The "Show more" control revealing saved cards beyond the display count. */
     public const val SHOW_MORE: String = "hipay.card.savedcards.showmore"
