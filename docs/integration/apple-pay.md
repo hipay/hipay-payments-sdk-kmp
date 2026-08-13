@@ -78,14 +78,19 @@ HiPayApplePayButton(
     onTap = { /* start the payment */ },
     style = HiPayApplePayButtonStyle.AUTOMATIC,
     type = HiPayApplePayButtonType.BUY,
+    isAvailable = available,   // see below — do NOT leave this null
 )
 ```
 
 ```swift
-HiPayApplePayButton(style: .automatic, type: .buy) {
+HiPayApplePayButton(style: .automatic, type: .buy, isAvailable: available) {
     // start the payment
 }
 ```
+
+**Always pass `isAvailable`, and start it at `false`.** Left null it falls back to `canMakePayments()`,
+which is `true` on any Apple-Pay-capable device *even with no card provisioned* — so the button appears and
+then disappears once the real answer arrives. Start `false`, then set it from the check below.
 
 **Do not decide availability on `canMakePayments()` alone.** Three conditions must hold: the device
 can pay, your HiPay account is contracted for a network Apple Pay can route, and your optional

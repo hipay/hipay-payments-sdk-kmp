@@ -4,6 +4,7 @@ import com.hipay.card.applepay.ApplePayEligibilityResult
 import com.hipay.card.applepay.ApplePayOrder
 import com.hipay.card.applepay.ApplePayPaymentResult
 import com.hipay.card.applepay.HiPayApplePayConfig
+import com.hipay.card.validation.CardNetwork
 import com.hipay.core.HiPayConfig
 import com.hipay.core.HiPayException
 import kotlin.coroutines.cancellation.CancellationException
@@ -24,6 +25,7 @@ public expect suspend fun runHiPayApplePayPayment(
     config: HiPayConfig,
     applePayConfig: HiPayApplePayConfig,
     order: ApplePayOrder,
+    customerCountry: String? = null,
 ): ApplePayPaymentResult
 
 /**
@@ -38,6 +40,7 @@ public expect suspend fun resolveHiPayApplePayAvailability(
     config: HiPayConfig,
     currency: String,
     customerCountry: String? = null,
+    allowedNetworks: List<CardNetwork> = emptyList(),
 ): ApplePayEligibilityResult
 
 /** Whether this platform can do Apple Pay at all — false on Android, true on iOS. */

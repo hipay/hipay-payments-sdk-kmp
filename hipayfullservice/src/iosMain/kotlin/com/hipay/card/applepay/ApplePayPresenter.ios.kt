@@ -21,7 +21,6 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withTimeout
 import platform.Foundation.NSString
 import platform.Foundation.NSUTF8StringEncoding
@@ -93,30 +92,24 @@ public suspend fun runApplePayPayment(
         // and must be answered exactly once, so the job gets its own scope instead of being a child
         // that cancellation would kill mid-order, leaving the sheet spinning forever.
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-        // Bounded on purpose. Every delegate path resumes the continuation, but PassKit is an external
-        // process: if a callback never arrives, an unbounded wait would suspend here forever, the
-        // `finally` below would never run, and the in-flight guard — global to the process — would stay
-        // acquired, refusing every later payment until the app is restarted. The ceiling turns that
-        // permanent lock into one failed attempt: the timeout cancels this coroutine, which dismisses
-        // the sheet through `invokeOnCancellation`, releases the guard, and reports an outcome the host
-        // can reconcile. It is far above the authorization budget, so it never pre-empts a live flow.
-        val outcome = withTimeoutOrNull(SHEET_LIFETIME_CEILING_MS) {
-            suspendCancellableCoroutine { continuation ->
-                val delegate = PaymentDelegate(coordinator, resolver, applePayConfig, order, scope, continuation)
-                val controller = PKPaymentAuthorizationController(paymentRequest = request)
-                controller.delegate = delegate
-                delegate.retain(controller)
-                // Registered before presenting: a cancellation racing the presentation must still dismiss.
-                continuation.invokeOnCancellation { delegate.abandon() }
-                controller.presentWithCompletion { presented ->
-                    if (!presented) delegate.failToPresent()
-                }
+        // Deliberately NOT bounded by a wall clock over the whole interaction. A ceiling here looks
+        // prudent and is not: the payer may dwell on the sheet, and an authentication step-up has no
+        // bound of its own, so a timeout truncates a payment the gateway may already have captured. The
+        // authorization chain has its own budget ([WALLET_PAYMENT_DEADLINE_MS]) and answers with an
+        // indeterminate [ApplePayPaymentResult.Pending] precisely so a possible capture is never
+        // reported as a failure — a cancellation here could not do that, because the late outcome
+        // arrives on a continuation that is no longer active and would be dropped.
+        suspendCancellableCoroutine { continuation ->
+            val delegate = PaymentDelegate(coordinator, resolver, applePayConfig, order, scope, continuation)
+            val controller = PKPaymentAuthorizationController(paymentRequest = request)
+            controller.delegate = delegate
+            delegate.retain(controller)
+            // Registered before presenting: a cancellation racing the presentation must still dismiss.
+            continuation.invokeOnCancellation { delegate.abandon() }
+            controller.presentWithCompletion { presented ->
+                if (!presented) delegate.failToPresent()
             }
         }
-        outcome ?: throw HiPayException(
-            code = HiPayErrorCode.SERVER,
-            message = "Apple Pay did not answer in time; the outcome is unknown — reconcile on the order id",
-        )
     } finally {
         // Released on every exit — completion, decline, cancel or failure — so the component is
         // immediately usable for a new payment.
@@ -137,16 +130,6 @@ private val paymentInFlight = PaymentInFlightGuard()
  * stage order was measured at about twelve seconds, so this leaves ample headroom.
  */
 private const val WALLET_PAYMENT_DEADLINE_MS = 25_000L
-
-/**
- * Hard ceiling on the whole sheet interaction, guarding against a PassKit callback that never arrives.
- *
- * It is not a business timeout: the payer may legitimately sit on the sheet for a while, and the
- * authorization chain has its own [WALLET_PAYMENT_DEADLINE_MS] budget. This only stops a lost callback
- * from leaving the process-wide in-flight guard acquired forever, which would refuse every subsequent
- * payment until the app restarts.
- */
-private const val SHEET_LIFETIME_CEILING_MS = 180_000L
 
 /**
  * `PKPaymentAuthorizationControllerDelegate` bridged to the suspended [continuation]. The controller
@@ -283,7 +266,7 @@ private class PaymentDelegate(
             scope.launch {
                 try {
                     val final = try {
-                        resolver.resolve(challenged, order.redirectScheme.trim())
+                        resolver.resolve(challenged, order.redirectScheme.trim(), order.signature)
                     } catch (e: CancellationException) {
                         throw e
                     } catch (_: Throwable) {

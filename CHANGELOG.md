@@ -19,8 +19,9 @@ the iOS XCFramework/SPM package.
     returning the reason plus the networks the sheet would offer, so an absent button is explainable.
     With `HiPayApplePayConfiguration`, `HiPayApplePayOrder` and `HiPayApplePayOutcome`.
   - **Compose Multiplatform:** `runHiPayApplePayPayment(...)`,
-    `resolveHiPayApplePayAvailability(...)` and `hiPayApplePaySupported()`. Apple Pay is iOS-only, so
-    the Android side of the shared code throws rather than pretending to work.
+    `resolveHiPayApplePayAvailability(...)` and `hiPayApplePaySupported()`. Apple Pay is iOS-only: on
+    Android a payment attempt throws rather than pretending to work, and availability always answers
+    unavailable — gate on `hiPayApplePaySupported()` rather than reading the reason as a device verdict.
   - `ApplePayOrder` now carries a **`signature`**, computed by your backend exactly as for a card
     order. An account that requires signed orders refuses an unsigned wallet order.
 - **One-click payments are generally available.** A returning payer pays from a card saved on a
