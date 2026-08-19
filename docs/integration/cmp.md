@@ -34,7 +34,7 @@ kotlin {
     androidTarget(); iosArm64(); iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
-            implementation("com.hipay.payments:card-cmp:1.0.0")   // card UI (+ core, transitively)
+            implementation("com.hipay.payments:card-cmp:1.1.0")   // card UI (+ core, transitively)
             // Needed to LAUNCH the suspend API (coroutines are `implementation` in the SDK).
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
         }
@@ -317,7 +317,7 @@ existing call sites compile unchanged.
 - **Signature** — `controller.pay(…, signature)` takes a **backend-computed** HS signature; the SDK
   never computes it (see the stage-only helper above for a first test).
 - **PCI** — the raw PAN never leaves the controller; never log card data.
-- **Version** — `1.0.0`; pin the same number as the iOS SPM tag / Android AARs (single-version policy across platforms).
+- **Version** — `1.1.0`; pin the same number as the iOS SPM tag / Android AARs (single-version policy across platforms).
 
 ---
 
@@ -331,7 +331,7 @@ Add the headless artifact instead of (or alongside) the card UI:
 
 ```kotlin
 // commonMain — headless only
-implementation("com.hipay.payments:core:1.0.0")
+implementation("com.hipay.payments:core:1.1.0")
 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 ```
 

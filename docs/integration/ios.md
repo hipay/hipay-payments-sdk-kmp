@@ -19,13 +19,13 @@ SwiftUI card-entry + headless payment over a binary KMP `XCFramework`, exposed b
 
 In Xcode: **File ▸ Add Package Dependencies…**, enter
 `https://github.com/hipay/hipay-payments-sdk-ios`, choose **Up to Next Major Version** from
-**1.0.0**, then add the **`HiPayCore`** and **`HiPayCard`** products to your target.
+**1.1.0**, then add the **`HiPayCore`** and **`HiPayCard`** products to your target.
 
 From a `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/hipay/hipay-payments-sdk-ios.git", from: "1.0.0")
+    .package(url: "https://github.com/hipay/hipay-payments-sdk-ios.git", from: "1.1.0")
 ],
 targets: [
     .target(name: "YourApp", dependencies: [

@@ -21,13 +21,13 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.hipay.payments:card:1.0.0")
+    implementation("com.hipay.payments:card:1.1.0")
 }
 ```
 
 That single line is enough: the POM pulls the headless core, Ktor, Compose UI/Foundation/Material 3,
 `androidx.browser` (3DS Custom Tabs) and DataStore transitively. Add
-`com.hipay.payments:core:1.0.0` on its own only if you want the headless core without the UI.
+`com.hipay.payments:core:1.1.0` on its own only if you want the headless core without the UI.
 
 ## Use the component
 
