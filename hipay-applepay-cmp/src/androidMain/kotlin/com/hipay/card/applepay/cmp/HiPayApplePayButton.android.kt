@@ -10,10 +10,10 @@ import com.hipay.card.applepay.HiPayApplePayButtonType
 @Composable
 public actual fun HiPayApplePayButton(
     onTap: () -> Unit,
+    isAvailable: Boolean,
     modifier: Modifier,
     style: HiPayApplePayButtonStyle,
     type: HiPayApplePayButtonType,
-    isAvailable: Boolean?,
 ) {
     // no-op: Apple Pay is iOS-only.
 }

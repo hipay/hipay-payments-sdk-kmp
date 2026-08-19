@@ -39,11 +39,12 @@ the iOS XCFramework/SPM package.
 ### Changed
 
 - One-click is no longer flagged experimental and is documented as a supported feature.
-- **Apple Pay availability must be supplied to the button.** Left unset, `isAvailable` falls back to
+- **Apple Pay availability must be supplied to the button**, as a required argument — there is no
+  default. The only value the SDK could have picked is
   `PKPaymentAuthorizationController.canMakePayments()`, which is `true` on any Apple-Pay-capable device
-  *even with no card provisioned* — so the button appears and then disappears. Resolve availability with
-  `availability(...)` / `resolveHiPayApplePayAvailability(...)`, start from "unavailable", and pass the
-  result in. The integration guide shows the shape.
+  *even with no card provisioned*, so a default would show a button that cannot pay. Resolve
+  availability with `availability(...)` / `resolveHiPayApplePayAvailability(...)`, hold it in your own
+  state starting at "unavailable", and pass it in. The integration guide shows the shape.
 - **The saved-card list no longer collapses** when the payer opens the new-card form, and the
   "Saved cards" header is no longer a toggle. A "Show more" control now reveals the cards beyond the
   first few, and the expand state moved onto the "New card" row.

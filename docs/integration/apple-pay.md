@@ -76,9 +76,9 @@ PassKit refuses any identifier absent from the entitlement, and the entitlement 
 ```kotlin
 HiPayApplePayButton(
     onTap = { /* start the payment */ },
+    isAvailable = available,    // required — see below
     style = HiPayApplePayButtonStyle.AUTOMATIC,
     type = HiPayApplePayButtonType.BUY,
-    isAvailable = available,   // see below — do NOT leave this null
 )
 ```
 
@@ -88,9 +88,11 @@ HiPayApplePayButton(style: .automatic, type: .buy, isAvailable: available) {
 }
 ```
 
-**Always pass `isAvailable`, and start it at `false`.** Left null it falls back to `canMakePayments()`,
-which is `true` on any Apple-Pay-capable device *even with no card provisioned* — so the button appears and
-then disappears once the real answer arrives. Start `false`, then set it from the check below.
+**`isAvailable` is required, and you should start it at `false`.** There is deliberately no default:
+the only value the SDK could pick for you is `canMakePayments()`, which is `true` on any
+Apple-Pay-capable device *even with no card provisioned* — the button would appear and the payment
+would then fail, a mistake you cannot see outside a real device. Hold the verdict in your own state,
+initialised to `false`, and set it from the check below.
 
 **Do not decide availability on `canMakePayments()` alone.** Three conditions must hold: the device
 can pay, your HiPay account is contracted for a network Apple Pay can route, and your optional

@@ -14,7 +14,6 @@ import com.hipay.card.applepay.HiPayApplePayButtonType
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCAction
 import platform.Foundation.NSSelectorFromString
-import platform.PassKit.PKPaymentAuthorizationController
 import platform.PassKit.PKPaymentButton
 import platform.PassKit.PKPaymentButtonStyle
 import platform.PassKit.PKPaymentButtonStyleAutomatic
@@ -50,13 +49,13 @@ private class ApplePayTapTarget(var onTap: () -> Unit) : NSObject() {
 @Composable
 public actual fun HiPayApplePayButton(
     onTap: () -> Unit,
+    isAvailable: Boolean,
     modifier: Modifier,
     style: HiPayApplePayButtonStyle,
     type: HiPayApplePayButtonType,
-    isAvailable: Boolean?,
 ) {
-    val available = isAvailable ?: PKPaymentAuthorizationController.canMakePayments()
-    if (!available) return
+    // No fallback on purpose: the caller owns the verdict (see the expect declaration's KDoc).
+    if (!isAvailable) return
 
     val target = remember { ApplePayTapTarget(onTap) }
     target.onTap = onTap
