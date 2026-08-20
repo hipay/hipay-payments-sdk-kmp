@@ -38,6 +38,18 @@ the iOS XCFramework/SPM package.
 
 ### Changed
 
+- **BREAKING — the payment-return deep link now uses the host `hipay-payments`** instead of
+  `hipay-fullservice`, dropping the last trace of the previous SDK's name from this one. The full shape
+  is `{yourScheme}://hipay-payments/gateway/orders/{orderId}/{status}`.
+  - **Android / Compose Multiplatform hosts:** update the `intent-filter` that catches the return —
+    `<data android:scheme="yourscheme" android:host="hipay-payments" />`. Miss this and the browser
+    comes back to a URL nothing handles: the payment never resumes, with no error and nothing logged.
+  - **Headless callers** that build `acceptUrl` / `declineUrl` / `pendingUrl` / `exceptionUrl` /
+    `cancelUrl` themselves must use the new host. Read it from `HIPAY_CALLBACK_HOST`, or build the
+    prefix with `hipayCallbackBase(scheme, orderId)` (Swift: `CallbackHostKt`), rather than retyping
+    the string — both are now public for exactly that.
+  - Nothing changes on the gateway side: these URLs are sent per order by the SDK, not configured in
+    your account.
 - One-click is no longer flagged experimental and is documented as a supported feature.
 - **Apple Pay availability must be supplied to the button**, as a required argument — there is no
   default. The only value the SDK could have picked is

@@ -11,7 +11,7 @@ SwiftUI card-entry + headless payment over a binary KMP `XCFramework`, exposed b
 - Two SPM products: `HiPayCore` (headless) and `HiPayCard` (UI), both resolved from the package below
 
 > **Why isn't `HiPayCard` in the `.xcframework`?** The `.xcframework` is **only** the compiled
-> KMP/Kotlin core (`HiPayFullservice`). `HiPayCore`/`HiPayCard` are the **hand-written Swift facade
+> KMP/Kotlin core (`HiPayPayments`). `HiPayCore`/`HiPayCard` are the **hand-written Swift facade
 > (D4)** — Swift *source*, shipped in the package, depending on the binary. They cannot live inside a
 > KMP-compiled framework.
 
@@ -35,7 +35,7 @@ targets: [
 ]
 ```
 
-> SwiftPM downloads the compiled `HiPayFullservice.xcframework` from the release assets and verifies
+> SwiftPM downloads the compiled `HiPayPayments.xcframework` from the release assets and verifies
 > it against the checksum recorded in the tag's manifest, so a tampered binary fails to resolve.
 
 ## Use the component
@@ -285,6 +285,13 @@ A complete, runnable example is the demo at `src/HiPay-SDK-ios-Demo` (`PaymentSc
 
 ## Upgrading from 1.0.0
 
+**One required change: the return deep link changed host.** It is now
+`{yourScheme}://hipay-payments/gateway/orders/{orderId}/{status}` — `hipay-fullservice` is gone. The
+SDK builds and parses it for you on the turnkey path, so a card integration needs no edit. If you
+build the five redirect URLs yourself against the headless core, read the host from
+`CallbackHostKt.HIPAY_CALLBACK_HOST` or build the prefix with
+`CallbackHostKt.hipayCallbackBase(scheme:orderId:)` rather than retyping it.
+
 No source break and no behaviour change on iOS. One-click is no longer flagged experimental, and
 Apple Pay is new — see [Apple Pay](apple-pay.md).
 
@@ -293,7 +300,7 @@ Apple Pay is new — see [Apple Pay](apple-pay.md).
 - **Localization**: FR/EN/IT (default EN) ship in the `HiPayCard` resource bundle; **device locale** (no per-view `localeOverride` on iOS — that knob is Android-only).
 - **Accessibility**: VoiceOver labels/traits, relative sort priority (opt-out `setsAccessibilityOrder: false`), inline errors announced politely, CVV tooltip.
 - **PCI**: the raw PAN and the vault token never leave the controller; never log card data.
-- **Facade only (D4)**: integrate via `HiPayCore`/`HiPayCard` — do not `import HiPayFullservice` (the raw KMP) directly.
+- **Facade only (D4)**: integrate via `HiPayCore`/`HiPayCard` — do not `import HiPayPayments` (the raw KMP) directly.
 
 ---
 

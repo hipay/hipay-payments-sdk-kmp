@@ -211,7 +211,7 @@ once to `resume3DS(...)`.
     <action android:name="android.intent.action.VIEW" />
     <category android:name="android.intent.category.DEFAULT" />
     <category android:name="android.intent.category.BROWSABLE" />
-    <data android:scheme="yourscheme" android:host="hipay-fullservice" />
+    <data android:scheme="yourscheme" android:host="hipay-payments" />
 </intent-filter>
 ```
 
@@ -286,6 +286,18 @@ override fun onNewIntent(intent: Intent) {
 A complete, runnable example is the demo at `src/HiPay-SDK-android-Demo` (`PaymentViewModel` + `MainActivity`).
 
 ## Upgrading from 1.0.0
+
+**Required, and silent if you miss it: the return deep link changed host.** It is now
+`{yourScheme}://hipay-payments/gateway/orders/{orderId}/{status}` — `hipay-fullservice` is gone.
+Update the `intent-filter` that catches the return:
+
+```xml
+<data android:scheme="yourscheme" android:host="hipay-payments" />
+```
+
+Leave the old host in place and the browser returns to a URL nothing handles: the payment simply never
+resumes, with no error raised and nothing logged. Nothing changes on the gateway side — the SDK sends
+these URLs per order.
 
 One source break, and it can only reach your **UI tests**: `HiPayCardEntryTags.SAVED_CARDS_HEADER`
 is gone. The collapsible "Saved cards" header it identified no longer exists — the list now shows

@@ -2,7 +2,7 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 // Android Jetpack Compose card-entry module (story 7.1 enabler; component is 7.2).
 // The Android mirror of the iOS HiPayCard SPM product: a classic com.android.library
-// + Compose module depending on the headless :hipayfullservice KMP core. NOT Compose
+// + Compose module depending on the headless :hipaycore KMP core. NOT Compose
 // Multiplatform, NOT in the KMP module's androidMain (D14/D1).
 plugins {
     alias(libs.plugins.android.library)
@@ -46,14 +46,14 @@ dependencies {
     // The headless KMP core (shared validation/i18n contract). Consumed unchanged (D14).
     // `api` so consumers of :hipaycard (the demo) also get the core API (GatewayClient,
     // CallbackUrlParser, HiPayConfig, OrderRequest…) transitively.
-    api(project(":hipayfullservice"))
+    api(project(":hipaycore"))
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.material3)
     // Chrome Custom Tabs: SDK-managed 3DS presentation (story 11.13). Browser/UI dep stays
-    // on :hipaycard only — the headless KMP core (:hipayfullservice) remains UI/browser-free.
+    // on :hipaycard only — the headless KMP core (:hipaycore) remains UI/browser-free.
     implementation(libs.androidx.browser)
     // Jetpack DataStore: encrypted saved-card blob storage. Stays on the
     // card module — the headless core has no storage dep.
@@ -73,7 +73,7 @@ dependencies {
 
 // Publication (story 8.1): the Android card module ships to Maven as
 // com.hipay.payments:card; its POM declares the core dependency (via `api`).
-// POM kept in sync with :hipayfullservice (license is a documented TODO(legal)).
+// POM kept in sync with :hipaycore (license is a documented TODO(legal)).
 mavenPublishing {
     publishToMavenCentral()
     // Sign only on the gated release path (keyless publishToMavenLocal must work).

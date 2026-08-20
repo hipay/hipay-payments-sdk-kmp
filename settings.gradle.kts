@@ -14,7 +14,7 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "hipay-payments-sdk-kmp"
-include(":hipayfullservice")
+include(":hipaycore")
 include(":hipaycard")
 include(":hipaycard-cmp")
 include(":hipay-applepay-cmp")

@@ -170,7 +170,7 @@ publish-release:
         || gh release create "$CI_COMMIT_TAG" --repo "$GITHUB_SPM_REPO" --verify-tag \
              --title "$CI_COMMIT_TAG" --notes-file release_changelog.txt
       gh release upload "$CI_COMMIT_TAG" --repo "$GITHUB_SPM_REPO" \
-        build-output-local/spm/HiPayFullservice.xcframework.zip \
+        build-output-local/spm/HiPayPayments.xcframework.zip \
         build-output-local/spm/Package.swift \
         build-output-local/spm/checksum.txt
     - |

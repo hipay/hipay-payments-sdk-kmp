@@ -5,8 +5,8 @@
 # `check` task — a hit fails the build.
 #
 # Scanned:
-#   - hipayfullservice/src/*/kotlin/com/hipay/card/**   (all source sets)
-#   - hipayfullservice/src/*/kotlin/com/hipay/core/threeds/**  (shared 3DS: forward URLs / references)
+#   - hipaycore/src/*/kotlin/com/hipay/card/**   (all source sets)
+#   - hipaycore/src/*/kotlin/com/hipay/core/threeds/**  (shared 3DS: forward URLs / references)
 #   - hipaycard/src/*/kotlin/com/hipay/card/**          (Android Compose card module, story 7.1)
 #   - hipaycard-cmp/src/*/kotlin/com/hipay/card/**      (Compose-MP card module, story 10.1)
 #   - swift/Sources/HiPayCard/**
@@ -34,8 +34,8 @@ scan() {
   fi
 }
 
-for src_set in "$ROOT"/hipayfullservice/src/*/kotlin/com/hipay/card \
-               "$ROOT"/hipayfullservice/src/*/kotlin/com/hipay/core/threeds \
+for src_set in "$ROOT"/hipaycore/src/*/kotlin/com/hipay/card \
+               "$ROOT"/hipaycore/src/*/kotlin/com/hipay/core/threeds \
                "$ROOT"/hipaycard/src/*/kotlin/com/hipay/card \
                "$ROOT"/hipaycard-cmp/src/*/kotlin/com/hipay/card; do
   scan "$src_set"
@@ -43,7 +43,7 @@ done
 scan "$ROOT/HiPay_Payments_SDK_iOS/Sources/HiPayCard"
 
 # Ktor Logging plugin must never be installed on the shared HTTP path
-plugin_hits=$(grep -rnE 'install\(Logging' "$ROOT/hipayfullservice/src" 2>/dev/null || true)
+plugin_hits=$(grep -rnE 'install\(Logging' "$ROOT/hipaycore/src" 2>/dev/null || true)
 if [ -n "$plugin_hits" ]; then
   echo "PCI VIOLATION — Ktor Logging plugin installed:"
   echo "$plugin_hits"

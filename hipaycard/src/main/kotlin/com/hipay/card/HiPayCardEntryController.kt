@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.hipay.core.callback.CallbackUrlParser
+import com.hipay.core.callback.hipayCallbackBase
 import com.hipay.card.validation.CardEntryStringKey
 import com.hipay.card.validation.CardFieldValidation
 import com.hipay.card.validation.CardNetwork
@@ -776,7 +777,7 @@ public class HiPayCardEntryController(
             cvc = if (isCvcRequired) cvc else "",
             multiUse = effectiveSave,
         )
-        val base = "$redirectScheme://hipay-fullservice/gateway/orders/$orderId"
+        val base = hipayCallbackBase(redirectScheme, orderId)
         val order = OrderRequest(
             orderId = orderId,
             paymentProduct = product,
@@ -901,7 +902,7 @@ public class HiPayCardEntryController(
         val expiredAtAttempt = savedCardExpiredNow(card)
         isProcessing = true
         try {
-            val base = "$redirectScheme://hipay-fullservice/gateway/orders/$orderId"
+            val base = hipayCallbackBase(redirectScheme, orderId)
             val order = OrderRequest(
                 orderId = orderId,
                 paymentProduct = savedCardPaymentProduct(card),

@@ -303,6 +303,14 @@ internal actual fun sha1Hex(input: String): String {
 
 ## Upgrading from 1.0.0
 
+**Required, and silent if you miss it: the return deep link changed host.** It is now
+`{yourScheme}://hipay-payments/gateway/orders/{orderId}/{status}` — `hipay-fullservice` is gone. On
+the Android side of your CMP app, update the `intent-filter`
+(`<data android:scheme="yourscheme" android:host="hipay-payments" />`); if you build the redirect URLs
+yourself against the headless core, read the host from `HIPAY_CALLBACK_HOST` or build the prefix with
+`hipayCallbackBase(scheme, orderId)`. Leave the old host and the payment never resumes after 3DS, with
+nothing logged.
+
 No source break. One behaviour change: opening the new-card form no longer collapses the saved-card
 list, and the "Saved cards" header is no longer a toggle — a "Show more" control reveals the cards
 beyond the display count.
@@ -356,11 +364,11 @@ suspend fun pay(): TransactionState {
         OrderRequest(
             orderId = "ORD-1", paymentProduct = "visa", amount = "10.00",
             description = "Order ORD-1",
-            acceptUrl = "myapp://hipay-fullservice/gateway/orders/ORD-1/accept",
-            declineUrl = "myapp://hipay-fullservice/gateway/orders/ORD-1/decline",
-            pendingUrl = "myapp://hipay-fullservice/gateway/orders/ORD-1/pending",
-            exceptionUrl = "myapp://hipay-fullservice/gateway/orders/ORD-1/exception",
-            cancelUrl = "myapp://hipay-fullservice/gateway/orders/ORD-1/cancel",
+            acceptUrl = "myapp://hipay-payments/gateway/orders/ORD-1/accept",
+            declineUrl = "myapp://hipay-payments/gateway/orders/ORD-1/decline",
+            pendingUrl = "myapp://hipay-payments/gateway/orders/ORD-1/pending",
+            exceptionUrl = "myapp://hipay-payments/gateway/orders/ORD-1/exception",
+            cancelUrl = "myapp://hipay-payments/gateway/orders/ORD-1/cancel",
             cardToken = token.token,
         ),
         signature = StageSignature.compute("ORD-1", "10.00", "EUR"),

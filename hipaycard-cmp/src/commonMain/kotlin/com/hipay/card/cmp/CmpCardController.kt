@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.hipay.card.CardTokenizer
+import com.hipay.core.callback.hipayCallbackBase
 import com.hipay.card.model.CardInfo
 import com.hipay.card.model.CardToken
 import com.hipay.card.store.DEFAULT_SAVED_CARDS_DISPLAY_COUNT
@@ -683,7 +684,7 @@ public class CmpCardController(
             cvc = if (isCvcRequired) cvc else "",
             multiUse = effectiveSave,
         )
-        val base = "$redirectScheme://hipay-fullservice/gateway/orders/$orderId"
+        val base = hipayCallbackBase(redirectScheme, orderId)
         val order = OrderRequest(
             orderId = orderId,
             paymentProduct = product,
@@ -755,7 +756,7 @@ public class CmpCardController(
         val expiredAtAttempt = savedCardExpiredNow(card)
         isProcessing = true
         try {
-            val base = "$redirectScheme://hipay-fullservice/gateway/orders/$orderId"
+            val base = hipayCallbackBase(redirectScheme, orderId)
             val order = OrderRequest(
                 orderId = orderId,
                 paymentProduct = savedCardPaymentProduct(card),

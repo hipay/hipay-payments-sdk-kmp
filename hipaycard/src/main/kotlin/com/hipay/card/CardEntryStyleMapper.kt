@@ -29,7 +29,7 @@ import com.hipay.card.style.HiPayFontWeight
 // Deliberate source mirror of :hipaycard-cmp's CmpCardStyle.kt. The two renderers must map the
 // shared HiPayCardEntryStyle contract with identical math so Android-native and CMP stay
 // pixel-consistent, but the mapper cannot be hoisted to a common module: the shared home would be
-// the headless core (:hipayfullservice), which is intentionally Compose/UI-free, and :hipaycard
+// the headless core (:hipaycore), which is intentionally Compose/UI-free, and :hipaycard
 // must not depend on the CMP wrapper (:hipaycard-cmp). Keep this file and CmpCardStyle.kt in lockstep.
 
 /**

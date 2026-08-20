@@ -40,7 +40,7 @@ kotlin {
             // Transaction, CustomerInfo). `api` because these types appear in the public
             // expect API → a common/iOS consumer needs the core on its compile classpath
             // (Android also gets it via api(:hipaycard), but common/iOS have no such path).
-            api(project(":hipayfullservice"))
+            api(project(":hipaycore"))
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.material3)

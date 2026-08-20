@@ -1,0 +1,141 @@
+import com.android.build.api.dsl.androidLibrary
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
+
+plugins {
+    alias(libs.plugins.kotlinMultiplatform)
+    alias(libs.plugins.android.kotlin.multiplatform.library)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.vanniktech.mavenPublish)
+}
+
+group = "com.hipay.payments"
+// version: single source from gradle.properties — inherited as project.version.
+
+kotlin {
+    androidLibrary {
+        namespace = "com.hipay.fullservice"
+        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        minSdk = libs.versions.android.minSdk.get().toInt()
+
+        withJava() // enable java compilation support
+        withHostTestBuilder {}.configure {}
+        withDeviceTestBuilder {
+            sourceSetTreeName = "test"
+        }
+
+        compilations.configureEach {
+            compilerOptions.configure {
+                jvmTarget.set(
+                    JvmTarget.JVM_11
+                )
+            }
+        }
+    }
+    val xcf = XCFramework("HiPayPayments")
+    listOf(iosArm64(), iosSimulatorArm64()).forEach { iosTarget ->
+        iosTarget.binaries.framework {
+            baseName = "HiPayPayments"
+            // The default bundle ID is derived from the module name and is a
+            // known App Store validation/collision source for shipped SDKs.
+            binaryOption("bundleId", "com.hipay.fullservice")
+            // Without these the framework ships Kotlin/Native's defaults (1.0 / 1), so an
+            // inspected binary never says which SDK it is. The short string follows the
+            // project version; a pre-release suffix is stripped because Apple only accepts
+            // one to three dot-separated integers there.
+            binaryOption("bundleShortVersionString", version.toString().substringBefore('-'))
+            binaryOption("bundleVersion", "1")
+            isStatic = true
+            xcf.add(this)
+        }
+    }
+
+    sourceSets {
+        commonMain.dependencies {
+            implementation(libs.ktor.client.core)
+            implementation(libs.ktor.client.content.negotiation)
+            implementation(libs.ktor.serialization.kotlinx.json)
+            implementation(libs.kotlinx.serialization.json)
+            implementation(libs.kotlinx.coroutines.core)
+        }
+
+        commonTest.dependencies {
+            implementation(libs.kotlin.test)
+            implementation(libs.ktor.client.mock)
+            implementation(libs.kotlinx.coroutines.test)
+        }
+
+        androidMain.dependencies {
+            implementation(libs.ktor.client.okhttp)
+        }
+
+        iosMain.dependencies {
+            implementation(libs.ktor.client.darwin)
+        }
+    }
+}
+
+// The real-stage customer-field probe books actual stage transactions, so it must never
+// ride along on a routine `check`. Credential presence is not a sufficient gate: any
+// developer holding `.hipay_stage_env` would spend real orders on every build. Opting in
+// forwards the flag to the forked test JVM, which does not inherit -D on its own.
+tasks.withType<Test>().configureEach {
+    systemProperty("hipay.stage.probe", providers.gradleProperty("hipay.stage.probe").getOrElse("false"))
+}
+
+// PCI anti-logging gate (story 2.4): fails the build on any logging primitive
+// under com.hipay.card or HiPay_Payments_SDK_iOS/Sources/HiPayCard.
+val checkCardNoLogging = tasks.register<Exec>("checkCardNoLogging") {
+    group = "verification"
+    description = "Asserts zero logging on the card path (PCI)"
+    commandLine("bash", rootDir.resolve("scripts/check-no-logging.sh").absolutePath)
+}
+tasks.named("check") { dependsOn(checkCardNoLogging) }
+
+// i18n key-parity gate (story 5.2): every CardEntryStringKey constant must have
+// a value in each locale catalog (iOS FR/EN/IT; Android added in 7.3).
+val checkI18nParity = tasks.register<Exec>("checkI18nParity") {
+    group = "verification"
+    description = "Asserts every CardEntryStringKey has a value in all locale catalogs"
+    commandLine("bash", rootDir.resolve("scripts/check-i18n-parity.sh").absolutePath)
+}
+tasks.named("check") { dependsOn(checkI18nParity) }
+
+mavenPublishing {
+    publishToMavenCentral()
+
+    // Sign only on the gated release path (story 8.1): the CI release job provides
+    // `ORG_GRADLE_PROJECT_signingInMemoryKey`; a keyless local `publishToMavenLocal`
+    // (dev / POM validation) must NOT require signing.
+    if (project.hasProperty("signingInMemoryKey")) {
+        signAllPublications()
+    }
+
+    coordinates(group.toString(), "core", version.toString())
+
+    pom {
+        name = "HiPay Payments SDK — core"
+        description = "Headless core of the HiPay payment SDK for Kotlin Multiplatform: configuration, gateway client, card tokenization and the shared validation contract. Targets the HiPay Fullservice platform."
+        inceptionYear = "2026"
+        url = "https://github.com/hipay/hipay-payments-sdk-kmp"
+        licenses {
+            license {
+                name = "Apache-2.0"
+                url = "https://www.apache.org/licenses/LICENSE-2.0"
+                distribution = "repo"
+            }
+        }
+        developers {
+            developer {
+                id = "hipay"
+                name = "HiPay"
+                url = "https://github.com/hipay"
+            }
+        }
+        scm {
+            url = "https://github.com/hipay/hipay-payments-sdk-kmp"
+            connection = "scm:git:https://github.com/hipay/hipay-payments-sdk-kmp.git"
+            developerConnection = "scm:git:ssh://git@github.com/hipay/hipay-payments-sdk-kmp.git"
+        }
+    }
+}

@@ -24,14 +24,14 @@ depend on. A rendered, versioned site is planned; until it is deployed, read the
 
 ## Layout
 
-- `hipayfullservice/` — the KMP library
+- `hipaycore/` — the KMP library
   - `com.hipay.core` — configuration, HTTP/auth, Gateway (orders,
     transactions), 3DS callback parsing
   - `com.hipay.card` — card validation, network rules, Secure Vault
     tokenization (PCI boundary: card data never leaves this module)
 - `HiPay_Payments_SDK_iOS/` — local SPM package (`HiPayCore` / `HiPayCard` products): the
   hand-written Swift facade that IS the public iOS API, backed by the
-  `HiPayFullservice` XCFramework (git-ignored build artifact)
+  `HiPayPayments` XCFramework (git-ignored build artifact)
 - `scripts/build-xcframework.sh` — rebuilds the XCFramework and refreshes the
   package (see its header for the edit-Kotlin → run-demo loop)
 - Demo app: separate repo `../HiPay_Payments_Demo_iOS`

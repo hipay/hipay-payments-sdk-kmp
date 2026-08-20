@@ -27,7 +27,7 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             // The shared Apple Pay appearance enums (HiPayApplePayButtonStyle/Type) live in the core.
-            api(project(":hipayfullservice"))
+            api(project(":hipaycore"))
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.ui)
@@ -54,7 +54,7 @@ android {
 }
 
 // Publication: the CMP Apple Pay module ships to Maven as
-// com.hipay.payments:applepay-cmp; its POM declares :hipayfullservice (via `api`).
+// com.hipay.payments:applepay-cmp; its POM declares :hipaycore (via `api`).
 mavenPublishing {
     publishToMavenCentral()
     // Sign only on the gated release path (keyless publishToMavenLocal must work).
@@ -84,7 +84,7 @@ mavenPublishing {
         scm {
             url = "https://github.com/hipay/hipay-payments-sdk-kmp"
             connection = "scm:git:https://github.com/hipay/hipay-payments-sdk-kmp.git"
-            developerConnection = "scm:git:ssh://git@github.com/hipay/hipay-fullservice-kmp.git"
+            developerConnection = "scm:git:ssh://git@github.com/hipay/hipay-payments-sdk-kmp.git"
         }
     }
 }
