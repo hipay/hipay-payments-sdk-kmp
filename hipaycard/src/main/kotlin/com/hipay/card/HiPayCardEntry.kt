@@ -241,7 +241,7 @@ private fun CardEntryContent(
 
     val reduceMotion = reduceMotionEnabled()
 
-    CompositionLocalProvider(LocalHiPayCardStyle provides style) {
+    CompositionLocalProvider(LocalHiPayCardStyle provides resolveCardStyle(style)) {
     Column(
         modifier = modifier
             .fillMaxWidth()

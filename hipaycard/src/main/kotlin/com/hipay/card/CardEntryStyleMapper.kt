@@ -1,6 +1,8 @@
 // PCI (NFR2): com.hipay.card anti-logging path — never log card data here.
 package com.hipay.card
 
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -38,6 +40,39 @@ import com.hipay.card.style.HiPayFontWeight
  * (tests, previews) renders the SDK look deterministically.
  */
 internal val LocalHiPayCardStyle = staticCompositionLocalOf { HiPayCardEntryStyle.hipayDefault }
+
+/**
+ * The palette actually used by the component.
+ *
+ * A style the integrator did NOT customise resolves from the HOST's Material theme, so the default
+ * look follows light/dark on its own: an embedded payment form has no business painting an opaque
+ * white box on a dark screen, and the floating label straddling the field's top edge made that seam
+ * impossible to miss. Because the whole palette is derived, the texts drawn OUTSIDE the field — the
+ * save-card label, the consent line, the section headers — become readable on a dark host too; they
+ * were painted with `textColor`, a near-black chosen for the light field, and vanished.
+ *
+ * A CUSTOMISED style is honoured verbatim. Once an integrator sets colours, adapting them per theme
+ * is their call: second-guessing it would fight their branding, and they are the only ones who know
+ * what their surface looks like. The comparison is on value equality — passing `hipayDefault`
+ * explicitly means "give me the default look", which is now the theme-aware one.
+ */
+@Composable
+internal fun resolveCardStyle(requested: HiPayCardEntryStyle): HiPayCardEntryStyle {
+    if (requested != HiPayCardEntryStyle.hipayDefault) return requested
+    val scheme = MaterialTheme.colorScheme
+    return remember(scheme) {
+        fun Color.argb(): Long = toArgb().toLong() and 0xFFFFFFFFL
+        HiPayCardEntryStyle.hipayDefault.copy(
+            textColor = scheme.onSurface.argb(),
+            placeholderColor = scheme.onSurfaceVariant.argb(),
+            iconColor = scheme.onSurfaceVariant.argb(),
+            invalidTextColor = scheme.error.argb(),
+            borderColor = scheme.outline.argb(),
+            backgroundColor = scheme.surface.argb(),
+        )
+    }
+}
+
 
 /** ARGB `Long` (the platform-neutral contract encoding) → Compose [Color]. */
 internal fun styleColor(argb: Long): Color = Color(argb)

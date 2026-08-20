@@ -83,6 +83,20 @@ the iOS XCFramework/SPM package.
   appears, on all three components, so the gesture announces that it changed meaning while the finger
   is still down.
 
+- **The default appearance now follows the host's light/dark theme.** Leave `style` (iOS: `theme`)
+  unset and the component derives its palette from your `MaterialTheme.colorScheme` — on iOS, from the
+  system's semantic colours — instead of the fixed light palette it used before. A form embedded in a
+  dark screen no longer renders as an opaque white box, and the texts drawn outside the fields (the
+  save-card label, the consent line, the section headers) stop being near-black on near-black.
+  - **A style you supply is used verbatim, in both appearances.** Adapting your own colours per theme
+    is yours to do — the SDK will not second-guess your branding. Nothing changes for you.
+  - Only the colours are derived. Font size, border width, corner radius and field height still come
+    from the shared contract, so the geometry is identical on every platform either way.
+  - In a light theme the result is visually unchanged: a light Material surface is white or near-white.
+  - Your host must actually provide a dark scheme for this to show. A bare `MaterialTheme { }` always
+    resolves to the light one — pass `colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else
+    lightColorScheme()`.
+
 ### Fixed
 
 - **One-click could not pay with a saved co-branded card.** The card was stored with the brand the

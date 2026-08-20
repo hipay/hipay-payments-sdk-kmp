@@ -121,7 +121,9 @@ HiPayCardEntryView(controller: controller, theme: theme)
 ```
 
 > **Notes.** A custom placeholder color applies from iOS 17 (iOS 15/16 keep the system gray). The
-> default baseline is light-mode — pass a dark-adapted theme for dark hosts.
+> default theme follows the host's light/dark appearance on its own — its colours are the system's
+> semantic ones. A theme you build from a `HiPayCardEntryStyle` keeps exactly the colours you gave it,
+> in both appearances; adapting them is then yours to do.
 
 ## Localization
 

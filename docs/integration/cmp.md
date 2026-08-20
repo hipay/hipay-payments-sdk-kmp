@@ -144,7 +144,13 @@ val style = HiPayCardEntryStyle(
 HiPayCardEntry(controller = controller, style = style)   // shared expect/actual, Android + iOS
 ```
 
-Default baseline is light-mode — pass a dark-adapted style for dark hosts.
+**Light and dark are handled for you — as long as you don't override the colours.** Omit `style` (or
+pass `HiPayCardEntryStyle.hipayDefault`) and the component derives its palette from your
+`MaterialTheme.colorScheme`, so it follows the system appearance with nothing to wire. The moment you
+pass your own colours they are used verbatim, in both appearances: adapting them per theme is then
+yours to do, since only you know what your surface looks like. The non-colour metrics — font size,
+border width, corner radius, field height — always come from the shared contract, so the geometry stays
+identical across platforms either way.
 
 ## Localization
 

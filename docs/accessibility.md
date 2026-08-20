@@ -68,8 +68,9 @@ platform-dependent.
 
 **Styling that removes contrast.** `HiPayCardEntryStyle` lets you set text, placeholder, icon, border
 and background colours. The SDK validates ranges, not contrast: a low-contrast pair is accepted and
-will fail WCAG 1.4.3. The default palette is a light-mode baseline — pass a dark-adapted style for
-dark hosts rather than relying on inversion.
+will fail WCAG 1.4.3. The default palette is derived from the host's theme and therefore follows
+light and dark on its own; the moment you set colours yourself, checking both appearances against
+1.4.3 becomes your responsibility.
 
 **Not giving the component a scrollable host.** With one-click enabled the payer can reveal up to 20
 saved cards, and the component never scrolls itself. Without a scroll container the controls below the

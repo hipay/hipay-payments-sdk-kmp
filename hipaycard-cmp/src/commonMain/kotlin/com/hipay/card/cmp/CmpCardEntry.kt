@@ -151,7 +151,7 @@ internal fun CmpCardEntry(
 
     CompositionLocalProvider(
         LocalHiPayCardLanguage provides cardLanguage,
-        LocalHiPayCardStyle provides style,
+        LocalHiPayCardStyle provides resolveCardStyle(style),
     ) {
     Column(
         // Animate the expand/collapse only when one-click is on — an opted-out integrator must
