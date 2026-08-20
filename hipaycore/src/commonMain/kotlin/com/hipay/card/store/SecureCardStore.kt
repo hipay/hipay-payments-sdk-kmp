@@ -44,7 +44,7 @@ private inline val storeJson: Json get() = Json.Default
 /**
  * Saved-card store LOGIC — platform-free, single-sourced in Kotlin.
  *
- * Owns: consent gate, overwrite-on-match by masked-PAN+expiry, storage cap (MAX_CARDS) + Least Recently Used (LRU),
+ * Owns: consent gate, overwrite-on-match by masked PAN, storage cap (MAX_CARDS) + Least Recently Used (LRU),
  * expired-card auto-purge, versioned (de)serialization (fail-closed on an unknown version), and
  * fail-soft graceful degrade (any storage/parse failure ⇒ behaves as "no saved cards", never throws).
  * Mutating operations return whether the change was persisted, so the caller can react — e.g. surface
@@ -70,9 +70,11 @@ public class SecureCardStore(
 
     /**
      * Persist [card] only if [consentGiven] — consent is enforced at the store, not just in the UI.
-     * Overwrites any card with the same identity (masked-PAN + expiry); enforces the storage cap by
-     * evicting the least-recently-used. Returns true iff the card was persisted (false without consent
-     * or on a storage-write failure).
+     * Overwrites any card with the same identity — the masked PAN alone, see [SavedCard.identity].
+     * Expiry is deliberately NOT part of it: a renewed card keeps its PAN and only changes expiry, and
+     * it must update the existing entry in place rather than sit beside the stale one. Enforces the
+     * storage cap by evicting the least-recently-used. Returns true iff the card was persisted (false
+     * without consent or on a storage-write failure).
      */
     public fun save(card: SavedCard, consentGiven: Boolean): Boolean {
         if (!consentGiven) return false
