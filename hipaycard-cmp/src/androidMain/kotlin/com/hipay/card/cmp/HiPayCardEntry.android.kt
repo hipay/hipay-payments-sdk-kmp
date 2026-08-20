@@ -24,6 +24,7 @@ actual class HiPayCardController actual constructor(
     allowedNetworks: List<CardNetwork>,
     oneClickEnabled: Boolean,
     savedCardsDisplayCount: Int,
+    confirmCardDeletion: Boolean,
     currency: String,
 ) {
     internal val delegate = NativeController(
@@ -33,6 +34,7 @@ actual class HiPayCardController actual constructor(
         allowedNetworks = allowedNetworks.mapNotNull { HiPayCardNetwork.from(it) },
         oneClickEnabled = oneClickEnabled,
         savedCardsDisplayCount = savedCardsDisplayCount,
+        confirmCardDeletion = confirmCardDeletion,
         currency = currency,
     )
 

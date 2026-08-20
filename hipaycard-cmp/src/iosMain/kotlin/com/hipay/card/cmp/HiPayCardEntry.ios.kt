@@ -24,6 +24,7 @@ actual class HiPayCardController actual constructor(
     allowedNetworks: List<CardNetwork>,
     oneClickEnabled: Boolean,
     savedCardsDisplayCount: Int,
+    confirmCardDeletion: Boolean,
     currency: String,
 ) {
     internal val impl = CmpCardController(
@@ -31,6 +32,7 @@ actual class HiPayCardController actual constructor(
         allowed = allowedNetworks,
         oneClickEnabled = oneClickEnabled,
         savedCardsDisplayCount = savedCardsDisplayCount,
+        confirmCardDeletion = confirmCardDeletion,
         currency = currency,
     )
 

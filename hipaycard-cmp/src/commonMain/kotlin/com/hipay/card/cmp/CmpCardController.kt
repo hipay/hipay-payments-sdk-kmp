@@ -82,6 +82,12 @@ public class CmpCardController(
      *  Additive, default [DEFAULT_SAVED_CARDS_DISPLAY_COUNT] (3), clamped 1..10; bounds display only
      *  — every saved card is still persisted. */
     savedCardsDisplayCount: Int = DEFAULT_SAVED_CARDS_DISPLAY_COUNT,
+    /** Ask the payer to confirm before a saved card is deleted. OFF by default: reaching the trash
+     *  already takes two deliberate steps (left-swipe or long-press, then tapping the trash), so a
+     *  dialog on top adds friction rather than intent. The confirmation is shown REGARDLESS of this
+     *  flag when the request comes from the screen-reader "Delete" action, which is a single step
+     *  with no trash to aim at. */
+    public val confirmCardDeletion: Boolean = false,
     /** Currency the account's accepted card products are resolved for — a contract can differ per
      *  currency, so this should match the currency the order will be created in. Only used for that
      *  resolution; [pay] still takes its own currency. */

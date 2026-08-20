@@ -61,6 +61,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -458,7 +460,18 @@ private fun SavedCardsSections(
                 error = oneClickError?.takeIf {
                     errorSurface == OneClickErrorSurface.INLINE_CARD && it.matches(card)
                 },
-            ) { cardPendingDelete = it }
+            ) { requested, viaAccessibility ->
+                // The confirmation is opt-in (see `confirmCardDeletion`): by default the gesture path
+                // is already two deliberate steps — reveal, then tap the trash — so a dialog on top
+                // adds friction without adding intent. It is ALWAYS shown for a screen-reader
+                // request though: the custom "Delete" action is a SINGLE step with no trash to aim
+                // at, so without it a VoiceOver/TalkBack user would delete a card with no safety net.
+                if (controller.confirmCardDeletion || viaAccessibility) {
+                    cardPendingDelete = requested
+                } else {
+                    scope.launch { controller.deleteSavedCard(requested) }
+                }
+            }
         }
         if (hasMore) {
             // Persistent disclosure toggle: it stays present across toggles so screen-reader focus is
@@ -506,9 +519,10 @@ private fun SavedCardCell(
     index: Int,
     enabled: Boolean,
     error: OneClickError? = null,
-    onRequestDelete: (SavedCard) -> Unit,
+    onRequestDelete: (SavedCard, viaAccessibility: Boolean) -> Unit,
 ) {
     val display = remember(card) { savedCardDisplay(card) }
+    val haptics = LocalHapticFeedback.current
     val platformNetwork = display.network?.let { HiPayCardNetwork.from(it) }
     val baseA11yLabel = stringResource(
         HiPayCardStrings.resFor(CardEntryStringKey.A11Y_SAVED_CARD),
@@ -560,7 +574,7 @@ private fun SavedCardCell(
             // reveal is dismissed — never left tappable during the close animation.
             if (swipeOffset < -1f) {
                 IconButton(
-                    onClick = { swipeOffset = 0f; onRequestDelete(card) },
+                    onClick = { swipeOffset = 0f; onRequestDelete(card, false) },
                     enabled = enabled,
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
@@ -601,10 +615,20 @@ private fun SavedCardCell(
                         },
                     )
                     // Tap selects; long-press requests delete (kept as the quick/accessible path).
+                    // The haptic fires at DETECTION, while the finger is still down, so the payer
+                    // feels the gesture change meaning rather than learning it on release. Compose
+                    // does not play it for us — parity with iOS, which plays an impact at the same
+                    // moment.
                     .combinedClickable(
                         enabled = enabled,
                         onClick = { controller.selectSavedCard(card) },
-                        onLongClick = { onRequestDelete(card) },
+                        onLongClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            // Long-press REVEALS the trash, exactly like a left-swipe — it never
+                            // deletes. Both gestures land on the same state, the payer then either
+                            // taps the trash (that tap IS the validation) or swipes back to cancel.
+                            swipeOffset = -actionWidthPx
+                        },
                     )
                     .testTag(HiPayCardEntryTags.savedCard(index))
                     // One merged node: "<Network> finishing 1111, expires MM / YYYY, selected" — the
@@ -618,7 +642,7 @@ private fun SavedCardCell(
                         // this custom action is the only other delete entry point.
                         customActions =
                             if (enabled) {
-                                listOf(CustomAccessibilityAction(deleteLabel) { onRequestDelete(card); true })
+                                listOf(CustomAccessibilityAction(deleteLabel) { onRequestDelete(card, true); true })
                             } else {
                                 emptyList()
                             }

@@ -14,6 +14,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
@@ -130,7 +131,23 @@ internal fun HiPayCardEntryStyle.fieldColors(): TextFieldColors {
 
 /** Space reserved above the field border for the floated outlined label (≈ half a `bodySmall`
  *  line) so its top half is not clipped — mirrors the reserve Material3's OutlinedTextField adds. */
-private val FLOATING_LABEL_RESERVE = 8.dp
+internal val FLOATING_LABEL_RESERVE = 8.dp
+
+/**
+ * Overlays a control on the trailing edge of a [HiPayStyledField]'s INPUT BOX, reporting zero height
+ * so the field keeps its compact `fieldHeight` instead of growing to fit the overlay.
+ *
+ * The half-reserve shift is what makes it land on the input box and not on the whole field: the CMP
+ * field pads [FLOATING_LABEL_RESERVE] above its border to keep skiko from clipping the floated label,
+ * and that padding counts in the measured height — so a plain `align(CenterEnd)` centres on
+ * `reserve + fieldHeight`, i.e. half a reserve too high. The native Android field has no such reserve,
+ * which is why it needs no equivalent and why the two surfaces drifted apart visually.
+ */
+internal fun Modifier.overlaidOnFieldInput(): Modifier = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    val recentre = FLOATING_LABEL_RESERVE.roundToPx() / 2
+    layout(placeable.width, 0) { placeable.place(0, -placeable.height / 2 + recentre) }
+}
 
 /**
  * The styled card field: `BasicTextField` + `OutlinedTextFieldDefaults.DecorationBox`/

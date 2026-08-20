@@ -65,6 +65,8 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -207,10 +209,7 @@ internal fun CmpCardEntry(
             )
             NetworkChips(
                 controller,
-                Modifier.align(Alignment.CenterEnd).layout { measurable, constraints ->
-                    val placeable = measurable.measure(constraints)
-                    layout(placeable.width, 0) { placeable.place(0, -placeable.height / 2) }
-                },
+                Modifier.align(Alignment.CenterEnd).overlaidOnFieldInput(),
             )
         }
         // Network-not-authorized takes precedence over the number's own error (D1).
@@ -265,10 +264,7 @@ internal fun CmpCardEntry(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
                                 .align(Alignment.CenterEnd)
-                                .layout { measurable, constraints ->
-                                    val placeable = measurable.measure(constraints)
-                                    layout(placeable.width, 0) { placeable.place(0, -placeable.height / 2) }
-                                }
+                                .overlaidOnFieldInput()
                                 // 42dp round tap area = field height, so the ripple stays a circle
                                 // inside the field instead of a 48dp square overflowing it.
                                 .size(42.dp)
@@ -375,7 +371,15 @@ private fun CmpSavedCardsSections(
                 error = oneClickError?.takeIf {
                     errorSurface == OneClickErrorSurface.INLINE_CARD && it.matches(card)
                 },
-            ) { cardPendingDelete = it }
+            ) { requested, viaAccessibility ->
+                // Confirmation is opt-in (`confirmCardDeletion`), but always on for a screen-reader
+                // request: the custom "Delete" action is a single step with no trash to aim at.
+                if (controller.confirmCardDeletion || viaAccessibility) {
+                    cardPendingDelete = requested
+                } else {
+                    scope.launch { controller.deleteSavedCard(requested) }
+                }
+            }
         }
         if (hasMore) {
             // Persistent disclosure toggle: it stays present across toggles so screen-reader focus is
@@ -419,9 +423,10 @@ private fun CmpSavedCardCell(
     index: Int,
     enabled: Boolean,
     error: OneClickError? = null,
-    onRequestDelete: (SavedCard) -> Unit,
+    onRequestDelete: (SavedCard, viaAccessibility: Boolean) -> Unit,
 ) {
     val display = remember(card) { savedCardDisplay(card) }
+    val haptics = LocalHapticFeedback.current
     val baseA11yLabel = cmpFormat(
         cmpString(CardEntryStringKey.A11Y_SAVED_CARD),
         display.network?.displayName() ?: card.network,
@@ -471,7 +476,7 @@ private fun CmpSavedCardCell(
             // reveal is dismissed — never left tappable during the close animation.
             if (swipeOffset < -1f) {
                 IconButton(
-                    onClick = { swipeOffset = 0f; onRequestDelete(card) },
+                    onClick = { swipeOffset = 0f; onRequestDelete(card, false) },
                     enabled = enabled,
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
@@ -515,7 +520,13 @@ private fun CmpSavedCardCell(
                     .combinedClickable(
                         enabled = enabled,
                         onClick = { controller.selectSavedCard(card) },
-                        onLongClick = { onRequestDelete(card) },
+                        onLongClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            // Long-press REVEALS the trash, exactly like a left-swipe — it never
+                            // deletes. Both gestures land on the same state, the payer then either
+                            // taps the trash (that tap IS the validation) or swipes back to cancel.
+                            swipeOffset = -actionWidthPx
+                        },
                     )
                     // One merged node: "<Network> finishing 1111, expires MM / YYYY, selected" — the
                     // bullet glyphs are never announced. The mandatory "Delete" custom action makes
@@ -525,7 +536,7 @@ private fun CmpSavedCardCell(
                         selected = isSelected
                         customActions =
                             if (enabled) {
-                                listOf(CustomAccessibilityAction(deleteLabel) { onRequestDelete(card); true })
+                                listOf(CustomAccessibilityAction(deleteLabel) { onRequestDelete(card, true); true })
                             } else {
                                 emptyList()
                             }
