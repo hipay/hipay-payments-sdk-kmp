@@ -17,25 +17,31 @@ import com.hipay.core.HiPayException
  * `[0-9x]` characters, so mixing sources would give the same card two
  * different identities and break update-on-match.
  *
+ * [paymentProduct] is the `payment_product` the ORDER WAS ROUTED ON — not the
+ * tokenize response's `brand`. On a CO-BRANDED card the two differ: the brand is
+ * the card's own marque (e.g. `cb`) while the payment may have been routed on the
+ * other network (e.g. `mastercard`). Since the later one-click order re-sends the
+ * STORED network as its `payment_product`, storing the brand would route the
+ * saved card on a network that never carried a successful payment for it — and
+ * the gateway refuses it, so one-click failed for every co-branded card while the
+ * first (card-entry) payment succeeded. Mono-network cards are unaffected: brand
+ * and routed product are the same string.
+ *
  * Returns null (fail-soft, nothing persisted) when the card cannot be
- * represented: the masked pan or expiry is missing (no identity), OR the brand
- * is absent/unrecognized. A recognizable network is required because the later
- * one-click order derives its `payment_product` from the stored brand —
- * persisting a card whose brand we can't map would force a guessed product and
- * risk a token/product mismatch at pay time. The holder is display-only and
- * defaults to empty. A null return is surfaced to the host as
+ * represented: the masked pan or expiry is missing (no identity), or
+ * [paymentProduct] is not one this SDK can map back at pay time. The holder is
+ * display-only and defaults to empty. A null return is surfaced to the host as
  * [SavedCardOutcome.NOT_ELIGIBLE].
  */
-public fun savedCardFromToken(token: CardToken): SavedCard? {
+public fun savedCardFromToken(token: CardToken, paymentProduct: String): SavedCard? {
     val maskedPan = token.pan ?: return null
     val expiryMonth = token.cardExpiryMonth ?: return null
     val expiryYear = token.cardExpiryYear ?: return null
-    val brand = token.brand ?: return null
-    if (CardNetworks.fromApiBrand(brand) == null) return null // no mappable payment_product
+    if (CardNetworks.fromApiBrand(paymentProduct) == null) return null // unmappable at pay time
     return SavedCard(
         token = token.token,
         maskedPan = maskedPan,
-        network = brand,
+        network = paymentProduct,
         holder = token.cardHolder.orEmpty(),
         expiryMonth = expiryMonth,
         expiryYear = expiryYear,

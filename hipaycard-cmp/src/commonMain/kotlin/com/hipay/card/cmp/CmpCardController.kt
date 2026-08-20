@@ -719,7 +719,7 @@ public class CmpCardController(
 
         val final = resolve3DS(transaction, redirectScheme, signature, threeDS)
         if (effectiveSave) {
-            persistSavedCard(token, final)
+            persistSavedCard(token, final, product)
             if (final.state == TransactionState.COMPLETED) {
                 saveCardOptIn = false // consent is per-transaction
                 reloadQuietly(reselectMostRecent = true) // the new card appears, pre-selected for the next payment
@@ -834,9 +834,15 @@ public class CmpCardController(
      * Persist the tokenized card after a COMPLETED payment; never throws (the payment already
      * settled). Records the outcome in [lastSaveOutcome].
      */
-    private suspend fun persistSavedCard(token: CardToken, transaction: Transaction) {
+    private suspend fun persistSavedCard(
+        token: CardToken,
+        transaction: Transaction,
+        paymentProduct: String,
+    ) {
         if (transaction.state != TransactionState.COMPLETED) return
-        val card = savedCardFromToken(token)
+        // The ROUTED product, not the token brand: they differ on a co-branded card, and the stored
+        // value is what the later one-click order re-sends as its own `payment_product`.
+        val card = savedCardFromToken(token, paymentProduct)
         if (card == null) {
             lastSaveOutcome = SavedCardOutcome.NOT_ELIGIBLE
             return

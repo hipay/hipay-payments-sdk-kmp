@@ -310,9 +310,12 @@ public class HiPayCardEntryController(
         applicationContext: Context,
         token: CardToken,
         transaction: Transaction,
+        paymentProduct: String,
     ) {
         if (transaction.state != TransactionState.COMPLETED) return
-        val card = savedCardFromToken(token)
+        // The ROUTED product, not the token brand: they differ on a co-branded card, and the stored
+        // value is what the later one-click order re-sends as its own `payment_product`.
+        val card = savedCardFromToken(token, paymentProduct)
         if (card == null) {
             lastSaveOutcome = SavedCardOutcome.NOT_ELIGIBLE
             return
@@ -823,7 +826,7 @@ public class HiPayCardEntryController(
 
         val final = present3DSAndAwait(transaction, signature, autoPresent3DS)
         if (storeContext != null) {
-            persistSavedCard(storeContext, token, final)
+            persistSavedCard(storeContext, token, final, product)
             if (final.state == TransactionState.COMPLETED) {
                 saveCardOptIn = false // consent is per-transaction
                 reloadQuietly(reselectMostRecent = true) // the new card appears, pre-selected for the next payment

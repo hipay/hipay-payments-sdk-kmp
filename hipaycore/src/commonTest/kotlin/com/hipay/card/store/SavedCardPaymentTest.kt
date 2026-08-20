@@ -30,10 +30,12 @@ class SavedCardPaymentTest {
 
     @Test
     fun mapsEveryFieldFromTheTokenizeResponse() {
-        val card = assertNotNull(savedCardFromToken(fullToken()))
+        val card = assertNotNull(savedCardFromToken(fullToken(), "visa"))
         assertEquals("a".repeat(64), card.token)
         assertEquals("411111xxxxxx1111", card.maskedPan)
-        assertEquals("VISA", card.network)
+        // The ROUTED product, not the tokenize brand (which is "VISA" here) — they coincide for a
+        // mono-network card and deliberately do not for a co-branded one.
+        assertEquals("visa", card.network)
         assertEquals("JANE DOE", card.holder)
         assertEquals("12", card.expiryMonth)
         assertEquals("2029", card.expiryYear)
@@ -43,34 +45,43 @@ class SavedCardPaymentTest {
     fun missingIdentityFieldsFailSoftToNull() {
         // A saved card needs its masked PAN (the dedup key) AND its expiry (stored + displayed) to
         // be built at all: if any is missing the token can't yield a card, so nothing is persisted.
-        assertNull(savedCardFromToken(fullToken(pan = null)))
-        assertNull(savedCardFromToken(fullToken(month = null)))
-        assertNull(savedCardFromToken(fullToken(year = null)))
+        assertNull(savedCardFromToken(fullToken(pan = null), "visa"))
+        assertNull(savedCardFromToken(fullToken(month = null), "visa"))
+        assertNull(savedCardFromToken(fullToken(year = null), "visa"))
     }
 
     @Test
-    fun unmappableBrandFailsSoftToNull() {
-        // A saved card must resolve to a payment_product; an absent or unrecognized
-        // brand would force a guessed product at one-click time, so it is not persisted
-        // (surfaced to the host as NOT_ELIGIBLE).
-        assertNull(savedCardFromToken(fullToken(brand = null)))
-        assertNull(savedCardFromToken(fullToken(brand = "")))
-        assertNull(savedCardFromToken(fullToken(brand = "something-new")))
+    fun unmappableRoutedProductFailsSoftToNull() {
+        // A saved card must resolve to a payment_product at one-click time; an unmappable routed
+        // product would force a guessed one, so nothing is persisted (host sees NOT_ELIGIBLE).
+        assertNull(savedCardFromToken(fullToken(), ""))
+        assertNull(savedCardFromToken(fullToken(), "something-new"))
+    }
+
+    @Test
+    fun storesTheRoutedProductNotTheTokenBrand() {
+        // The co-brand case that broke one-click: the card's own brand is CB while the payment was
+        // routed on Mastercard. The stored network — which the later one-click order re-sends as its
+        // payment_product — must be the ROUTED one, or the gateway refuses a network that never
+        // carried a successful payment for that token.
+        val card = assertNotNull(savedCardFromToken(fullToken(brand = "CB"), "mastercard"))
+        assertEquals("mastercard", card.network)
+        assertEquals("mastercard", savedCardPaymentProduct(card))
     }
 
     @Test
     fun missingHolderDefaultsToEmptyWhenBrandIsKnown() {
-        val card = assertNotNull(savedCardFromToken(fullToken(holder = null)))
-        assertEquals("VISA", card.network)
+        val card = assertNotNull(savedCardFromToken(fullToken(holder = null), "visa"))
+        assertEquals("visa", card.network)
         assertEquals("", card.holder)
     }
 
     // --- savedCardPaymentProduct ---
 
     @Test
-    fun paymentProductDerivesFromTheStoredBrand() {
-        fun product(brand: String) =
-            savedCardPaymentProduct(assertNotNull(savedCardFromToken(fullToken(brand = brand))))
+    fun paymentProductDerivesFromTheStoredRoutedProduct() {
+        fun product(routed: String) =
+            savedCardPaymentProduct(assertNotNull(savedCardFromToken(fullToken(), routed)))
         assertEquals("visa", product("VISA"))
         assertEquals("mastercard", product("MASTERCARD"))
         assertEquals("american-express", product("american-express"))
