@@ -18,6 +18,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.hipay.card.store.MAX_SAVED_CARDS_DISPLAY_COUNT
@@ -202,7 +203,7 @@ class OneClickEntryUiTest {
     // Left-swipe reveals a trash action; confirming deletes, an accidental swipe alone
     // never does. No trash is shown at rest (reverses hidden delete — now visible on swipe).
     @Test
-    fun swipeRevealsTrash_confirm_deletesCard() {
+    fun swipeRevealsTrash_thenTapDeletesCard() {
         seedNCards(2) // both fit the default display count of 3
         val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller) }
@@ -214,16 +215,16 @@ class OneClickEntryUiTest {
         assertEquals(0, countTag(HiPayCardEntryTags.savedCardDelete(0))) // no trash at rest
         composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).performTouchInput { swipeLeft() }
         composeRule.waitUntil(5_000) { countTag(HiPayCardEntryTags.savedCardDelete(0)) == 1 }
+        // No dialog by default: the swipe plus this tap are already two deliberate steps.
+        assertEquals(0, countTag(HiPayCardEntryTags.CONFIRM_DELETE))
         composeRule.onNodeWithTag(HiPayCardEntryTags.savedCardDelete(0)).performClick()
-        composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_DELETE).assertExists()
-        composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_DELETE).performClick()
         composeRule.waitUntil(5_000) { controller.savedCards.size == before - 1 }
         assertEquals(listOf(survivor), controller.savedCards)
         assertEquals(false, controller.savedCards.contains(swiped))
     }
 
     @Test
-    fun swipeRevealsTrash_cancel_keepsCard() {
+    fun swipeRevealsTrash_reverseSwipeKeepsCard() {
         seedNCards(2)
         val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller) }
@@ -231,13 +232,13 @@ class OneClickEntryUiTest {
         val cardsBefore = controller.savedCards
         composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).performTouchInput { swipeLeft() }
         composeRule.waitUntil(5_000) { countTag(HiPayCardEntryTags.savedCardDelete(0)) == 1 }
-        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCardDelete(0)).performClick()
-        composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_CANCEL).performClick()
-        // Deletion is asynchronous: without settling first, this would pass even if cancel had
-        // wrongly enqueued one. Settle, then assert the list is untouched card for card.
+        // Cancelling is swiping the row back — there is no dialog to dismiss any more.
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).performTouchInput { swipeRight() }
+        composeRule.waitUntil(5_000) { countTag(HiPayCardEntryTags.savedCardDelete(0)) == 0 }
+        // Deletion is asynchronous: settle before asserting, or this would pass even if the swipe
+        // had wrongly enqueued one.
         composeRule.waitForIdle()
         assertEquals(cardsBefore, controller.savedCards)
-        assertEquals(0, countTag(HiPayCardEntryTags.CONFIRM_DELETE)) // dialog dismissed
     }
 
     // collapse-to-MRU model is replaced by a display count + a "Show more / Show less" toggle.
