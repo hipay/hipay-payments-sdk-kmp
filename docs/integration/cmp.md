@@ -211,6 +211,22 @@ controller.refreshSavedCards()
 
 `payWithSavedCard(...)` exists for headless hosts that drive the choice themselves.
 
+**How the payer deletes a card.** A left-swipe *or* a long-press on a row reveals a trash affordance;
+tapping the trash deletes, swiping the row back cancels. That is two deliberate steps, so there is no
+confirmation dialog by default — pass `confirmCardDeletion = true` if your checkout wants one anyway:
+
+```kotlin
+val controller = HiPayCardController(
+    config,
+    oneClickEnabled = true,
+    confirmCardDeletion = true,   // optional; off by default
+)
+```
+
+The dialog is shown regardless of that flag when the deletion comes from the screen-reader "Delete
+card" action: that path is a single step, with no trash to aim at and no reverse swipe to undo it.
+
+
 The payer's card list is filtered by the same account rules as a new entry: a stored card on a
 network your account no longer accepts is dropped from the list.
 

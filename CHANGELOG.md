@@ -69,6 +69,33 @@ the iOS XCFramework/SPM package.
 - **The saved-card component expects a scrollable host.** It never scrolled itself, but until now the
   list could not exceed three cards, so it fit anywhere. Now that "Show more" can reveal up to 20, place
   the component inside a scroll container — the integration guides show the shape for each platform.
+- **Deleting a saved card no longer asks for confirmation by default.** Both gestures — a left-swipe
+  and a long-press — now do the same thing: they reveal a trash affordance on the row. Tapping that
+  trash is what deletes; swiping the row back cancels. Reaching the trash therefore already takes two
+  deliberate steps, which is why a dialog on top of it was dropped. Set `confirmCardDeletion = true`
+  on the controller to put it back.
+  - **The confirmation is always shown for a screen-reader request**, whatever the flag says. The
+    "Delete card" accessibility action is a single step with no trash to aim at and no reverse swipe to
+    undo it, so it keeps its safety net.
+  - The long-press previously opened the confirmation directly. If your tests drive deletion, they now
+    need the trash tap.
+- **A long-press on a saved card now plays the platform's long-press haptic** at the moment the trash
+  appears, on all three components, so the gesture announces that it changed meaning while the finger
+  is still down.
+
+### Fixed
+
+- **One-click could not pay with a saved co-branded card.** The card was stored with the brand the
+  tokenize response reported, while the payment had been routed on the network the payer actually
+  selected — on a co-branded card (Mastercard/CB, for instance) those differ. The later one-click order
+  re-sent the stored brand as its `payment_product`, so the gateway was asked to route a network that
+  had never carried a successful payment for that token, and refused it. The first payment succeeded,
+  every subsequent one-click failed, and no 3DS challenge appeared because the order was rejected
+  before authentication. The routed product is now what gets stored.
+  - **Cards saved by an earlier build keep the wrong network**, and it cannot be repaired
+    retroactively — nothing records which network their first payment used. A payer whose co-branded
+    card is affected must delete it and save it again. Mono-network cards were never affected: brand
+    and routed product are the same string for them.
 
 ### Removed
 

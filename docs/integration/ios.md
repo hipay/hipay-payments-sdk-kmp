@@ -170,10 +170,9 @@ ScrollView {
 }
 ```
 
-**Known limitation.** A saved-card row handles a left-swipe itself (to reveal the delete action), and
-that gesture takes precedence over the enclosing scroll view. A drag that *starts on a saved-card row*
-therefore does not scroll the page — start it anywhere else and scrolling behaves normally. This affects
-only the one-click list; Android and Compose Multiplatform are unaffected.
+A saved-card row handles a left-swipe of its own (to reveal the delete action), and it shares the
+gesture space with your scroll view: only a horizontal drag claims the row, so a vertical drag started
+anywhere — including on a card — scrolls the page as usual.
 
 Offer to save on a successful payment — the component asks the payer for consent:
 
@@ -194,6 +193,22 @@ await card.refreshSavedCards()
 ```
 
 `payWithSavedCard(...)` exists for headless hosts that drive the choice themselves.
+
+**How the payer deletes a card.** A left-swipe *or* a long-press on a row reveals a trash affordance;
+tapping the trash deletes, swiping the row back cancels. That is two deliberate steps, so there is no
+confirmation dialog by default — pass `confirmCardDeletion: true` if your checkout wants one anyway:
+
+```swift
+@StateObject var card = HiPayCardEntryController(
+    configuration: config,
+    oneClickEnabled: true,
+    confirmCardDeletion: true      // optional; off by default
+)
+```
+
+The dialog is shown regardless of that flag when the deletion comes from the screen-reader "Delete
+card" action: that path is a single step, with no trash to aim at and no reverse swipe to undo it.
+
 
 The payer's card list is filtered by the same account rules as a new entry: a stored card on a
 network your account no longer accepts is dropped from the list.
