@@ -120,6 +120,9 @@ the iOS XCFramework/SPM package.
 
 ### Fixed
 
+- **A payment that saves the card is now announced to the gateway as enrolling it**, where only the
+  later payments made from that card were. An order holding a reusable card could be reported as a
+  recurring payment, which it never is. Headless callers: see the integration guide.
 - **The trailing controls inside the Android card fields were vertically off-centre** — the network
   brand icons on the card-number field and the "ⓘ" on the security-code field sat a few dp above the
   middle of the input line. They are positioned as overlays centred on the field's measured height,

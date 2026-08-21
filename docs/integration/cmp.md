@@ -407,6 +407,20 @@ suspend fun pay(): TransactionState {
 }
 ```
 
+**Enrolling a card-on-file takes TWO parameters, and they go to different APIs.** The example above is
+a one-shot payment: `multiUse = false`, no `oneClick`. To let the payer pay with the same card later,
+set both:
+
+- `multiUse = true` on `generateToken(...)` — the Secure Vault answers with a reusable token. This
+  describes the **token**.
+- `oneClick = true` on the `OrderRequest` — this describes the **order**, and the gateway asks for it
+  on the enrolling order as well as on every later payment made from the token.
+
+Sending only the first is what leaves an order carrying a reusable token to be classified on the token
+alone, which can surface as a recurring payment. Neither parameter makes the transaction recurring: a
+recurring (merchant-initiated) payment is declared with `recurring_payment` and `eci = 9`, and the SDK
+sends neither — `eci` stays 7.
+
 ### 3DS the headless way (FR9)
 
 The core never opens a browser — `forwardUrl` is exposed as **data**:
