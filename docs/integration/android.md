@@ -126,6 +126,13 @@ pass your own colours they are used verbatim, in both appearances: adapting them
 yours to do, since only you know what your surface looks like. The non-colour metrics — font size,
 border width, corner radius, field height — always come from the shared contract, so the geometry stays
 identical across platforms either way.
+**Your colours have no layout constraints.** The field label floats to a position ABOVE the field's
+border rather than onto it, so it never sits on the field and your screen at the same time. Two
+consequences worth knowing: `backgroundColor` can be any colour, contrasting with your screen or not
+(the derived default uses your scheme's `surfaceContainerHighest` so the field reads as an input area);
+and `placeholderColor`, which is the label colour, has to contrast with **your** background while the
+label is floated — not with the field's fill. The float respects the system "reduce motion" setting.
+
 
 ## Localization
 

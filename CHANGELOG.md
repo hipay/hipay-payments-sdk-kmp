@@ -92,13 +92,40 @@ the iOS XCFramework/SPM package.
     is yours to do — the SDK will not second-guess your branding. Nothing changes for you.
   - Only the colours are derived. Font size, border width, corner radius and field height still come
     from the shared contract, so the geometry is identical on every platform either way.
-  - In a light theme the result is visually unchanged: a light Material surface is white or near-white.
   - Your host must actually provide a dark scheme for this to show. A bare `MaterialTheme { }` always
     resolves to the light one — pass `colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else
     lightColorScheme()`.
+  - **The derived field colour is `surfaceContainerHighest`, not `surface`.** `surface` is usually the
+    exact colour of the screen the component sits on, which left the field indistinguishable from it
+    but for its border. This is Material3's own container choice for a text field.
+- **The field labels now float ABOVE the field instead of onto its border**, on Android and Compose
+  Multiplatform. The animation is unchanged: the label still rises from inside the field on focus, it
+  just lands clear of the border rather than centred on it. iOS is unaffected — its labels have always
+  been prompts inside the fields.
+  - This exists because a label centred on the border spans two backgrounds at once: the screen above
+    it and the field below. With a filled field, that shows as a band of your screen's colour behind
+    the label, and nothing paintable fixes it — a fill bands, a patch leaves a tab above the edge, and
+    rounding that patch exposes the screen in its corners. Landing clear of the border removes the
+    overlap instead of covering it.
+  - **`backgroundColor` is consequently free of any constraint** — fill the field with whatever makes
+    it read as an input area, contrasting with your screen or not.
+  - **`placeholderColor` is the label colour, and a floated label sits on YOUR background.** That is
+    the pairing to check for contrast, not the label against the field's fill.
+  - Each field row is slightly taller: the landing area sits above the field. The gap between rows was
+    reduced to compensate, so the form as a whole grows very little. The field's own geometry — height,
+    font size, border width, corner radius — is untouched, so it still matches iOS exactly.
+  - The float respects "reduce motion": the label jumps between its two positions instead of sliding.
+  - Material3 will do all of this natively through `TextFieldLabelPosition.Above` in a later version
+    than the one this release resolves; the local implementation is meant to be replaced by it.
 
 ### Fixed
 
+- **The trailing controls inside the Android card fields were vertically off-centre** — the network
+  brand icons on the card-number field and the "ⓘ" on the security-code field sat a few dp above the
+  middle of the input line. They are positioned as overlays centred on the field's measured height,
+  which includes the space kept above the border for the floating label; Compose Multiplatform
+  discounted that space and Android did not. Both surfaces now use the same recentring, so the two
+  render identically.
 - **One-click could not pay with a saved co-branded card.** The card was stored with the brand the
   tokenize response reported, while the payment had been routed on the network the payer actually
   selected — on a co-branded card (Mastercard/CB, for instance) those differ. The later one-click order

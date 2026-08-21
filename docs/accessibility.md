@@ -13,7 +13,10 @@ You do not configure any of this. There is one opt-out (`setsAccessibilityOrder`
 **Every control has a localized accessible name.** Field labels, placeholders, error messages, the
 network brand names and the delete action all resolve from the same FR/EN/IT catalogs as the visible
 text, so a screen reader speaks the payer's language and not an English fallback. The brand names are
-proper nouns and are deliberately not translated.
+proper nouns and are deliberately not translated. On Android and Compose Multiplatform each field
+carries its label as an explicit accessible name rather than inheriting it from the framework's label
+slot, so the name holds in every state — including a field the payer has already filled, where no
+placeholder remains to stand in for it.
 
 **Errors are announced, not just coloured.** An inline error appears as an icon plus text — never
 colour alone — and only once the field has lost focus, so the payer is not interrupted mid-typing. It
@@ -70,7 +73,10 @@ platform-dependent.
 and background colours. The SDK validates ranges, not contrast: a low-contrast pair is accepted and
 will fail WCAG 1.4.3. The default palette is derived from the host's theme and therefore follows
 light and dark on its own; the moment you set colours yourself, checking both appearances against
-1.4.3 becomes your responsibility.
+1.4.3 becomes your responsibility. Note there are two pairings to check, not one: the entered text
+(`textColor`) against the field's fill (`backgroundColor`), and the field label (`placeholderColor`)
+against **your** background, since on Android and Compose Multiplatform a floated label sits above the
+field rather than inside it.
 
 **Not giving the component a scrollable host.** With one-click enabled the payer can reveal up to 20
 saved cards, and the component never scrolls itself. Without a scroll container the controls below the
