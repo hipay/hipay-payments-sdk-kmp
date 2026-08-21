@@ -804,6 +804,10 @@ public class HiPayCardEntryController(
             cardToken = token.token,
             eci = 7,
             authenticationIndicator = authenticationIndicator,
+            // Declared on the FIRST order too when the payer is saving the card, not only on the
+            // later payments made FROM it: the gateway is told this order enrols a card-on-file, so
+            // it has no reason to fall back on another classification for a reusable token.
+            oneClick = effectiveSave,
         )
         val transaction = gateway.requestNewOrder(order, signature)
         // Clear sensitive/derived state after a successful order (code-review 7.2): PAN, CVC,

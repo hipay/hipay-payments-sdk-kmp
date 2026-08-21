@@ -35,8 +35,12 @@ public class OrderRequest(
     public val cardToken: String? = null,
     public val eci: Int = 7,
     public val authenticationIndicator: Int = 0,
-    // Saved-card (one-click) payment with a reusable token. The transaction is
-    // customer-initiated e-commerce, so ECI stays 7 (9 is recurring/MIT)
+    // This order takes part in a one-click flow: either it enrols a card-on-file (the payer asked
+    // for the card to be saved, so the token is multi-use) or it pays FROM one already enrolled.
+    // Both are declared, per the gateway contract — "including the first transaction and the
+    // subsequent ones, you have to inform the one_click parameter at true value during the Order
+    // request". It is NOT a recurring payment either way: the payer is present and initiates it, so
+    // ECI stays 7 (9 is recurring/MIT) and `recurring_payment` is never sent.
     public val oneClick: Boolean = false,
 ) {
     // Amount is validated in toFields() (called inside the @Throws suspend
