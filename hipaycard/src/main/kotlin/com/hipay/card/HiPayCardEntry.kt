@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -782,8 +783,15 @@ private fun SaveCardSwitch(controller: HiPayCardEntryController, enabled: Boolea
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
+            // `indication = null`: the whole row is the toggle's hit area — deliberately, so the
+            // label is tappable and the row is ONE merged accessibility node — but the default
+            // indication draws the press ripple across that entire area, which reads as the line
+            // lighting up rather than as a control being pressed. The Switch keeps its own thumb
+            // indication, which is where the press feedback belongs.
             .toggleable(
                 value = controller.saveCardOptIn,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
                 enabled = enabled,
                 role = Role.Switch,
                 onValueChange = controller::onSaveCardOptInChange,
