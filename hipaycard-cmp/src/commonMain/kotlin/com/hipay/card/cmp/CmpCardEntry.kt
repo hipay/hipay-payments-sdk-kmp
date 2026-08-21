@@ -165,7 +165,7 @@ internal fun CmpCardEntry(
         // A floating label rises into the top of its own field, which eats most of the visual gap
         // between two stacked fields: 8.dp read as cramped. 12.dp is the value the SwiftUI surface
         // already ships, so this also brings the three surfaces back into line.
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(ROW_GAP),
     ) {
         // Also composed when the list just emptied with a section-level one-click error to show
         // (the last card was purged as no longer valid) — the payer must learn why it vanished.
@@ -182,7 +182,7 @@ internal fun CmpCardEntry(
         HiPayStyledField(
             value = controller.holder,
             onValueChange = controller::onHolderChange,
-            label = { FieldLabel(cmpString(CardEntryStringKey.LABEL_HOLDER)) },
+            label = cmpString(CardEntryStringKey.LABEL_HOLDER),
             placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_HOLDER)) },
             enabled = enabled,
             modifier = Modifier.fillMaxWidth().blurring(controller, Field.HOLDER),
@@ -198,7 +198,7 @@ internal fun CmpCardEntry(
             HiPayStyledField(
                 value = controller.cardNumber,
                 onValueChange = controller::onNumberChange,
-                label = { FieldLabel(cmpString(CardEntryStringKey.LABEL_NUMBER)) },
+                label = cmpString(CardEntryStringKey.LABEL_NUMBER),
                 placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_NUMBER)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 enabled = enabled,
@@ -225,7 +225,7 @@ internal fun CmpCardEntry(
                 HiPayStyledField(
                     value = controller.expiry,
                     onValueChange = controller::onExpiryChange,
-                    label = { FieldLabel(cmpString(CardEntryStringKey.LABEL_EXPIRY)) },
+                    label = cmpString(CardEntryStringKey.LABEL_EXPIRY),
                     placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_EXPIRY)) },
                     enabled = enabled,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -249,7 +249,7 @@ internal fun CmpCardEntry(
                         value = controller.cvc,
                         onValueChange = controller::onCvcChange,
                         enabled = enabled && controller.isCvcRequired,
-                        label = { FieldLabel(cmpString(CardEntryStringKey.LABEL_CVV)) },
+                        label = cmpString(CardEntryStringKey.LABEL_CVV),
                         placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_CVV)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth().focusRequester(cvcFocus)
@@ -709,26 +709,15 @@ private fun CmpSaveCardSwitch(controller: CmpCardController, enabled: Boolean) {
 }
 
 /**
- * Field label kept on a SINGLE LINE, at the size the decoration box chooses for its state: the full
- * text size while resting inside the field (where it reads as the placeholder's peer) and the smaller
- * floating size once it rises to the top. Overriding the style here would freeze it at the floating
- * size in both states.
+ * Gap between the component's stacked rows.
  *
- * `maxLines = 1` + no soft-wrap are what actually protect the field height: a label longer than its
- * field used to wrap to two lines and inflate that field, breaking the Expiry/CVC row symmetry. It can
- * no longer wrap at any size — a label too wide for its field overflows horizontally instead. The
- * narrow CVC field is the one to watch, which is also why its label is now the "CVV" acronym in every
- * language. Mirrors the Android `FieldLabel`.
+ * Smaller than it looks: each field carries [FLOATING_LABEL_RESERVE] of landing area for its floated
+ * label ON TOP of itself, and that already contributes to the visual separation — a field-to-field gap
+ * reads as gap + reserve. The reserve grew when the label stopped landing on the border, so this
+ * shrank to keep the form from spreading out. It cannot be dropped to zero in exchange: it also
+ * separates the rows that carry no reserve, such as an inline error and the row below it.
  */
-@Composable
-private fun FieldLabel(text: String) {
-    Text(
-        text = text,
-        maxLines = 1,
-        softWrap = false,
-        overflow = TextOverflow.Visible,
-    )
-}
+private val ROW_GAP = 6.dp
 
 @Composable
 private fun NetworkChips(controller: CmpCardController, modifier: Modifier = Modifier) {

@@ -257,7 +257,7 @@ private fun CardEntryContent(
         // A floating label rises into the top of its own field, which eats most of the visual gap
         // between two stacked fields: 8.dp read as cramped. 12.dp is the value the SwiftUI surface
         // already ships, so this also brings the three surfaces back into line.
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(ROW_GAP),
     ) {
         // Also composed when the list just emptied with a section-level one-click error to show
         // (the last card was purged as no longer valid) — the payer must learn why it vanished.
@@ -277,7 +277,7 @@ private fun CardEntryContent(
             HiPayStyledField(
                 value = controller.holder,
                 onValueChange = controller::onHolderChange,
-                label = { FieldLabel(cardString(CardEntryStringKey.LABEL_HOLDER)) },
+                label = cardString(CardEntryStringKey.LABEL_HOLDER),
                 placeholder = { Text(cardString(CardEntryStringKey.PLACEHOLDER_HOLDER)) },
                 enabled = enabled,
                 modifier = Modifier.fillMaxWidth().testTag(HiPayCardEntryTags.HOLDER)
@@ -298,7 +298,7 @@ private fun CardEntryContent(
                 HiPayStyledField(
                     value = controller.cardNumber,
                     onValueChange = controller::onNumberChange,
-                    label = { FieldLabel(cardString(CardEntryStringKey.LABEL_NUMBER)) },
+                    label = cardString(CardEntryStringKey.LABEL_NUMBER),
                     placeholder = { Text(cardString(CardEntryStringKey.PLACEHOLDER_NUMBER)) },
                     enabled = enabled,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -310,10 +310,7 @@ private fun CardEntryContent(
                 )
                 NetworkChips(
                     controller,
-                    Modifier.align(Alignment.CenterEnd).layout { measurable, constraints ->
-                        val placeable = measurable.measure(constraints)
-                        layout(placeable.width, 0) { placeable.place(0, -placeable.height / 2) }
-                    },
+                    Modifier.align(Alignment.CenterEnd).overlaidOnFieldInput(),
                 )
             }
             // Network-not-authorized takes precedence over the number's own error (D1).
@@ -330,7 +327,7 @@ private fun CardEntryContent(
                 HiPayStyledField(
                     value = controller.expiry,
                     onValueChange = controller::onExpiryChange,
-                    label = { FieldLabel(cardString(CardEntryStringKey.LABEL_EXPIRY)) },
+                    label = cardString(CardEntryStringKey.LABEL_EXPIRY),
                     placeholder = { Text(cardString(CardEntryStringKey.PLACEHOLDER_EXPIRY)) },
                     enabled = enabled,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -358,7 +355,7 @@ private fun CardEntryContent(
                     HiPayStyledField(
                         value = controller.cvc,
                         onValueChange = controller::onCvcChange,
-                        label = { FieldLabel(cardString(CardEntryStringKey.LABEL_CVV)) },
+                        label = cardString(CardEntryStringKey.LABEL_CVV),
                         placeholder = { Text(cardString(CardEntryStringKey.PLACEHOLDER_CVV)) },
                         enabled = enabled && controller.isCvcRequired,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -815,26 +812,15 @@ private fun SaveCardSwitch(controller: HiPayCardEntryController, enabled: Boolea
 }
 
 /**
- * Field label kept on a SINGLE LINE, at the size the decoration box chooses for its state: the full
- * text size while resting inside the field (where it reads as the placeholder's peer) and the smaller
- * floating size once it rises to the top. Overriding the style here would freeze it at the floating
- * size in both states.
+ * Gap between the component's stacked rows.
  *
- * `maxLines = 1` + no soft-wrap are what actually protect the field height: a label longer than its
- * field used to wrap to two lines and inflate that field, breaking the Expiry/CVC row symmetry. It can
- * no longer wrap at any size — a label too wide for its field overflows horizontally instead. The
- * narrow CVC field is the one to watch, which is also why its label is now the "CVV" acronym in every
- * language. Mirrors the CMP `FieldLabel`.
+ * Smaller than it looks: each field carries [FLOATING_LABEL_RESERVE] of landing area for its floated
+ * label ON TOP of itself, and that already contributes to the visual separation — a field-to-field gap
+ * reads as gap + reserve. The reserve grew when the label stopped landing on the border, so this
+ * shrank to keep the form from spreading out. It cannot be dropped to zero in exchange: it also
+ * separates the rows that carry no reserve, such as an inline error and the row below it.
  */
-@Composable
-private fun FieldLabel(text: String) {
-    Text(
-        text = text,
-        maxLines = 1,
-        softWrap = false,
-        overflow = TextOverflow.Visible,
-    )
-}
+private val ROW_GAP = 6.dp
 
 /** A field + its error slot, carrying the relative traversal index so the error follows its field. */
 @Composable
@@ -900,10 +886,7 @@ private fun CvvInfoIcon(modifier: Modifier = Modifier, onToggle: () -> Unit) {
     // decoration, which reserves a 48dp floor for any trailing-slot content regardless of its size.)
     Box(
         modifier = modifier
-            .layout { measurable, constraints ->
-                val placeable = measurable.measure(constraints)
-                layout(placeable.width, 0) { placeable.place(0, -placeable.height / 2) }
-            }
+            .overlaidOnFieldInput()
             // 42dp round tap area = the field height, so the tap ripple stays a circle INSIDE the
             // field instead of a 48dp square overflowing it. `clip` before `clickable` bounds the
             // ripple to the circle.
@@ -992,7 +975,7 @@ private fun NetworkChips(controller: HiPayCardEntryController, modifier: Modifie
  * off-device (JVM host tests) → "motion allowed".
  */
 @Composable
-private fun reduceMotionEnabled(): Boolean {
+internal fun reduceMotionEnabled(): Boolean {
     val resolver = LocalContext.current.contentResolver
     return try {
         Settings.Global.getFloat(resolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
