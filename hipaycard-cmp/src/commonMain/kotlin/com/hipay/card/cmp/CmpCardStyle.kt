@@ -7,6 +7,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -14,12 +15,16 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldColors
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.graphics.Color
@@ -217,6 +222,44 @@ private val LABEL_BORDER_CLEARANCE = 4.dp
 internal val FLOATING_LABEL_RESERVE = FLOATED_LABEL_LINE + LABEL_BORDER_CLEARANCE
 
 /**
+ * The field's placeholder, drawn by the SDK on the input line.
+ *
+ * Material's own placeholder slot is left empty. Its visibility is driven by an opacity transition
+ * keyed on the framework's input phase, and in this configuration — no label in the label slot, the
+ * label drawn as a sibling — it did not surface. Rather than depend on a mechanism that cannot be
+ * observed from the test suites available here (the CMP tests are plain unit tests with no Compose UI
+ * runtime), the rule is written out: show it when the label has left the input line and the field is
+ * empty. That also reads the RAW value rather than the visually transformed one, so a field whose
+ * transformation formats its content is judged on what the payer actually typed.
+ *
+ * Positioned by CENTRING it exactly where the entered text will appear, not by padding it down from
+ * the top: Material centres a `singleLine` input vertically in the field
+ * (`Alignment.CenterVertically`), so a fixed top offset only coincides with it at one field height and
+ * drifts as soon as the field grows — under a large font scale, for instance. `matchParentSize` minus
+ * the label's landing area is exactly the container's box, and centring in it puts the placeholder on
+ * the same baseline as the value that replaces it.
+ *
+ * Styled through the composition locals so the call sites keep passing a bare `Text`: the style's
+ * entered-text typography, in [HiPayCardEntryStyle.placeholderColor]. Same typography as the input, so
+ * the two also share their metrics.
+ */
+@Composable
+private fun BoxScope.FieldPlaceholder(placeholder: @Composable () -> Unit) {
+    val style = LocalHiPayCardStyle.current
+    CompositionLocalProvider(
+        LocalContentColor provides cmpColor(style.placeholderColor),
+        LocalTextStyle provides style.entryTextStyle(style.placeholderColor),
+    ) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .padding(top = FLOATING_LABEL_RESERVE, start = LABEL_START_PADDING),
+            contentAlignment = Alignment.CenterStart,
+        ) { placeholder() }
+    }
+}
+
+/**
  * The field's label, animating between resting INSIDE the input box and floated ABOVE the border.
  *
  * Rendered here rather than through Material's label slot: that slot centres the floated label on the
@@ -349,9 +392,8 @@ internal fun HiPayStyledField(
             // No label slot: [FloatingFieldLabel] draws it. Material would centre it on the
             // container's top border, which is the straddle this whole arrangement exists to avoid.
             label = null,
-            // Only once the label has left the input box — at rest the label occupies that spot, and
-            // Material shows the placeholder whenever there is no label and the value is empty.
-            placeholder = if (labelFloated) placeholder else null,
+            // Empty slot: [FieldPlaceholder] draws it, on the same explicit terms as the label.
+            placeholder = null,
             trailingIcon = trailingIcon,
             isError = isError,
             colors = colors,
@@ -371,6 +413,10 @@ internal fun HiPayStyledField(
                 )
             },
         )
+    }
+    // Before the label so the label wins the overlap while the two cross during the float.
+    if (labelFloated && value.isEmpty()) {
+        FieldPlaceholder(placeholder)
     }
     FloatingFieldLabel(
         text = label,
