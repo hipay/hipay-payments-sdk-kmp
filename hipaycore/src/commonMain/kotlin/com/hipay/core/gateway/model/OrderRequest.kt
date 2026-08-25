@@ -63,7 +63,13 @@ public class OrderRequest(
             "pending_url" to pendingUrl,
             "exception_url" to exceptionUrl,
             "cancel_url" to cancelUrl,
+            // Which SDK build produced this transaction — see [sdkSourceField].
+            "source" to sdkSourceField(),
         )
+        // The device's User-Agent, how the platform attributes a transaction to a device — emitted ONLY
+        // when the platform can produce a real one. The gateway scores this field: a malformed value is
+        // declined where an absent one completes.
+        platformUserAgent()?.let { fields["http_user_agent"] = it }
         customerId?.let { fields["cid"] = it }
         ipAddress?.let { fields["ipaddr"] = it }
         if (customData.isNotEmpty()) {

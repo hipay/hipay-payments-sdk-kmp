@@ -4,8 +4,11 @@ import com.hipay.core.HiPayErrorCode
 import com.hipay.core.HiPayException
 import com.hipay.golden.GOLDEN_ORDER_REQUEST
 import com.hipay.golden.assertJsonParity
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -13,6 +16,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class OrderRequestParityTest {
+
+    /** Fields derived from the running device, so their values cannot be pinned in the golden. */
+    private val DEVICE_DERIVED = setOf("source", "http_user_agent")
 
     private fun cardOrder(
         customer: CustomerInfo? = null,
@@ -41,8 +47,71 @@ class OrderRequestParityTest {
 
     @Test
     fun cardOrderFieldsMatchTheGoldenRequest() {
-        val actual = JsonObject(cardOrder().toFields().mapValues { JsonPrimitive(it.value) })
-        assertJsonParity(GOLDEN_ORDER_REQUEST, actual)
+        // `source` and `http_user_agent` are deliberately out of the golden: both are derived from the
+        // running device, so a literal would fail on another simulator or on the other target. Their
+        // shapes are asserted by the two tests below; the golden stays the stable contract for the
+        // fields that do not move.
+        val fields = cardOrder().toFields() - DEVICE_DERIVED
+        assertJsonParity(GOLDEN_ORDER_REQUEST, JsonObject(fields.mapValues { JsonPrimitive(it.value) }))
+    }
+
+    @Test
+    fun sourceIdentifiesThisClientSdk() {
+        // Restored parity with both previous-generation SDKs, which sent this and made the back office
+        // attribute a mobile payment correctly instead of defaulting it to a desktop profile.
+        val source = cardOrder().toFields().getValue("source")
+        val parsed = Json.parseToJsonElement(source).jsonObject
+
+        assertEquals("CSDK", parsed.getValue("source").jsonPrimitive.content)
+        assertTrue(parsed.getValue("brand").jsonPrimitive.content in setOf("android", "ios"))
+        // The version the merchant is actually running — the point of the whole field.
+        assertTrue(parsed.getValue("integration_version").jsonPrimitive.content.isNotBlank())
+        assertTrue("brand_version" in parsed)
+    }
+
+    @Test
+    fun userAgentLooksLikeADeviceNotABlank() {
+        // Restored alongside `source`: parsing the User-Agent is how the platform attributes a
+        // transaction to a device.
+        //
+        // Absent is a VALID outcome, and the reason matters: the gateway SCORES this field. A malformed
+        // value is not a harmless approximation — an early version fell back to
+        // `Dalvik/2.1.0 (Linux; U; Android )` when `http.agent` was unset, and that turned a real stage
+        // order from COMPLETED into DECLINED. Omitting the field completes normally, so a platform that
+        // cannot produce a credible value must send nothing.
+        val ua = cardOrder().toFields()["http_user_agent"] ?: return
+        assertTrue(ua.isNotBlank(), "when present, http_user_agent must not be blank")
+
+        if (ua.contains("Android")) {
+            // Android hands us its own `http.agent`, so the only claim worth making is that the OS
+            // named itself — the model and build come from the device and cannot be pinned here.
+            assertTrue(ua.contains("Linux"), "unexpected Android User-Agent: $ua")
+        } else {
+            // iOS is synthesized, so the FULL Safari shape is asserted: the device attribution depends
+            // on the string being recognisable as a browser, and a missing token is the likely reason a
+            // parser would fall through to its default profile.
+            assertTrue(ua.startsWith("Mozilla/5.0 ("), "must open like a browser: $ua")
+            assertTrue(ua.contains("iPhone") || ua.contains("iPad"), "must name the device: $ua")
+            assertTrue(ua.contains("like Mac OS X"), "missing platform token: $ua")
+            assertTrue(ua.contains("AppleWebKit/605.1.15"), "missing engine token: $ua")
+            assertTrue(ua.contains("Version/"), "missing Safari version: $ua")
+            assertTrue(ua.endsWith("Safari/604.1"), "must be identifiable as Safari: $ua")
+            // Apple's own inconsistency, reproduced: iPad omits the model from the CPU token.
+            if (ua.contains("iPad")) {
+                assertTrue(ua.contains("iPad; CPU OS "), "iPad token must be 'CPU OS': $ua")
+            } else {
+                assertTrue(ua.contains("CPU iPhone OS "), "iPhone token must be 'CPU iPhone OS': $ua")
+            }
+            // Underscores in the platform token, dots in Version/ — both from the same OS version.
+            assertTrue(ua.contains("_") || ua.contains("OS 1"), "OS version not interpolated: $ua")
+        }
+    }
+
+    @Test
+    fun everyOrderCarriesSource() {
+        // Not opt-in and not card-specific: a wallet order has to be attributable too. Unlike the
+        // User-Agent, `source` is always derivable, so it is unconditional.
+        assertTrue("source" in cardOrder().toFields())
     }
 
     @Test
