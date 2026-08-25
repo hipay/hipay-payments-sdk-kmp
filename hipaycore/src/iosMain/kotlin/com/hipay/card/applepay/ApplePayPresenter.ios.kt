@@ -121,15 +121,25 @@ public suspend fun runApplePayPayment(
 private val paymentInFlight = PaymentInFlightGuard()
 
 /**
+ * Owns the delegate while the sheet is up, because `PKPaymentAuthorizationController.delegate` is weak.
+ *
+ * It used to anchor itself (`selfRef = this`), which holds under ARC but not under Kotlin/Native's
+ * TRACING collector — an unreachable cycle is exactly what that reclaims, so the delegate could be
+ * collected mid-sheet and PassKit, holding only a weak reference, then delivered nothing at all: no
+ * authorization, no `didFinish`, no way for the payer to close the sheet. One reference is enough,
+ * paired with [paymentInFlight]: engaged for the sheet's lifetime and released together.
+ */
+private var activeDelegate: PaymentDelegate? = null
+
+/**
  * How long the tokenize → order chain may take before the sheet is completed without a verdict.
  *
- * PassKit expects its authorization handler within roughly half a minute and dismisses the sheet on its
- * own if it waits longer — at which point our answer arrives too late and the outcome can no longer be
- * reported at all. A budget below that leaves the SDK in control: it reports an indeterminate
- * [ApplePayPaymentResult.Pending] the host can reconcile, instead of losing the payment silently. A
- * stage order was measured at about twelve seconds, so this leaves ample headroom.
+ * Squeezed from both sides: answer after PassKit's ~30s limit and it stops calling the delegate at all,
+ * leaving the payer unable to close the sheet; cut too close to a real order (~12s measured) and a slow
+ * network yields a spurious [ApplePayPaymentResult.Pending]. Exceeding it is never reported as a
+ * failure — the order may exist, so the outcome is indeterminate and carries the order id.
  */
-private const val WALLET_PAYMENT_DEADLINE_MS = 25_000L
+private const val WALLET_PAYMENT_DEADLINE_MS = 20_000L
 
 /**
  * `PKPaymentAuthorizationControllerDelegate` bridged to the suspended [continuation]. The controller
@@ -147,7 +157,6 @@ private class PaymentDelegate(
     private val continuation: CancellableContinuation<ApplePayPaymentResult>,
 ) : NSObject(), PKPaymentAuthorizationControllerDelegateProtocol {
 
-    private var selfRef: PaymentDelegate? = null
     private var controller: PKPaymentAuthorizationController? = null
     private var outcome: ApplePayPaymentResult? = null
     private var stepUp: Transaction? = null
@@ -156,7 +165,7 @@ private class PaymentDelegate(
 
     fun retain(controller: PKPaymentAuthorizationController) {
         this.controller = controller
-        this.selfRef = this
+        activeDelegate = this
     }
 
     /** The sheet never appeared: there is nothing to dismiss and no handler to answer. */
@@ -318,7 +327,7 @@ private class PaymentDelegate(
 
     private fun release() {
         controller = null
-        selfRef = null
+        if (activeDelegate === this) activeDelegate = null
     }
 
     private fun result(status: PKPaymentAuthorizationStatus) =
