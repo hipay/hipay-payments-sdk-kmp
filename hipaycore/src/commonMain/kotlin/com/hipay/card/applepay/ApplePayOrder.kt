@@ -4,6 +4,7 @@ package com.hipay.card.applepay
 import com.hipay.core.HiPayErrorCode
 import com.hipay.core.HiPayException
 import com.hipay.core.callback.hipayCallbackBase
+import com.hipay.core.gateway.model.OrderOptions
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
@@ -36,7 +37,20 @@ public class ApplePayOrder(
      * is refused just like an unsigned card order would be.
      */
     public val signature: String? = null,
-)
+) {
+    internal var options: OrderOptions? = null
+        private set
+
+    /**
+     * Attaches optional gateway parameters to the order this wallet payment creates — a wallet payment
+     * ends in an ordinary order, so it takes the same options a card payment does. A method rather than
+     * a constructor parameter, for the reason given on [OrderOptions].
+     */
+    public fun withOptions(options: OrderOptions): ApplePayOrder {
+        this.options = options
+        return this
+    }
+}
 
 /** The gateway redirect URLs for this order, in the one shape the SDK can parse back. The scheme is
  *  trimmed to match what the validation accepted, so the derived URLs and the challenge's callback
