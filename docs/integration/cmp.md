@@ -407,6 +407,35 @@ suspend fun pay(): TransactionState {
 }
 ```
 
+### Optional gateway parameters
+
+The order above sends what the SDK models. For anything else the gateway accepts — a per-order
+notification URL, a bank-statement descriptor, the indexed `cdata` reporting fields, the basket —
+attach an `OrderOptions`:
+
+```kotlin
+val options = OrderOptions.Builder()
+    .notifyUrl("https://your-backend.example/hipay/notify")   // overrides the back-office URL
+    .softDescriptor("MY SHOP")                                // shown on the payer's statement
+    .custom("website_id", "STWAK4897048")                     // any other gateway parameter
+    .build()
+
+gateway.requestNewOrder(order.withOptions(options), signature)
+```
+
+A method rather than a constructor parameter, so future parameters never break your build. The same
+`withOptions` exists on `ApplePayOrder` — a wallet payment ends in an ordinary order.
+
+Fields the SDK owns are refused by `custom(...)`: the signature-covered ones (`orderid`, `amount`,
+`currency`), the card token, the return URLs, and the customer/shipping blocks, which have typed
+parameters. `OrderOptions.RESERVED_FIELDS` is the full list.
+
+**On `notifyUrl` specifically:** it overrides your account configuration and is **not covered by the
+order signature**, so a tampered build of your app could point the notification elsewhere.
+Notifications remain signed, so nothing can be forged in your name — but yours can be suppressed,
+leaving a reconciliation gap. Prefer the back-office setting in production and keep this for testing,
+unless you have a reason to route per order.
+
 **Enrolling a card-on-file takes TWO parameters, and they go to different APIs.** The example above is
 a one-shot payment: `multiUse = false`, no `oneClick`. To let the payer pay with the same card later,
 set both:

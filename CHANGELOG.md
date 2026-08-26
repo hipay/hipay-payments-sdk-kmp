@@ -7,6 +7,14 @@ the iOS XCFramework/SPM package.
      A version heading must be EXACTLY "## x.y.z" — no date, no title. The release pipeline matches
      that line verbatim, so any suffix produces empty release notes. Put the date on the line below. -->
 
+## Unreleased
+
+### Added
+
+- **Optional gateway parameters on an order**, for the fields the SDK does not model as its own: a
+  per-order notification URL, the bank-statement descriptor, the indexed reporting fields, the basket,
+  and anything else the gateway accepts. Nothing changes for an order that does not use them.
+
 ## 1.1.0
 
 ### Added
