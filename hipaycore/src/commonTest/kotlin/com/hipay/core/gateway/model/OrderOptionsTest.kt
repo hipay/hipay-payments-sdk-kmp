@@ -25,6 +25,8 @@ class OrderOptionsTest {
         cardToken = "f0e1d2c3b4a5968778695a4b3c2d1e0f".repeat(2),
     )
 
+    /** Rejection surfaces at build(), never at the setter: an exception out of a non-`@Throws`
+     *  function terminates a Swift host instead of being catchable. */
     private fun validation(block: () -> Unit): HiPayException {
         val e = assertFailsWith<HiPayException>(block = block)
         assertEquals(HiPayErrorCode.VALIDATION, e.code)
@@ -45,8 +47,6 @@ class OrderOptionsTest {
                 .notifyUrl("https://backend.example/hipay/notify")
                 .softDescriptor("MY SHOP")
                 .longDescription("A longer description of the order")
-                .cdata(1, "campaign-42")
-                .cdata(OrderOptions.CDATA_MAX, "last-slot")
                 .basket("""[{"product_reference":"A"}]""")
                 .build(),
         ).toFields()
@@ -54,8 +54,6 @@ class OrderOptionsTest {
         assertEquals("https://backend.example/hipay/notify", fields["notify_url"])
         assertEquals("MY SHOP", fields["soft_descriptor"])
         assertEquals("A longer description of the order", fields["long_description"])
-        assertEquals("campaign-42", fields["cdata1"])
-        assertEquals("last-slot", fields["cdata10"])
         assertTrue(fields["basket"]!!.contains("product_reference"))
     }
 
@@ -70,29 +68,29 @@ class OrderOptionsTest {
     @Test
     fun notifyUrlMustBeAnHttpEndpoint() {
         // HiPay's servers call it, so an app scheme could never be reached.
-        validation { OrderOptions.Builder().notifyUrl("myapp://notify") }
-        validation { OrderOptions.Builder().notifyUrl("backend.example/notify") }
-        OrderOptions.Builder().notifyUrl("http://localhost:8080/notify")   // accepted
-        OrderOptions.Builder().notifyUrl("https://backend.example/notify") // accepted
+        validation { OrderOptions.Builder().notifyUrl("myapp://notify").build() }
+        validation { OrderOptions.Builder().notifyUrl("backend.example/notify").build() }
+        OrderOptions.Builder().notifyUrl("http://localhost:8080/notify").build()   // accepted
+        OrderOptions.Builder().notifyUrl("https://backend.example/notify").build() // accepted
     }
 
     @Test
     fun customRefusesTheFieldsTheSdkOwns() {
         // The signature covers these three: overriding them would desynchronize it.
         for (signed in listOf("orderid", "amount", "currency")) {
-            validation { OrderOptions.Builder().custom(signed, "tampered") }
+            validation { OrderOptions.Builder().custom(signed, "tampered").build() }
         }
         // PCI-controlled and payment-path fields.
         for (owned in listOf("cardtoken", "eci", "one_click", "authentication_indicator")) {
-            validation { OrderOptions.Builder().custom(owned, "1") }
+            validation { OrderOptions.Builder().custom(owned, "1").build() }
         }
         // Return URLs: CallbackUrlParser has to match these again on the way back.
         for (url in listOf("accept_url", "decline_url", "pending_url", "exception_url", "cancel_url")) {
-            validation { OrderOptions.Builder().custom(url, "https://evil.example/") }
+            validation { OrderOptions.Builder().custom(url, "https://evil.example/").build() }
         }
         // Typed parameters already on OrderRequest.
         for (typed in listOf("cid", "ipaddr", "custom_data", "email", "firstname", "zipcode")) {
-            validation { OrderOptions.Builder().custom(typed, "x") }
+            validation { OrderOptions.Builder().custom(typed, "x").build() }
         }
     }
 
@@ -100,7 +98,7 @@ class OrderOptionsTest {
     fun customRefusesTheWholeShippingBlock() {
         // Prefix-guarded rather than enumerated, so a new shipto_ field is covered without an edit.
         for (key in listOf("shipto_city", "shipto_country", "shipto_streetaddress2", "shipto_anything")) {
-            validation { OrderOptions.Builder().custom(key, "x") }
+            validation { OrderOptions.Builder().custom(key, "x").build() }
         }
     }
 
@@ -136,16 +134,10 @@ class OrderOptionsTest {
     }
 
     @Test
-    fun cdataIndexIsBounded() {
-        validation { OrderOptions.Builder().cdata(0, "x") }
-        validation { OrderOptions.Builder().cdata(OrderOptions.CDATA_MAX + 1, "x") }
-    }
-
-    @Test
     fun blankValuesAndNamesAreRefused() {
-        validation { OrderOptions.Builder().softDescriptor("  ") }
-        validation { OrderOptions.Builder().custom("  ", "v") }
-        validation { OrderOptions.Builder().custom("website_id", "") }
+        validation { OrderOptions.Builder().softDescriptor("  ").build() }
+        validation { OrderOptions.Builder().custom("  ", "v").build() }
+        validation { OrderOptions.Builder().custom("website_id", "").build() }
     }
 
     @Test

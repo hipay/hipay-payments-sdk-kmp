@@ -34,6 +34,7 @@ import com.hipay.core.HiPayException
 import com.hipay.core.callback.CallbackUrlParser
 import com.hipay.core.gateway.GatewayClient
 import com.hipay.core.gateway.model.CustomerInfo
+import com.hipay.core.gateway.model.OrderOptions
 import com.hipay.core.gateway.model.OrderRequest
 import com.hipay.core.gateway.model.Transaction
 import com.hipay.core.gateway.model.TransactionState
@@ -650,6 +651,8 @@ public class CmpCardController(
         shipping: CustomerInfo? = null,
         threeDS: HiPayThreeDSMode = HiPayThreeDSMode.IN_APP_SESSION,
         saveCard: Boolean = false,
+        /** Optional gateway parameters for this order — see [OrderOptions]. */
+        options: OrderOptions? = null,
     ): Transaction {
         // One-click routing: with a saved card selected, the same host call pays via the
         // stored token — no tokenization, no CVV; the host's single touch-point is preserved.
@@ -673,6 +676,7 @@ public class CmpCardController(
                 customer = customer,
                 shipping = shipping,
                 threeDS = threeDS,
+                options = options,
             )
         }
         // The component's save switch and the parameter express the same consent.
@@ -713,6 +717,7 @@ public class CmpCardController(
             // it has no reason to fall back on another classification for a reusable token.
             oneClick = effectiveSave,
         )
+        options?.let { order.withOptions(it) }
         val transaction = gateway.requestNewOrder(order, signature)
         // Clear sensitive/derived state after a successful order (parity with :hipaycard).
         holder = ""; cardNumber = ""; expiry = ""; cvc = ""
@@ -759,6 +764,8 @@ public class CmpCardController(
         customer: CustomerInfo? = null,
         shipping: CustomerInfo? = null,
         threeDS: HiPayThreeDSMode = HiPayThreeDSMode.IN_APP_SESSION,
+        /** Optional gateway parameters for this order — see [OrderOptions]. */
+        options: OrderOptions? = null,
     ): Transaction {
         lastOneClickError = null // a fresh attempt supersedes the previous outcome
         // Sampled before the (possibly long) 3DS round-trip: the reason must reflect the
@@ -787,6 +794,7 @@ public class CmpCardController(
                 oneClick = true,
             )
             val transaction = try {
+                options?.let { order.withOptions(it) }
                 gateway.requestNewOrder(order, signature)
             } catch (e: HiPayException) {
                 val cnlv = cardNoLongerValidOrNull(e)

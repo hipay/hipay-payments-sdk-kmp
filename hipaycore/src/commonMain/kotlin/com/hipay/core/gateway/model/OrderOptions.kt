@@ -2,6 +2,7 @@ package com.hipay.core.gateway.model
 
 import com.hipay.core.HiPayErrorCode
 import com.hipay.core.HiPayException
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Optional gateway parameters for an order, attached with [OrderRequest.withOptions]:
@@ -15,6 +16,10 @@ import com.hipay.core.HiPayException
  * constructor parameter breaks every Swift caller while a new method breaks none. Parameters this SDK
  * does not model go through [Builder.custom], so a missing one never blocks an integrator.
  *
+ * Every value is rejected by [Builder.build], never by the setter that took it: an exception out of a
+ * non-`@Throws` function does not cross the Kotlin/Native boundary, it terminates the Swift host. Same
+ * rule as [OrderRequest], which validates in `toFields()` rather than in its constructor.
+ *
  * @since 1.2.0
  */
 public class OrderOptions private constructor(
@@ -23,6 +28,10 @@ public class OrderOptions private constructor(
     /** Accumulates the parameters; each method overwrites its own key if called twice. */
     public class Builder {
         private val fields = linkedMapOf<String, String>()
+
+        /** First rejection seen, raised by [build]. Kept rather than thrown so a bad value cannot
+         *  terminate a Swift host — see the note on [OrderOptions]. */
+        private var rejection: String? = null
 
         /**
          * Overrides the back-office notification URL for this order only. Must be `http(s)` — HiPay's
@@ -35,34 +44,24 @@ public class OrderOptions private constructor(
         public fun notifyUrl(url: String): Builder = apply {
             val trimmed = url.trim()
             if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
-                fail("notifyUrl: must be an http:// or https:// URL")
+                reject("notifyUrl: must be an http:// or https:// URL")
+            } else {
+                fields["notify_url"] = trimmed
             }
-            fields["notify_url"] = trimmed
         }
 
         /** Bank-statement descriptor. Acquirers truncate and normalise it, so treat length as advisory. */
         public fun softDescriptor(descriptor: String): Builder =
-            apply { fields["soft_descriptor"] = requireNotBlank("softDescriptor", descriptor) }
+            apply { put("soft_descriptor", descriptor, label = "softDescriptor") }
 
         /** A longer description, where [OrderRequest.description] is the short one. */
         public fun longDescription(description: String): Builder =
-            apply { fields["long_description"] = requireNotBlank("longDescription", description) }
-
-        /**
-         * One of the indexed reporting fields `cdata1`…`cdata10`, which the back office reports on
-         * individually — unlike [OrderRequest.customData], a single JSON blob.
-         *
-         * @param index 1..[CDATA_MAX].
-         */
-        public fun cdata(index: Int, value: String): Builder = apply {
-            if (index !in 1..CDATA_MAX) fail("cdata: index must be 1..$CDATA_MAX (got $index)")
-            fields["cdata$index"] = requireNotBlank("cdata$index", value)
-        }
+            apply { put("long_description", description, label = "longDescription") }
 
         /** Shopping-cart JSON, as the gateway documents it. Passed through verbatim — this SDK does
          *  not model the basket, so its shape is yours to get right. */
         public fun basket(json: String): Builder =
-            apply { fields["basket"] = requireNotBlank("basket", json) }
+            apply { put("basket", json, label = "basket") }
 
         /**
          * Any other gateway parameter, by its exact wire name. Sent verbatim: a wrong name or shape
@@ -73,29 +72,33 @@ public class OrderOptions private constructor(
          */
         public fun custom(name: String, value: String): Builder = apply {
             val key = name.trim()
-            if (key.isEmpty()) fail("custom: the parameter name must not be blank")
-            if (key in RESERVED_FIELDS || key.startsWith(SHIPPING_PREFIX)) {
-                fail("custom: '$key' is set by the SDK — use the matching OrderRequest parameter")
+            when {
+                key.isEmpty() -> reject("custom: the parameter name must not be blank")
+                key in RESERVED_FIELDS || key.startsWith(SHIPPING_PREFIX) ->
+                    reject("custom: '$key' is set by the SDK — use the matching OrderRequest parameter")
+                else -> put(key, value)
             }
-            fields[key] = requireNotBlank(key, value)
         }
 
-        /** Throws [HiPayException] with [HiPayErrorCode.VALIDATION] on any value rejected above. */
-        public fun build(): OrderOptions = OrderOptions(LinkedHashMap(fields))
-
-        private fun requireNotBlank(name: String, value: String): String {
-            if (value.isBlank()) fail("$name: must not be blank")
-            return value
+        /** The immutable set, or [HiPayException] with [HiPayErrorCode.VALIDATION] for the first value
+         *  any setter rejected. Declared `@Throws` so the failure is catchable from Swift. */
+        @Throws(HiPayException::class, CancellationException::class)
+        public fun build(): OrderOptions {
+            rejection?.let { throw HiPayException(code = HiPayErrorCode.VALIDATION, message = it) }
+            return OrderOptions(LinkedHashMap(fields))
         }
 
-        private fun fail(message: String): Nothing =
-            throw HiPayException(code = HiPayErrorCode.VALIDATION, message = message)
+        private fun put(key: String, value: String, label: String = key) {
+            if (value.isBlank()) reject("$label: must not be blank") else fields[key] = value
+        }
+
+        /** Keeps the FIRST rejection: the earliest mistake is the one the caller can act on. */
+        private fun reject(message: String) {
+            if (rejection == null) rejection = message
+        }
     }
 
     public companion object {
-        /** Highest index accepted by [Builder.cdata]. */
-        public const val CDATA_MAX: Int = 10
-
         private const val SHIPPING_PREFIX: String = "shipto_"
 
         /**

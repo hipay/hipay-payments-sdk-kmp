@@ -41,6 +41,7 @@ import com.hipay.core.HiPayErrorCode
 import com.hipay.core.HiPayException
 import com.hipay.core.gateway.GatewayClient
 import com.hipay.core.gateway.model.CustomerInfo
+import com.hipay.core.gateway.model.OrderOptions
 import com.hipay.core.gateway.model.OrderRequest
 import com.hipay.core.gateway.model.Transaction
 import com.hipay.core.gateway.model.TransactionState
@@ -739,6 +740,8 @@ public class HiPayCardEntryController(
         shipping: CustomerInfo? = null,
         autoPresent3DS: Boolean = true,
         saveCard: Boolean = false,
+        /** Optional gateway parameters for this order — see [OrderOptions]. */
+        options: OrderOptions? = null,
     ): Transaction {
         // One-click routing: with a saved card selected, the same host call pays via the
         // stored token — no tokenization, no CVV; the host's single touch-point is preserved.
@@ -762,6 +765,7 @@ public class HiPayCardEntryController(
                 customer = customer,
                 shipping = shipping,
                 autoPresent3DS = autoPresent3DS,
+                options = options,
             )
         }
         // The component's save switch and the parameter express the same consent.
@@ -809,6 +813,7 @@ public class HiPayCardEntryController(
             // it has no reason to fall back on another classification for a reusable token.
             oneClick = effectiveSave,
         )
+        options?.let { order.withOptions(it) }
         val transaction = gateway.requestNewOrder(order, signature)
         // Clear sensitive/derived state after a successful order (code-review 7.2): PAN, CVC,
         // the cardholder name (PII), networks, and the blur flags so a reused controller does
@@ -907,6 +912,8 @@ public class HiPayCardEntryController(
         customer: CustomerInfo? = null,
         shipping: CustomerInfo? = null,
         autoPresent3DS: Boolean = true,
+        /** Optional gateway parameters for this order — see [OrderOptions]. */
+        options: OrderOptions? = null,
     ): Transaction {
         val storeContext = requireOneClickContext()
         lastOneClickError = null // a fresh attempt supersedes the previous outcome
@@ -936,6 +943,7 @@ public class HiPayCardEntryController(
                 oneClick = true,
             )
             val transaction = try {
+                options?.let { order.withOptions(it) }
                 gateway.requestNewOrder(order, signature)
             } catch (e: HiPayException) {
                 val cnlv = cardNoLongerValidOrNull(e)
