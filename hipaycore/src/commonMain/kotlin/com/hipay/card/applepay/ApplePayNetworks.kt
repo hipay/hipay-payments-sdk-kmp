@@ -36,9 +36,21 @@ internal object ApplePayNetworks {
         CardNetwork.CB,
     )
 
-    /** Networks routable via the HiPay Apple Pay route = Apple ∩ HiPay (Amex and Bancontact both
-     *  excluded). The platform-level filter applied before the account/merchant narrowing. */
-    val routable: Set<CardNetwork> = appleSupported intersect hipaySupported
+    /**
+     * Networks routable via the HiPay Apple Pay route = Apple ∩ HiPay (Amex and Bancontact both
+     * excluded). The platform-level filter applied before the account/merchant narrowing.
+     *
+     * **An ORDERED list, and CB comes first.** `PKPaymentRequest.supportedNetworks` is order-significant
+     * — the first entry is the network the sheet defaults to — so on a co-badged CB/Visa card this is
+     * what routes the payment domestically. An `appleSupported intersect hipaySupported` would have
+     * ordered it Visa-first and quietly routed those cards internationally.
+     *
+     * Membership still comes from the intersection, so a network added to both source sets appears here
+     * on its own. Only the ORDER is imposed, and only for CB: the sort is stable, so everything else
+     * keeps the order [appleSupported] declares.
+     */
+    val routable: List<CardNetwork> =
+        (appleSupported intersect hipaySupported).sortedByDescending { it == CardNetwork.CB }
 
     /** Card product codes queried on `available-payment-products` to learn the account's accepted
      *  cards among the routable set. */
