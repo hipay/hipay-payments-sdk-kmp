@@ -410,7 +410,7 @@ suspend fun pay(): TransactionState {
 ### Optional gateway parameters
 
 The order above sends what the SDK models. For anything else the gateway accepts — a per-order
-notification URL, a bank-statement descriptor, the indexed `cdata` reporting fields, the basket —
+notification URL, a bank-statement descriptor, the basket —
 attach an `OrderOptions`:
 
 ```kotlin
