@@ -115,12 +115,52 @@ pages-deploy:
     # Push over HTTPS with a token that can write to the repository; CI_JOB_TOKEN cannot.
     - git remote set-url origin "https://oauth2:${GITLAB_DOCS_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
     # Bring the published versions into the local branch, or mike would publish this one alone.
-    - git fetch origin gh-pages:gh-pages || echo "no gh-pages yet — first deploy will create it"
+    #
+    # An UNREACHABLE branch must NOT be mistaken for an ABSENT one. A bare `|| echo` swallows both,
+    # and the difference matters: absent is a legitimate first deploy, unreachable (expired
+    # GITLAB_DOCS_TOKEN, branch protection, network) means the published versions are simply not
+    # here — after which mike republishes this version alone and the site loses every release,
+    # with a GREEN pipeline. `ls-remote --exit-code` answers 2 for "no such ref" and 128 for a real
+    # failure, which is exactly the distinction needed.
+    - |
+      rc=0
+      git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1 || rc=$?
+      case "$rc" in
+        0) echo "gh-pages found — fetching the published versions"
+           git fetch origin gh-pages:gh-pages ;;
+        2) echo "no gh-pages branch yet — this deploy creates it" ;;
+        *) echo "FATAL: cannot reach gh-pages (git ls-remote exit $rc)." >&2
+           echo "Refusing to deploy: mike would republish $CI_COMMIT_TAG alone and drop every" >&2
+           echo "previously published version. Check GITLAB_DOCS_TOKEN and branch protection." >&2
+           exit 1 ;;
+      esac
+    # Snapshot of what is already published, to assert the deploy was additive.
+    - git show gh-pages:versions.json > /tmp/versions-before.json 2>/dev/null || echo '[]' > /tmp/versions-before.json
   script:
+    # Deploy WITHOUT --push: mike appends to gh-pages, but a destructive deploy pushed straight away
+    # is irreversible by the time anything can check it. Local first, assert, then push.
     # --update-aliases moves `latest` onto this version; --strict fails the build on a broken link.
-    - mike deploy --push --update-aliases "$CI_COMMIT_TAG" latest -- --strict
+    - mike deploy --update-aliases "$CI_COMMIT_TAG" latest -- --strict
     # Makes the site root redirect to `latest` instead of listing bare directories.
-    - mike set-default --push latest
+    - mike set-default latest
+    # The guarantee: no previously published version may disappear. This is what turns a silent
+    # site wipe into a failed job.
+    - |
+      git show gh-pages:versions.json > /tmp/versions-after.json
+      python - <<'PY'
+      import json, sys
+
+      def versions(path):
+          with open(path) as f:
+              return {entry["version"] for entry in json.load(f)}
+
+      before, after = versions("/tmp/versions-before.json"), versions("/tmp/versions-after.json")
+      lost = sorted(before - after)
+      if lost:
+          sys.exit(f"FATAL: this deploy would drop published versions {lost} — nothing pushed.")
+      print(f"additive deploy OK — versions on the site: {sorted(after)}")
+      PY
+    - git push origin gh-pages
 
 publish-release:
   stage: release
