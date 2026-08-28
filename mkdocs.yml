@@ -7,6 +7,13 @@ repo_url: https://github.com/hipay/hipay-payments-sdk-kmp
 repo_name: hipay-payments-sdk-kmp
 edit_uri: edit/main/docs/
 
+# Broken links and unresolved references fail the build. Declared HERE rather than as `--strict` on
+# the command line, because `mike deploy` has no passthrough to mkdocs: its signature is
+# `VERSION [ALIAS ...]`, so a trailing `-- --strict` is silently swallowed as an ALIAS NAME. The
+# release pipeline carried that mistake, and the first manual deploy of 1.1.0 produced a bogus
+# `--strict` alias in versions.json. In the config it applies to every build and cannot be lost.
+strict: true
+
 theme:
   name: material
   features:

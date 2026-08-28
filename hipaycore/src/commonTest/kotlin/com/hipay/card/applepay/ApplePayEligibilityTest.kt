@@ -127,16 +127,53 @@ class ApplePayEligibilityTest {
         assertEquals(listOf(CardNetwork.VISA, CardNetwork.CB), result.resolvedNetworks)
     }
 
-    // Resolved order follows the routable order, NOT the merchant's declared order: the merchant
-    // lists [CB, VISA] but the result is [VISA, CB] (routable = VISA before CB).
+    // A merchant that enumerates its networks keeps ITS order. `PKPaymentRequest.supportedNetworks` is
+    // order-significant — the first entry is what the sheet defaults to — so overriding the merchant's
+    // order would silently override which network their co-badged cards route on.
     @Test
-    fun resolvedOrderFollowsRoutableNotMerchant() = runTest {
+    fun resolvedOrderFollowsTheMerchantWhenItDeclaresOne() = runTest {
         val result = eligibility(
             codes = listOf("cb", "visa", "mastercard"),
             device = FakeDevice(),
             allowedNetworks = listOf(CardNetwork.CB, CardNetwork.VISA),
         )
-        assertEquals(listOf(CardNetwork.VISA, CardNetwork.CB), result.resolvedNetworks)
+        assertEquals(listOf(CardNetwork.CB, CardNetwork.VISA), result.resolvedNetworks)
+
+        // The reverse declaration is honoured too, so the order really is theirs and not a coincidence.
+        val reversed = eligibility(
+            codes = listOf("cb", "visa", "mastercard"),
+            device = FakeDevice(),
+            allowedNetworks = listOf(CardNetwork.VISA, CardNetwork.CB),
+        )
+        assertEquals(listOf(CardNetwork.VISA, CardNetwork.CB), reversed.resolvedNetworks)
+    }
+
+    // With NO merchant restriction the SDK supplies the order, and CB leads it: on a co-badged CB/Visa
+    // card the sheet then defaults to the domestic network. This is the default every integrator gets
+    // without doing anything, so it is the case worth pinning.
+    @Test
+    fun withoutARestrictionTheSdkOrdersCbFirst() = runTest {
+        val result = eligibility(
+            codes = listOf("visa", "mastercard", "cb", "maestro"),
+            device = FakeDevice(),
+            allowedNetworks = emptyList(),
+        )
+        assertEquals(CardNetwork.CB, result.resolvedNetworks.first())
+        assertEquals(
+            listOf(CardNetwork.CB, CardNetwork.VISA, CardNetwork.MASTERCARD, CardNetwork.MAESTRO),
+            result.resolvedNetworks,
+        )
+    }
+
+    // CB leads only when the account actually routes it — the SDK order is a preference, never a claim.
+    @Test
+    fun cbIsAbsentWhenTheAccountDoesNotRouteIt() = runTest {
+        val result = eligibility(
+            codes = listOf("visa", "mastercard"),
+            device = FakeDevice(),
+            allowedNetworks = emptyList(),
+        )
+        assertEquals(listOf(CardNetwork.VISA, CardNetwork.MASTERCARD), result.resolvedNetworks)
     }
 
     // The account query actually RECOGNIZES the Amex brand (so AC2's exclusion is by the routable

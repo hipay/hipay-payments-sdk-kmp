@@ -67,11 +67,16 @@ internal fun resolveRoutableNetworks(
     allowedNetworks: List<CardNetwork>,
 ): List<CardNetwork> {
     val routable = ApplePayNetworks.routable.filter { it in accepted }
-    // Translate at the boundary: this surface documents "empty restriction = every routable
-    // network", while AllowedNetworks reads an empty NON-NULL list as "authorizes nothing" and
-    // reserves `null` for "no restriction". Passing the empty list straight through would report
-    // Apple Pay unavailable for every merchant that does not enumerate its networks — the default.
-    return AllowedNetworks.offered(routable, allowedNetworks.takeIf { it.isNotEmpty() })
+    // Empty restriction = every routable network, in the SDK's own order (CB first — see
+    // ApplePayNetworks.routable). Note this surface's convention differs from AllowedNetworks, which
+    // reads an empty NON-NULL list as "authorizes nothing" and reserves `null` for "no restriction":
+    // passing the empty list straight through would report Apple Pay unavailable for every merchant
+    // that does not enumerate its networks, which is the default.
+    if (allowedNetworks.isEmpty()) return routable
+    // A merchant that DID enumerate keeps their own order: `supportedNetworks` is order-significant,
+    // so their first entry is the network the sheet defaults to. Filtering their list (rather than
+    // filtering ours by theirs) is what preserves that intent.
+    return allowedNetworks.filter { it in routable }
 }
 
 /**
