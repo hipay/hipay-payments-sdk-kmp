@@ -16,3 +16,4 @@ site/
 .venv/
 build-output-local/
 .hipay_stage_env
+.venv-docs/

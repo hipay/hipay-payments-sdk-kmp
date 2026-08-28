@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Builds the SPM REMOTE-release artifacts for the iOS distribution channel (story 9.1):
-#   1. the HiPayFullservice XCFramework (reuses build-xcframework.sh),
+#   1. the HiPayPayments XCFramework (reuses build-xcframework.sh),
 #   2. a SPM-compatible zip of it (ditto, --keepParent),
 #   3. its SwiftPM checksum (swift package compute-checksum),
 #   4. a generated remote Package.swift (binaryTarget(url:checksum:)) from the template.
@@ -18,7 +18,7 @@
 #   REPO_SLUG=owner/repo ./scripts/build-release.sh
 #
 # Output: build-output-local/spm/
-#   HiPayFullservice.xcframework.zip, checksum.txt, Package.swift (remote)
+#   HiPayPayments.xcframework.zip, checksum.txt, Package.swift (remote)
 #
 # Usage:
 #   ./scripts/build-release.sh                 # uses gradle.properties version + placeholder repo
@@ -54,7 +54,7 @@ case "$REPO_SLUG" in
   */*) ;;
   *) echo "ERROR: REPO_SLUG must be owner/repo, got '$REPO_SLUG'" >&2; exit 1 ;;
 esac
-ASSET="HiPayFullservice.xcframework.zip"
+ASSET="HiPayPayments.xcframework.zip"
 URL="https://github.com/${REPO_SLUG}/releases/download/${TAG}/${ASSET}"
 
 # --- 1+2. Build XCFramework, then zip it (SPM layout) ------------------------
@@ -65,7 +65,7 @@ mkdir -p "$OUT"
 rm -f "$OUT/$ASSET"
 echo "==> Zipping XCFramework for SPM (ditto --keepParent)…"
 ditto -c -k --sequesterRsrc --keepParent \
-  "$ROOT/HiPay_Payments_SDK_iOS/HiPayFullservice.xcframework" \
+  "$ROOT/HiPay_Payments_SDK_iOS/HiPayPayments.xcframework" \
   "$OUT/$ASSET"
 
 # --- 3. SwiftPM checksum -----------------------------------------------------

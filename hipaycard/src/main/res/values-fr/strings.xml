@@ -33,6 +33,9 @@
     <string name="A11Y_SAVED_CARD">%1$s se terminant par %2$s, expire %3$s</string>
     <string name="A11Y_EXPANDED">déplié</string>
     <string name="A11Y_COLLAPSED">replié</string>
+    <string name="LABEL_SHOW_MORE">Afficher plus</string>
+    <string name="LABEL_SHOW_LESS">Afficher moins</string>
+    <string name="A11Y_SHOW_LESS_BLOCKED">Indisponible tant que la carte sélectionnée est plus bas dans la liste</string>
     <!-- PROVISIONAL delete copy — NOT yet legally/UX approved; finalized in a later release. -->
     <string name="LABEL_DELETE_CARD">Supprimer la carte</string>
     <string name="CONFIRM_DELETE_CARD">Supprimer cette carte enregistrée ? Vous pourrez l\'enregistrer à nouveau lors d\'un prochain paiement.</string>

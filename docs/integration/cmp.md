@@ -34,7 +34,7 @@ kotlin {
     androidTarget(); iosArm64(); iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
-            implementation("com.hipay.payments:card-cmp:1.0.0")   // card UI (+ core, transitively)
+            implementation("com.hipay.payments:card-cmp:1.1.0")   // card UI (+ core, transitively)
             // Needed to LAUNCH the suspend API (coroutines are `implementation` in the SDK).
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
         }
@@ -98,10 +98,10 @@ composed, and only offers those. You do not configure this, and you cannot widen
 `allowed` list you pass **narrows** that set.
 
 ```kotlin
-val controller = CmpCardController(
-    config = config,
+val controller = HiPayCardController(
+    config,
     // Optional. Narrows what the account already accepts — never widens it.
-    allowed = listOf(CardNetwork.VISA, CardNetwork.MASTERCARD),
+    allowedNetworks = listOf(CardNetwork.VISA, CardNetwork.MASTERCARD),
     // Optional (default "EUR"). A contract can differ per currency, so pass the currency the
     // order will be created in.
     currency = "EUR",
@@ -144,7 +144,20 @@ val style = HiPayCardEntryStyle(
 HiPayCardEntry(controller = controller, style = style)   // shared expect/actual, Android + iOS
 ```
 
-Default baseline is light-mode — pass a dark-adapted style for dark hosts.
+**Light and dark are handled for you — as long as you don't override the colours.** Omit `style` (or
+pass `HiPayCardEntryStyle.hipayDefault`) and the component derives its palette from your
+`MaterialTheme.colorScheme`, so it follows the system appearance with nothing to wire. The moment you
+pass your own colours they are used verbatim, in both appearances: adapting them per theme is then
+yours to do, since only you know what your surface looks like. The non-colour metrics — font size,
+border width, corner radius, field height — always come from the shared contract, so the geometry stays
+identical across platforms either way.
+**Your colours have no layout constraints.** The field label floats to a position ABOVE the field's
+border rather than onto it, so it never sits on the field and your screen at the same time. Two
+consequences worth knowing: `backgroundColor` can be any colour, contrasting with your screen or not
+(the derived default uses your scheme's `surfaceContainerHighest` so the field reads as an input area);
+and `placeholderColor`, which is the label colour, has to contrast with **your** background while the
+label is floated — not with the field's fill. The float respects the system "reduce motion" setting.
+
 
 ## Localization
 
@@ -163,6 +176,82 @@ per-component `localeOverride` still wins. For a one-off, force a language on a 
 ```kotlin
 HiPayCardEntry(controller = controller, localeOverride = "fr")
 ```
+
+## One-click / saved cards
+
+A returning payer pays with a card saved on a previous purchase — no card number, no security code.
+**Off by default**; nothing is stored and no card store is created until you enable it.
+
+```kotlin
+val controller = HiPayCardController(
+    config,
+    oneClickEnabled = true,
+    // Optional (default 3, clamped 1..10): how many cards show before "Show more".
+    savedCardsDisplayCount = 3,
+)
+```
+
+**Give the component a scrollable host.** `HiPayCardEntry` renders a plain `Column` and never scrolls
+on its own. With one-click enabled the payer can reveal every stored card at once via "Show more" (up
+to 20 are kept), so the component can grow past a screen height. Put it inside a `verticalScroll`
+container — otherwise "Show less", "New card" and your own Pay button end up off-screen with no way
+back:
+
+```kotlin
+Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+    HiPayCardEntry(controller)
+    // your Pay button
+}
+```
+
+Offer to save on a successful payment — the component asks the payer for consent:
+
+```kotlin
+val tx = controller.pay(/* … */, saveCard = true)
+controller.lastSaveOutcome   // SAVED / NOT_ELIGIBLE / STORAGE_FAILED
+```
+
+**Paying with a saved card needs no new call.** When the payer selects one, your existing `pay(...)`
+routes through the stored token by itself, so your Pay button stays a single touch-point:
+
+```kotlin
+controller.savedCards          // List<SavedCard>: maskedPan, network, holder, expiry
+controller.selectSavedCard(card)
+controller.selectNewCard()     // back to card entry
+controller.deleteSavedCard(card)
+controller.refreshSavedCards()
+```
+
+`payWithSavedCard(...)` exists for headless hosts that drive the choice themselves.
+
+**How the payer deletes a card.** A left-swipe *or* a long-press on a row reveals a trash affordance;
+tapping the trash deletes, swiping the row back cancels. That is two deliberate steps, so there is no
+confirmation dialog by default — pass `confirmCardDeletion = true` if your checkout wants one anyway:
+
+```kotlin
+val controller = HiPayCardController(
+    config,
+    oneClickEnabled = true,
+    confirmCardDeletion = true,   // optional; off by default
+)
+```
+
+The dialog is shown regardless of that flag when the deletion comes from the screen-reader "Delete
+card" action: that path is a single step, with no trash to aim at and no reverse swipe to undo it.
+
+
+The payer's card list is filtered by the same account rules as a new entry: a stored card on a
+network your account no longer accepts is dropped from the list.
+
+Only a **token** is stored — never the card number, never the security code. On Android it is
+AES/GCM-encrypted with a non-exportable Keystore key and kept in the SDK's DataStore file; on iOS it
+is held in the Keychain. **Android hardening:** exclude
+`datastore/hipay_saved_cards.preferences_pb` from backup in your app's `dataExtractionRules` /
+`fullBackupContent`, so a device transfer cannot carry an undecryptable blob.
+
+A stored token can stop being accepted: the card expired, was replaced, or the issuer revoked it.
+The payment then fails with `HiPayErrorCode.CARD_NO_LONGER_VALID`, the card is dropped from the list, and the payer must enter a
+card again. Handle that case explicitly — it is the one one-click failure that is not worth retrying.
 
 ## 3DS presentation (turnkey, default on)
 
@@ -241,6 +330,23 @@ internal actual fun sha1Hex(input: String): String {
 }
 ```
 
+## Upgrading from 1.0.0
+
+**Required, and silent if you miss it: the return deep link changed host.** It is now
+`{yourScheme}://hipay-payments/gateway/orders/{orderId}/{status}` — `hipay-fullservice` is gone. On
+the Android side of your CMP app, update the `intent-filter`
+(`<data android:scheme="yourscheme" android:host="hipay-payments" />`); if you build the redirect URLs
+yourself against the headless core, read the host from `HIPAY_CALLBACK_HOST` or build the prefix with
+`hipayCallbackBase(scheme, orderId)`. Leave the old host and the payment never resumes after 3DS, with
+nothing logged.
+
+No source break. One behaviour change: opening the new-card form no longer collapses the saved-card
+list, and the "Saved cards" header is no longer a toggle — a "Show more" control reveals the cards
+beyond the display count.
+
+The controller also accepts `currency` and `savedCardsDisplayCount`, both optional with defaults, so
+existing call sites compile unchanged.
+
 ## Notes
 
 - **Localization / accessibility**: the shared card UI carries FR/EN/IT strings and the same
@@ -248,7 +354,7 @@ internal actual fun sha1Hex(input: String): String {
 - **Signature** — `controller.pay(…, signature)` takes a **backend-computed** HS signature; the SDK
   never computes it (see the stage-only helper above for a first test).
 - **PCI** — the raw PAN never leaves the controller; never log card data.
-- **Version** — `1.0.0`; pin the same number as the iOS SPM tag / Android AARs (single-version policy across platforms).
+- **Version** — `1.1.0`; pin the same number as the iOS SPM tag / Android AARs (single-version policy across platforms).
 
 ---
 
@@ -262,7 +368,7 @@ Add the headless artifact instead of (or alongside) the card UI:
 
 ```kotlin
 // commonMain — headless only
-implementation("com.hipay.payments:core:1.0.0")
+implementation("com.hipay.payments:core:1.1.0")
 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 ```
 
@@ -287,11 +393,11 @@ suspend fun pay(): TransactionState {
         OrderRequest(
             orderId = "ORD-1", paymentProduct = "visa", amount = "10.00",
             description = "Order ORD-1",
-            acceptUrl = "myapp://hipay-fullservice/gateway/orders/ORD-1/accept",
-            declineUrl = "myapp://hipay-fullservice/gateway/orders/ORD-1/decline",
-            pendingUrl = "myapp://hipay-fullservice/gateway/orders/ORD-1/pending",
-            exceptionUrl = "myapp://hipay-fullservice/gateway/orders/ORD-1/exception",
-            cancelUrl = "myapp://hipay-fullservice/gateway/orders/ORD-1/cancel",
+            acceptUrl = "myapp://hipay-payments/gateway/orders/ORD-1/accept",
+            declineUrl = "myapp://hipay-payments/gateway/orders/ORD-1/decline",
+            pendingUrl = "myapp://hipay-payments/gateway/orders/ORD-1/pending",
+            exceptionUrl = "myapp://hipay-payments/gateway/orders/ORD-1/exception",
+            cancelUrl = "myapp://hipay-payments/gateway/orders/ORD-1/cancel",
             cardToken = token.token,
         ),
         signature = StageSignature.compute("ORD-1", "10.00", "EUR"),
@@ -300,6 +406,20 @@ suspend fun pay(): TransactionState {
     return tx.state
 }
 ```
+
+**Enrolling a card-on-file takes TWO parameters, and they go to different APIs.** The example above is
+a one-shot payment: `multiUse = false`, no `oneClick`. To let the payer pay with the same card later,
+set both:
+
+- `multiUse = true` on `generateToken(...)` — the Secure Vault answers with a reusable token. This
+  describes the **token**.
+- `oneClick = true` on the `OrderRequest` — this describes the **order**, and the gateway asks for it
+  on the enrolling order as well as on every later payment made from the token.
+
+Sending only the first is what leaves an order carrying a reusable token to be classified on the token
+alone, which can surface as a recurring payment. Neither parameter makes the transaction recurring: a
+recurring (merchant-initiated) payment is declared with `recurring_payment` and `eci = 9`, and the SDK
+sends neither — `eci` stays 7.
 
 ### 3DS the headless way (FR9)
 

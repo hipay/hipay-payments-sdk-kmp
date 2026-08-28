@@ -23,8 +23,18 @@ actual class HiPayCardController actual constructor(
     config: HiPayConfig,
     allowedNetworks: List<CardNetwork>,
     oneClickEnabled: Boolean,
+    savedCardsDisplayCount: Int,
+    confirmCardDeletion: Boolean,
+    currency: String,
 ) {
-    internal val impl = CmpCardController(config, allowedNetworks, oneClickEnabled)
+    internal val impl = CmpCardController(
+        config = config,
+        allowed = allowedNetworks,
+        oneClickEnabled = oneClickEnabled,
+        savedCardsDisplayCount = savedCardsDisplayCount,
+        confirmCardDeletion = confirmCardDeletion,
+        currency = currency,
+    )
 
     actual val canPay: Boolean get() = impl.canPay
     actual val isProcessing: Boolean get() = impl.isProcessing

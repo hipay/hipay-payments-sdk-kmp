@@ -2,18 +2,24 @@
 package com.hipay.card.cmp
 
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectableGroup
@@ -22,6 +28,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -56,10 +64,16 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import kotlin.math.roundToInt
 import com.hipay.card.store.OneClickError
 import com.hipay.card.store.OneClickErrorSurface
 import com.hipay.card.store.SavedCard
@@ -134,19 +148,25 @@ internal fun CmpCardEntry(
         LaunchedEffect(controller) { controller.refreshSavedCards() }
     }
 
+    val reduceMotion = reduceMotionEnabled()
+
     CompositionLocalProvider(
         LocalHiPayCardLanguage provides cardLanguage,
-        LocalHiPayCardStyle provides style,
+        LocalHiPayCardStyle provides resolveCardStyle(style),
     ) {
     Column(
         // Animate the expand/collapse only when one-click is on — an opted-out integrator must
-        // see no new animation of pre-existing size changes (errors, tooltip).
+        // see no new animation of pre-existing size changes (errors, tooltip). Suppressed under the
+        // reduce-motion accessibility setting (WCAG 2.3.3): the size change then applies instantly.
         modifier = modifier.fillMaxWidth().padding(16.dp)
-            .then(if (controller.oneClickEnabled) Modifier.animateContentSize() else Modifier),
+            .then(
+                if (controller.oneClickEnabled && !reduceMotion) Modifier.animateContentSize()
+                else Modifier,
+            ),
         // A floating label rises into the top of its own field, which eats most of the visual gap
         // between two stacked fields: 8.dp read as cramped. 12.dp is the value the SwiftUI surface
         // already ships, so this also brings the three surfaces back into line.
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(ROW_GAP),
     ) {
         // Also composed when the list just emptied with a section-level one-click error to show
         // (the last card was purged as no longer valid) — the payer must learn why it vanished.
@@ -163,7 +183,7 @@ internal fun CmpCardEntry(
         HiPayStyledField(
             value = controller.holder,
             onValueChange = controller::onHolderChange,
-            label = { FieldLabel(cmpString(CardEntryStringKey.LABEL_HOLDER)) },
+            label = cmpString(CardEntryStringKey.LABEL_HOLDER),
             placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_HOLDER)) },
             enabled = enabled,
             modifier = Modifier.fillMaxWidth().blurring(controller, Field.HOLDER),
@@ -179,7 +199,7 @@ internal fun CmpCardEntry(
             HiPayStyledField(
                 value = controller.cardNumber,
                 onValueChange = controller::onNumberChange,
-                label = { FieldLabel(cmpString(CardEntryStringKey.LABEL_NUMBER)) },
+                label = cmpString(CardEntryStringKey.LABEL_NUMBER),
                 placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_NUMBER)) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 enabled = enabled,
@@ -190,10 +210,7 @@ internal fun CmpCardEntry(
             )
             NetworkChips(
                 controller,
-                Modifier.align(Alignment.CenterEnd).layout { measurable, constraints ->
-                    val placeable = measurable.measure(constraints)
-                    layout(placeable.width, 0) { placeable.place(0, -placeable.height / 2) }
-                },
+                Modifier.align(Alignment.CenterEnd).overlaidOnFieldInput(),
             )
         }
         // Network-not-authorized takes precedence over the number's own error (D1).
@@ -209,7 +226,7 @@ internal fun CmpCardEntry(
                 HiPayStyledField(
                     value = controller.expiry,
                     onValueChange = controller::onExpiryChange,
-                    label = { FieldLabel(cmpString(CardEntryStringKey.LABEL_EXPIRY)) },
+                    label = cmpString(CardEntryStringKey.LABEL_EXPIRY),
                     placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_EXPIRY)) },
                     enabled = enabled,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -233,7 +250,7 @@ internal fun CmpCardEntry(
                         value = controller.cvc,
                         onValueChange = controller::onCvcChange,
                         enabled = enabled && controller.isCvcRequired,
-                        label = { FieldLabel(cmpString(CardEntryStringKey.LABEL_CVV)) },
+                        label = cmpString(CardEntryStringKey.LABEL_CVV),
                         placeholder = { Text(cmpString(CardEntryStringKey.PLACEHOLDER_CVV)) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth().focusRequester(cvcFocus)
@@ -248,10 +265,7 @@ internal fun CmpCardEntry(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
                                 .align(Alignment.CenterEnd)
-                                .layout { measurable, constraints ->
-                                    val placeable = measurable.measure(constraints)
-                                    layout(placeable.width, 0) { placeable.place(0, -placeable.height / 2) }
-                                }
+                                .overlaidOnFieldInput()
                                 // 42dp round tap area = field height, so the ripple stays a circle
                                 // inside the field instead of a 48dp square overflowing it.
                                 .size(42.dp)
@@ -285,14 +299,16 @@ internal fun CmpCardEntry(
 }
 
 /**
- * The two one-click zones sharing one section-header treatment: "Saved cards" (the list of ≤3
- * saved cards, most-recent first) and "New card" (an actionable header whose chevron shows the
- * expanded state). The cells form a single-selection group — exactly one selection at all times
+ * The two one-click zones sharing one section-header treatment: "Saved cards" (the most-recent
+ * `savedCardsDisplayCount` cards, most-recent first) and "New card" (an actionable header whose
+ * chevron shows the expanded state). The cells form a single-selection group — exactly one selection at all times
  * (a card, or "New card"); no visual radio indicator by design.
  *
- * While the new-card branch is active the list collapses to just the most-recent card, and the
- * "Saved cards" header gains its own chevron to re-expand the full list. With a single saved card
- * there is no collapse affordance.
+ * The most-recent `savedCardsDisplayCount` cards are shown (MRU-first, the most recent pre-selected);
+ * when more cards are stored a "Show more / Show less" toggle reveals or hides the rest.
+ * The list force-expands (and "Show less" is disabled) while the selected card sits beyond the fold,
+ * so the paying card is never hidden. Every saved card is retained by the store — the display count
+ * only bounds what is shown by default.
  */
 @Composable
 private fun CmpSavedCardsSections(
@@ -313,17 +329,26 @@ private fun CmpSavedCardsSections(
         }
         return
     }
-    var savedCardsExpanded by rememberSaveable { mutableStateOf(false) }
-    val newCardBranch = controller.selectedSavedCard == null
-    // Each fresh new-card entry starts collapsed: forget a manual re-expand once the branch is left,
-    // so the collapse-to-MRU behaviour never silently stops after the payer expands the list once.
-    LaunchedEffect(newCardBranch) { if (!newCardBranch) savedCardsExpanded = false }
-    val collapsible = newCardBranch && cards.size > 1
-    val showAllCards = !newCardBranch || savedCardsExpanded
-    val visibleCards = if (showAllCards) cards else cards.take(1)
+    // Show the most-recent `displayCount` cards; a "Show more / Show less" toggle reveals or hides
+    // the rest. This bounds only what is shown — every saved card is retained (store cap 20).
+    val displayCount = controller.savedCardsDisplayCount
+    val hasMore = cards.size > displayCount
+    // If the selected card sits beyond the default fold, the list must stay open (the paying card is
+    // never hidden): force-expand and disable "Show less" while that holds. -1 (no saved-card
+    // selection, e.g. the new-card branch) is never beyond the fold.
+    val selectedIndex = cards.indexOfFirst { it == controller.selectedSavedCard }
+    val selectionBeyondFold = selectedIndex >= displayCount
+    // Expansion is DERIVED, never latched: `showAll` holds the payer's own choice and nothing else,
+    // so the forced expansion releases by itself once the selection returns within the fold. The
+    // choice is also dropped outright once the list no longer overflows, otherwise deleting a card
+    // down to the fold and saving a new one later would silently reopen the list unasked.
+    var showAll by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(hasMore) { if (!hasMore) showAll = false }
+    val expanded = showAll || selectionBeyondFold
+    val visibleCards = if (expanded) cards else cards.take(displayCount)
 
-    // Delete is a gesture (long-press) / a11y-action affordance — no visible button. The pending
-    // card drives the confirmation dialog; it lives in the UI, not the controller.
+    // Delete is a gesture (long-press) / a11y-action affordance. The pending card drives the
+    // confirmation dialog; it lives in the UI, not the controller.
     var cardPendingDelete by remember { mutableStateOf<SavedCard?>(null) }
     // Drop a pending confirmation if its card vanishes from the list underneath the open dialog
     // (a concurrent refresh on app-foreground, or an expiry purge) — otherwise the payer would
@@ -334,25 +359,38 @@ private fun CmpSavedCardsSections(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxWidth().selectableGroup(),
     ) {
-        if (collapsible) {
-            CmpSavedCardsCollapsibleHeader(expanded = savedCardsExpanded, enabled = enabled) {
-                savedCardsExpanded = !savedCardsExpanded
-            }
-        } else {
-            CmpSectionHeader(cmpString(CardEntryStringKey.LABEL_SAVED_CARDS))
-        }
+        CmpSectionHeader(cmpString(CardEntryStringKey.LABEL_SAVED_CARDS))
         if (errorSurface == OneClickErrorSurface.SECTION && oneClickError != null) {
             OneClickErrorText(oneClickError.reason.messageKey())
         }
-        visibleCards.forEach { card ->
+        visibleCards.forEachIndexed { index, card ->
             CmpSavedCardCell(
                 controller,
                 card,
+                index,
                 enabled,
                 error = oneClickError?.takeIf {
                     errorSurface == OneClickErrorSurface.INLINE_CARD && it.matches(card)
                 },
-            ) { cardPendingDelete = it }
+            ) { requested, viaAccessibility ->
+                // Confirmation is opt-in (`confirmCardDeletion`), but always on for a screen-reader
+                // request: the custom "Delete" action is a single step with no trash to aim at.
+                if (controller.confirmCardDeletion || viaAccessibility) {
+                    cardPendingDelete = requested
+                } else {
+                    scope.launch { controller.deleteSavedCard(requested) }
+                }
+            }
+        }
+        if (hasMore) {
+            // Persistent disclosure toggle: it stays present across toggles so screen-reader focus is
+            // not dropped and its expanded/collapsed state stays truthful. "Show less" is inert while
+            // the selection sits beyond the fold (collapsing would hide the paying card).
+            CmpShowMoreToggle(
+                expanded = expanded,
+                enabled = if (expanded) enabled && !selectionBeyondFold else enabled,
+                collapseBlocked = selectionBeyondFold,
+            ) { showAll = !showAll }
         }
         CmpNewCardHeader(controller, enabled)
     }
@@ -383,11 +421,13 @@ private fun CmpSavedCardsSections(
 private fun CmpSavedCardCell(
     controller: CmpCardController,
     card: SavedCard,
+    index: Int,
     enabled: Boolean,
     error: OneClickError? = null,
-    onRequestDelete: (SavedCard) -> Unit,
+    onRequestDelete: (SavedCard, viaAccessibility: Boolean) -> Unit,
 ) {
     val display = remember(card) { savedCardDisplay(card) }
+    val haptics = LocalHapticFeedback.current
     val baseA11yLabel = cmpFormat(
         cmpString(CardEntryStringKey.A11Y_SAVED_CARD),
         display.network?.displayName() ?: card.network,
@@ -409,72 +449,126 @@ private fun CmpSavedCardCell(
         else BorderStroke(style.borderWidth.dp, cmpColor(style.borderColor))
     // The cell + its inline error travel as one visual unit (the field error spacing).
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 48.dp)
-                .border(border, cellShape)
-                .background(cmpColor(style.backgroundColor), cellShape)
-                .then(
-                    if (isSelected) {
-                        Modifier.background(
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
-                            cellShape,
-                        )
-                    } else {
-                        Modifier
-                    },
-                )
-                // Tap selects; long-press requests delete (no visible delete button, PM decision).
-                .combinedClickable(
+        // Left-swipe reveals a trailing trash action; tapping it opens the delete confirmation. An
+        // accidental swipe never deletes — only the trash tap (or the retained long-press / a11y
+        // "Delete" action) requests deletion. Reverses the earlier no-visible-delete-button
+        // behaviour.
+        val actionWidthPx = with(LocalDensity.current) { 56.dp.toPx() }
+        var swipeOffset by remember(card) { mutableStateOf(0f) }
+        // The animated position is keyed to the card so a list reorder (after a deletion) starts the
+        // row closed instead of animating the previous row's reveal onto whichever card now sits in
+        // this slot.
+        val reveal = remember(card) { Animatable(0f) }
+        // Reduce-motion (WCAG 2.3.3): snap the reveal to its target instead of sliding it.
+        val reduceMotion = reduceMotionEnabled()
+        LaunchedEffect(swipeOffset) {
+            if (reduceMotion) reveal.snapTo(swipeOffset) else reveal.animateTo(swipeOffset)
+        }
+        val revealOffset = reveal.value
+        // A (re)selection, or the row becoming disabled (payment in flight), snaps the reveal shut.
+        LaunchedEffect(isSelected, enabled) { if (isSelected || !enabled) swipeOffset = 0f }
+        val swipeState = rememberDraggableState { delta ->
+            swipeOffset = (swipeOffset + delta).coerceIn(-actionWidthPx, 0f)
+        }
+        Box(modifier = Modifier.fillMaxWidth()) {
+            // Trash revealed behind the row, pinned to the end — present only while revealed so it
+            // never leaks into the a11y tree at rest (the custom "Delete" action covers a11y).
+            // Gated on the target offset (not the animated one) so it disappears at once when the
+            // reveal is dismissed — never left tappable during the close animation.
+            if (swipeOffset < -1f) {
+                IconButton(
+                    onClick = { swipeOffset = 0f; onRequestDelete(card, false) },
                     enabled = enabled,
-                    onClick = { controller.selectSavedCard(card) },
-                    onLongClick = { onRequestDelete(card) },
-                )
-                // One merged node: "<Network> finishing 1111, expires MM / YYYY, selected" —
-                // the bullet glyphs are never announced. The mandatory "Delete" custom action makes
-                // deletion reachable to screen readers (the long-press gesture is invisible to them).
-                .semantics(mergeDescendants = true) {
-                    contentDescription = a11yLabel
-                    selected = isSelected
-                    // Gated on enabled: while a payment is in flight the delete must be unreachable to
-                    // screen readers too — the long-press is already gated via combinedClickable, and
-                    // this custom action is the only other delete entry point.
-                    customActions =
-                        if (enabled) {
-                            listOf(CustomAccessibilityAction(deleteLabel) { onRequestDelete(card); true })
-                        } else {
-                            emptyList()
-                        }
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .testTag("hipay.card.savedcard.$index.delete"),
+                ) {
+                    Icon(
+                        painter = painterResource(trashIcon),
+                        contentDescription = deleteLabel,
+                        tint = MaterialTheme.colorScheme.error,
+                    )
                 }
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        ) {
-            Image(
-                painter = painterResource(display.network?.iconResource() ?: neutralCardIcon),
-                contentDescription = null, // described by the merged cell node
-                // Brand marks stay full-color; only the neutral fallback glyph takes iconColor.
-                colorFilter = if (display.network == null) {
-                    ColorFilter.tint(cmpColor(style.iconColor))
-                } else {
-                    null
-                },
-                modifier = Modifier.size(width = 32.dp, height = 20.dp),
-            )
-            Column {
-                Text(
-                    display.maskedNumber,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = cmpColor(style.textColor),
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .offset { IntOffset(revealOffset.roundToInt(), 0) }
+                    .draggable(
+                        state = swipeState,
+                        orientation = Orientation.Horizontal,
+                        enabled = enabled,
+                        onDragStopped = {
+                            swipeOffset = if (swipeOffset < -actionWidthPx / 2f) -actionWidthPx else 0f
+                        },
+                    )
+                    .heightIn(min = 48.dp)
+                    .border(border, cellShape)
+                    .background(cmpColor(style.backgroundColor), cellShape)
+                    .then(
+                        if (isSelected) {
+                            Modifier.background(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                                cellShape,
+                            )
+                        } else {
+                            Modifier
+                        },
+                    )
+                    // Tap selects; long-press requests delete (kept as the quick/accessible path).
+                    .combinedClickable(
+                        enabled = enabled,
+                        onClick = { controller.selectSavedCard(card) },
+                        onLongClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            // Long-press REVEALS the trash, exactly like a left-swipe — it never
+                            // deletes. Both gestures land on the same state, the payer then either
+                            // taps the trash (that tap IS the validation) or swipes back to cancel.
+                            swipeOffset = -actionWidthPx
+                        },
+                    )
+                    // One merged node: "<Network> finishing 1111, expires MM / YYYY, selected" — the
+                    // bullet glyphs are never announced. The mandatory "Delete" custom action makes
+                    // deletion reachable to screen readers (swipe + long-press are invisible to them).
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = a11yLabel
+                        selected = isSelected
+                        customActions =
+                            if (enabled) {
+                                listOf(CustomAccessibilityAction(deleteLabel) { onRequestDelete(card, true); true })
+                            } else {
+                                emptyList()
+                            }
+                    }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                Image(
+                    painter = painterResource(display.network?.iconResource() ?: neutralCardIcon),
+                    contentDescription = null, // described by the merged cell node
+                    // Brand marks stay full-color; only the neutral fallback glyph takes iconColor.
+                    colorFilter = if (display.network == null) {
+                        ColorFilter.tint(cmpColor(style.iconColor))
+                    } else {
+                        null
+                    },
+                    modifier = Modifier.size(width = 32.dp, height = 20.dp),
                 )
-                Text(
-                    text = "${card.holder}  ·  ${display.displayExpiry}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = cmpColor(style.placeholderColor),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Column {
+                    Text(
+                        display.maskedNumber,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = cmpColor(style.textColor),
+                    )
+                    Text(
+                        text = "${card.holder}  ·  ${display.displayExpiry}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = cmpColor(style.placeholderColor),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
         error?.let { OneClickErrorText(it.reason.messageKey()) }
@@ -504,25 +598,51 @@ private fun CmpNewCardHeader(controller: CmpCardController, enabled: Boolean) {
     }
 }
 
-/** "Saved cards" header, collapsible in the new-card branch: a button re-expanding the full list. */
+/** "Show more / Show less" disclosure toggle: reveals or hides the saved cards beyond
+ *  the display count. A centered button whose expanded/collapsed state carries the meaning for a11y
+ *  (the chevron is decorative); it stays present across toggles so screen-reader focus is retained.
+ *  When [enabled] is false while expanded, "Show less" is inert (the selection sits beyond the fold);
+ *  [collapseBlocked] then adds the reason to the state description, so a screen-reader user is not
+ *  left with an unexplained dimmed control.
+ *  The test tag mirrors Android's `hipay.card.savedcards.showmore` for a shared UI-test identifier.
+ *  It is a literal because `HiPayCardEntryTags` lives in the Android-only `:hipaycard` module and is
+ *  unreachable from `commonMain`. */
 @Composable
-private fun CmpSavedCardsCollapsibleHeader(expanded: Boolean, enabled: Boolean, onToggle: () -> Unit) {
+private fun CmpShowMoreToggle(
+    expanded: Boolean,
+    enabled: Boolean,
+    collapseBlocked: Boolean,
+    onToggle: () -> Unit,
+) {
     val expandState = cmpString(
         if (expanded) CardEntryStringKey.A11Y_EXPANDED else CardEntryStringKey.A11Y_COLLAPSED,
     )
+    val blockedReason = cmpString(CardEntryStringKey.A11Y_SHOW_LESS_BLOCKED)
+    val stateText = if (collapseBlocked && expanded) "$expandState, $blockedReason" else expandState
     Row(
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally),
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
-            .clickable(enabled = enabled, role = Role.Button) { onToggle() }
-            .semantics(mergeDescendants = true) { stateDescription = expandState },
+            .clickable(enabled = enabled, role = Role.Button, onClick = onToggle)
+            .testTag("hipay.card.savedcards.showmore")
+            .semantics(mergeDescendants = true) { stateDescription = stateText },
     ) {
-        CmpSectionHeader(
-            text = cmpString(CardEntryStringKey.LABEL_SAVED_CARDS),
-            modifier = Modifier.weight(1f),
+        Text(
+            text = cmpString(
+                if (expanded) CardEntryStringKey.LABEL_SHOW_LESS else CardEntryStringKey.LABEL_SHOW_MORE,
+            ),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
         )
-        CmpChevronGlyph(expanded)
+        // Decorative direction cue — collapsed points down (reveal), expanded points up (hide).
+        Text(
+            text = if (expanded) "▴" else "▾",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.clearAndSetSemantics {},
+        )
     }
 }
 
@@ -561,8 +681,15 @@ private fun CmpSaveCardSwitch(controller: CmpCardController, enabled: Boolean) {
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
+            // `indication = null`: the whole row is the toggle's hit area — deliberately, so the
+            // label is tappable and the row is ONE merged accessibility node — but the default
+            // indication draws the press ripple across that entire area, which reads as the line
+            // lighting up rather than as a control being pressed. The Switch keeps its own thumb
+            // indication, which is where the press feedback belongs.
             .toggleable(
                 value = controller.saveCardOptIn,
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
                 enabled = enabled,
                 role = Role.Switch,
                 onValueChange = controller::onSaveCardOptInChange,
@@ -590,26 +717,15 @@ private fun CmpSaveCardSwitch(controller: CmpCardController, enabled: Boolean) {
 }
 
 /**
- * Field label kept on a SINGLE LINE, at the size the decoration box chooses for its state: the full
- * text size while resting inside the field (where it reads as the placeholder's peer) and the smaller
- * floating size once it rises to the top. Overriding the style here would freeze it at the floating
- * size in both states.
+ * Gap between the component's stacked rows.
  *
- * `maxLines = 1` + no soft-wrap are what actually protect the field height: a label longer than its
- * field used to wrap to two lines and inflate that field, breaking the Expiry/CVC row symmetry. It can
- * no longer wrap at any size — a label too wide for its field overflows horizontally instead. The
- * narrow CVC field is the one to watch, which is also why its label is now the "CVV" acronym in every
- * language. Mirrors the Android `FieldLabel`.
+ * Smaller than it looks: each field carries [FLOATING_LABEL_RESERVE] of landing area for its floated
+ * label ON TOP of itself, and that already contributes to the visual separation — a field-to-field gap
+ * reads as gap + reserve. The reserve grew when the label stopped landing on the border, so this
+ * shrank to keep the form from spreading out. It cannot be dropped to zero in exchange: it also
+ * separates the rows that carry no reserve, such as an inline error and the row below it.
  */
-@Composable
-private fun FieldLabel(text: String) {
-    Text(
-        text = text,
-        maxLines = 1,
-        softWrap = false,
-        overflow = TextOverflow.Visible,
-    )
-}
+private val ROW_GAP = 6.dp
 
 @Composable
 private fun NetworkChips(controller: CmpCardController, modifier: Modifier = Modifier) {

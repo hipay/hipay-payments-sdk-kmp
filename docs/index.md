@@ -19,7 +19,8 @@ Headless integrations — no card UI, you drive tokenization and orders yourself
 
 A card-entry component with live validation, network detection and co-branding (CB/BCMC resolved
 against the backend, the domestic network selected by default), FR/EN/IT localization following the
-device locale, an optional visual style contract shared by the three surfaces, and turnkey 3DS.
+device locale, an optional visual style contract shared by the three surfaces, turnkey 3DS, one-click
+payments from a saved-card store, and Apple Pay on iOS.
 
 The card data never leaves the SDK: your app receives a token, never a PAN, and nothing on the card
 path is ever logged.

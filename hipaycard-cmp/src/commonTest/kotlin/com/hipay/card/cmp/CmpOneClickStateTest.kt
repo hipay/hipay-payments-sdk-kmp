@@ -4,6 +4,7 @@ import com.hipay.card.store.SavedCard
 import com.hipay.core.Environment
 import com.hipay.core.HiPayConfig
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -20,6 +21,16 @@ class CmpOneClickStateTest {
             HiPayConfig(username = "u", password = "p", environment = Environment.STAGE),
             oneClickEnabled = oneClickEnabled,
         )
+
+    // The display count is exposed clamped to 1..10 (default 3).
+    @Test
+    fun savedCardsDisplayCount_defaultsToThreeAndClampsToOneToTen() {
+        val cfg = HiPayConfig(username = "u", password = "p", environment = Environment.STAGE)
+        assertEquals(3, CmpCardController(cfg).savedCardsDisplayCount)
+        assertEquals(1, CmpCardController(cfg, savedCardsDisplayCount = 0).savedCardsDisplayCount)
+        assertEquals(10, CmpCardController(cfg, savedCardsDisplayCount = 99).savedCardsDisplayCount)
+        assertEquals(5, CmpCardController(cfg, savedCardsDisplayCount = 5).savedCardsDisplayCount)
+    }
 
     @Test
     fun optInOff_nothingIsSelectedAndNothingLoaded() {

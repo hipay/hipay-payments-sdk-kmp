@@ -5,14 +5,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.hipay.card.CardTokenizer
+import com.hipay.core.callback.hipayCallbackBase
 import com.hipay.card.model.CardInfo
 import com.hipay.card.model.CardToken
+import com.hipay.card.store.DEFAULT_SAVED_CARDS_DISPLAY_COUNT
 import com.hipay.card.store.OneClickError
 import com.hipay.card.store.OneClickErrorReason
 import com.hipay.card.store.SavedCard
 import com.hipay.card.store.SavedCardOutcome
 import com.hipay.card.store.SecureCardStore
 import com.hipay.card.store.cardNoLongerValidOrNull
+import com.hipay.card.store.coerceSavedCardsDisplayCount
 import com.hipay.card.store.oneClickReasonForOutcome
 import com.hipay.card.store.savedCardExpiredNow
 import com.hipay.card.store.savedCardFromToken
@@ -75,11 +78,24 @@ public class CmpCardController(
     /** Optional host scope for the async backend network resolution (@since 0.3.0); when null
      *  the controller owns one (main-immediate) and cancels it in [dispose]. */
     scope: CoroutineScope? = null,
+    /** How many saved cards the one-click UI shows before a "Show more" control.
+     *  Additive, default [DEFAULT_SAVED_CARDS_DISPLAY_COUNT] (3), clamped 1..10; bounds display only
+     *  — every saved card is still persisted. */
+    savedCardsDisplayCount: Int = DEFAULT_SAVED_CARDS_DISPLAY_COUNT,
+    /** Ask the payer to confirm before a saved card is deleted. OFF by default: reaching the trash
+     *  already takes two deliberate steps (left-swipe or long-press, then tapping the trash), so a
+     *  dialog on top adds friction rather than intent. The confirmation is shown REGARDLESS of this
+     *  flag when the request comes from the screen-reader "Delete" action, which is a single step
+     *  with no trash to aim at. */
+    public val confirmCardDeletion: Boolean = false,
     /** Currency the account's accepted card products are resolved for — a contract can differ per
      *  currency, so this should match the currency the order will be created in. Only used for that
      *  resolution; [pay] still takes its own currency. */
     currency: String = "EUR",
 ) {
+    /** The clamped (1..10) saved-cards display count — see the constructor parameter. */
+    public val savedCardsDisplayCount: Int = coerceSavedCardsDisplayCount(savedCardsDisplayCount)
+
     // Held under its own name: `pay()` has a `currency` parameter of its own, and a property it
     // silently shadowed would be a trap for the next reader.
     private val accountCurrency: String = currency
@@ -674,7 +690,7 @@ public class CmpCardController(
             cvc = if (isCvcRequired) cvc else "",
             multiUse = effectiveSave,
         )
-        val base = "$redirectScheme://hipay-fullservice/gateway/orders/$orderId"
+        val base = hipayCallbackBase(redirectScheme, orderId)
         val order = OrderRequest(
             orderId = orderId,
             paymentProduct = product,
@@ -692,6 +708,10 @@ public class CmpCardController(
             cardToken = token.token,
             eci = 7,
             authenticationIndicator = authenticationIndicator,
+            // Declared on the FIRST order too when the payer is saving the card, not only on the
+            // later payments made FROM it: the gateway is told this order enrols a card-on-file, so
+            // it has no reason to fall back on another classification for a reusable token.
+            oneClick = effectiveSave,
         )
         val transaction = gateway.requestNewOrder(order, signature)
         // Clear sensitive/derived state after a successful order (parity with :hipaycard).
@@ -703,7 +723,7 @@ public class CmpCardController(
 
         val final = resolve3DS(transaction, redirectScheme, signature, threeDS)
         if (effectiveSave) {
-            persistSavedCard(token, final)
+            persistSavedCard(token, final, product)
             if (final.state == TransactionState.COMPLETED) {
                 saveCardOptIn = false // consent is per-transaction
                 reloadQuietly(reselectMostRecent = true) // the new card appears, pre-selected for the next payment
@@ -746,7 +766,7 @@ public class CmpCardController(
         val expiredAtAttempt = savedCardExpiredNow(card)
         isProcessing = true
         try {
-            val base = "$redirectScheme://hipay-fullservice/gateway/orders/$orderId"
+            val base = hipayCallbackBase(redirectScheme, orderId)
             val order = OrderRequest(
                 orderId = orderId,
                 paymentProduct = savedCardPaymentProduct(card),
@@ -818,9 +838,15 @@ public class CmpCardController(
      * Persist the tokenized card after a COMPLETED payment; never throws (the payment already
      * settled). Records the outcome in [lastSaveOutcome].
      */
-    private suspend fun persistSavedCard(token: CardToken, transaction: Transaction) {
+    private suspend fun persistSavedCard(
+        token: CardToken,
+        transaction: Transaction,
+        paymentProduct: String,
+    ) {
         if (transaction.state != TransactionState.COMPLETED) return
-        val card = savedCardFromToken(token)
+        // The ROUTED product, not the token brand: they differ on a co-branded card, and the stored
+        // value is what the later one-click order re-sends as its own `payment_product`.
+        val card = savedCardFromToken(token, paymentProduct)
         if (card == null) {
             lastSaveOutcome = SavedCardOutcome.NOT_ELIGIBLE
             return

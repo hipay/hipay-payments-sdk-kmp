@@ -2,6 +2,7 @@ package com.hipay.card.cmp
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import com.hipay.card.store.DEFAULT_SAVED_CARDS_DISPLAY_COUNT
 import com.hipay.card.store.SavedCard
 import com.hipay.card.style.HiPayCardEntryStyle
 import com.hipay.card.store.SavedCardOutcome
@@ -26,6 +27,18 @@ expect class HiPayCardController(
     /** Explicit integrator opt-in for the one-click (saved cards) UI — off by default: without it
      *  the component renders and behaves exactly as before and no card store is ever created. */
     oneClickEnabled: Boolean = false,
+    /** How many saved cards the one-click UI shows before a "Show more" control. Clamped 1..10;
+     *  bounds the DISPLAY only — every saved card is still persisted. */
+    savedCardsDisplayCount: Int = DEFAULT_SAVED_CARDS_DISPLAY_COUNT,
+    /** Ask the payer to confirm before a saved card is deleted. OFF by default: reaching the trash
+     *  already takes two deliberate steps (left-swipe or long-press, then tapping the trash), so a
+     *  dialog on top adds friction rather than intent. The confirmation is shown REGARDLESS of this
+     *  flag when the request comes from the screen-reader "Delete" action, which is a single step
+     *  with no trash to aim at. */
+    confirmCardDeletion: Boolean = false,
+    /** Currency the account's accepted card products are resolved for — a contract can differ per
+     *  currency, so this should match the currency the order will be created in. */
+    currency: String = "EUR",
 ) {
     /** True when every required field is valid, or a saved card is selected (Compose-observable). */
     val canPay: Boolean
@@ -128,6 +141,10 @@ expect class HiPayCardController(
 
 /**
  * Shared card-entry composable. Call from your CMP `commonMain`.
+ *
+ * Scrolling is the HOST's job: this never scrolls itself. With one-click enabled the payer can reveal
+ * every stored card at once ("Show more"), so place it inside a `verticalScroll` container or the
+ * controls below the list can end up unreachable.
  *
  * @param localeOverride optional ISO language ("fr"/"en"/"it"); null → device locale. An
  * unsupported language (anything else, e.g. "de") falls back to English — not to the device

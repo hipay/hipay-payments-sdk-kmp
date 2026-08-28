@@ -13,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.hipay.core.callback.CallbackUrlParser
+import com.hipay.core.callback.hipayCallbackBase
 import com.hipay.card.validation.CardEntryStringKey
 import com.hipay.card.validation.CardFieldValidation
 import com.hipay.card.validation.CardNetwork
@@ -22,12 +23,14 @@ import com.hipay.card.validation.CardValidators
 import com.hipay.card.validation.ValidationReason
 import com.hipay.card.validation.AllowedNetworks
 import com.hipay.card.model.CardToken
+import com.hipay.card.store.DEFAULT_SAVED_CARDS_DISPLAY_COUNT
 import com.hipay.card.store.OneClickError
 import com.hipay.card.store.OneClickErrorReason
 import com.hipay.card.store.SavedCard
 import com.hipay.card.store.SavedCardOutcome
 import com.hipay.card.store.SecureCardStore
 import com.hipay.card.store.cardNoLongerValidOrNull
+import com.hipay.card.store.coerceSavedCardsDisplayCount
 import com.hipay.card.store.createSecureCardStore
 import com.hipay.card.store.oneClickReasonForOutcome
 import com.hipay.card.store.savedCardExpiredNow
@@ -79,11 +82,24 @@ public class HiPayCardEntryController(
      *  Headless-host note: once [refreshSavedCards] has pre-selected a saved card, a plain [pay]
      *  call routes to that stored token (no CVV) — call [selectNewCard] first to force card entry. */
     public val oneClickEnabled: Boolean = false,
+    /** How many saved cards the one-click UI shows before a "Show more" control.
+     *  Additive, defaulted to [DEFAULT_SAVED_CARDS_DISPLAY_COUNT] (3), clamped to 1..10. Bounds only
+     *  the DISPLAY — every saved card is still persisted (see the storage cap in SecureCardStore). */
+    savedCardsDisplayCount: Int = DEFAULT_SAVED_CARDS_DISPLAY_COUNT,
+    /** Ask the payer to confirm before a saved card is deleted. OFF by default: reaching the trash
+     *  already takes two deliberate steps (left-swipe or long-press, then tapping the trash), so a
+     *  dialog on top adds friction rather than intent. Turn it on if your checkout wants the extra
+     *  guard. The confirmation is shown REGARDLESS of this flag when the request comes from the
+     *  screen-reader "Delete" action, which is a single step with no trash to aim at. */
+    public val confirmCardDeletion: Boolean = false,
     /** Currency the account's accepted card products are resolved for — a contract can differ per
      *  currency, so this should match the currency the order will be created in. Only used for that
      *  resolution; [pay] still takes its own currency. */
     currency: String = "EUR",
 ) {
+    /** The clamped (1..10) saved-cards display count — see the constructor parameter. */
+    public val savedCardsDisplayCount: Int = coerceSavedCardsDisplayCount(savedCardsDisplayCount)
+
     // Held under its own name: `pay()` has a `currency` parameter of its own, and a property it
     // silently shadowed would be a trap for the next reader.
     private val accountCurrency: String = currency
@@ -294,9 +310,12 @@ public class HiPayCardEntryController(
         applicationContext: Context,
         token: CardToken,
         transaction: Transaction,
+        paymentProduct: String,
     ) {
         if (transaction.state != TransactionState.COMPLETED) return
-        val card = savedCardFromToken(token)
+        // The ROUTED product, not the token brand: they differ on a co-branded card, and the stored
+        // value is what the later one-click order re-sends as its own `payment_product`.
+        val card = savedCardFromToken(token, paymentProduct)
         if (card == null) {
             lastSaveOutcome = SavedCardOutcome.NOT_ELIGIBLE
             return
@@ -767,7 +786,7 @@ public class HiPayCardEntryController(
             cvc = if (isCvcRequired) cvc else "",
             multiUse = effectiveSave,
         )
-        val base = "$redirectScheme://hipay-fullservice/gateway/orders/$orderId"
+        val base = hipayCallbackBase(redirectScheme, orderId)
         val order = OrderRequest(
             orderId = orderId,
             paymentProduct = product,
@@ -785,6 +804,10 @@ public class HiPayCardEntryController(
             cardToken = token.token,
             eci = 7,
             authenticationIndicator = authenticationIndicator,
+            // Declared on the FIRST order too when the payer is saving the card, not only on the
+            // later payments made FROM it: the gateway is told this order enrols a card-on-file, so
+            // it has no reason to fall back on another classification for a reusable token.
+            oneClick = effectiveSave,
         )
         val transaction = gateway.requestNewOrder(order, signature)
         // Clear sensitive/derived state after a successful order (code-review 7.2): PAN, CVC,
@@ -807,7 +830,7 @@ public class HiPayCardEntryController(
 
         val final = present3DSAndAwait(transaction, signature, autoPresent3DS)
         if (storeContext != null) {
-            persistSavedCard(storeContext, token, final)
+            persistSavedCard(storeContext, token, final, product)
             if (final.state == TransactionState.COMPLETED) {
                 saveCardOptIn = false // consent is per-transaction
                 reloadQuietly(reselectMostRecent = true) // the new card appears, pre-selected for the next payment
@@ -892,7 +915,7 @@ public class HiPayCardEntryController(
         val expiredAtAttempt = savedCardExpiredNow(card)
         isProcessing = true
         try {
-            val base = "$redirectScheme://hipay-fullservice/gateway/orders/$orderId"
+            val base = hipayCallbackBase(redirectScheme, orderId)
             val order = OrderRequest(
                 orderId = orderId,
                 paymentProduct = savedCardPaymentProduct(card),

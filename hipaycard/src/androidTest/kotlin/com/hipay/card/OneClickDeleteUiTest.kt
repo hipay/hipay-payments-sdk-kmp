@@ -8,6 +8,7 @@ import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeRight
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.hipay.card.store.SavedCard
@@ -84,32 +85,66 @@ class OneClickDeleteUiTest {
     private fun countTag(tag: String): Int =
         composeRule.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().size
 
+    // Long-press REVEALS the trash, exactly like a left-swipe — it never deletes on its own. The
+    // trash tap is what validates, and by default no dialog is layered on top of it.
     @Test
-    fun longPressThenConfirm_deletesTheCard() {
+    fun longPressRevealsTrash_thenTappingItDeletes() {
         seedCards()
         val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
         awaitSections()
-        // Long-press the 2nd cell (CARD TWO / 2222) → confirmation appears.
+        assertEquals(0, countTag(HiPayCardEntryTags.savedCardDelete(1))) // nothing revealed at rest
         composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(1)).performTouchInput { longClick() }
-        composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_DELETE).assertIsDisplayed()
-        composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_DELETE).performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            countTag(HiPayCardEntryTags.savedCardDelete(1)) == 1
+        }
+        // The long press alone must not have asked for anything.
+        assertEquals(3, controller.savedCards.size)
+        assertEquals(0, countTag(HiPayCardEntryTags.CONFIRM_DELETE))
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCardDelete(1)).performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) { controller.savedCards.size == 2 }
-        assertEquals(2, controller.savedCards.size)
         assertTrue(controller.savedCards.none { it.maskedPan == "510510xxxxxx2222" })
     }
 
+    // The revealed trash is cancelled by swiping the row back, not by a dialog button.
     @Test
-    fun longPressThenCancel_keepsTheCard() {
+    fun longPressRevealsTrash_andSwipingBackCancels() {
         seedCards()
         val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
         awaitSections()
         composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(1)).performTouchInput { longClick() }
-        composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_CANCEL).performClick()
-        composeRule.waitForIdle()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            countTag(HiPayCardEntryTags.savedCardDelete(1)) == 1
+        }
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(1)).performTouchInput { swipeRight() }
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            countTag(HiPayCardEntryTags.savedCardDelete(1)) == 0
+        }
         assertEquals(3, controller.savedCards.size) // nothing removed
-        assertEquals(0, countTag(HiPayCardEntryTags.CONFIRM_DELETE)) // dialog dismissed
+    }
+
+    // Opting in puts the dialog back — on the trash tap, which is the validating step.
+    @Test
+    fun confirmCardDeletionOptIn_asksBeforeDeleting() {
+        seedCards()
+        val controller = HiPayCardEntryController(
+            config,
+            oneClickEnabled = true,
+            confirmCardDeletion = true,
+        ).withOfflineCeiling()
+        composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
+        awaitSections()
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(1)).performTouchInput { longClick() }
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            countTag(HiPayCardEntryTags.savedCardDelete(1)) == 1
+        }
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCardDelete(1)).performClick()
+        composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_DELETE).assertIsDisplayed()
+        assertEquals(3, controller.savedCards.size) // not yet
+        composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_DELETE).performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) { controller.savedCards.size == 2 }
+        assertTrue(controller.savedCards.none { it.maskedPan == "510510xxxxxx2222" })
     }
 
     @Test
@@ -120,7 +155,10 @@ class OneClickDeleteUiTest {
         awaitSections()
         // savedCard(0) is the pre-selected MRU. Deleting it must drop the selection to new-card.
         composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).performTouchInput { longClick() }
-        composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_DELETE).performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            countTag(HiPayCardEntryTags.savedCardDelete(0)) == 1
+        }
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCardDelete(0)).performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) { controller.savedCards.size == 2 }
         assertNull(controller.selectedSavedCard) // new-card branch, not the next card
         composeRule.onNodeWithTag(HiPayCardEntryTags.HOLDER).assertIsDisplayed() // fields shown
@@ -133,7 +171,10 @@ class OneClickDeleteUiTest {
         composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
         awaitSections()
         composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).performTouchInput { longClick() }
-        composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_DELETE).performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            countTag(HiPayCardEntryTags.savedCardDelete(0)) == 1
+        }
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCardDelete(0)).performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) { controller.savedCards.isEmpty() }
         // No-card state: no cells, fields + save switch only.
         assertEquals(0, countTag(HiPayCardEntryTags.savedCard(0)))
@@ -142,7 +183,7 @@ class OneClickDeleteUiTest {
     }
 
     @Test
-    fun cellExposesDeleteCustomAction_whichOpensTheConfirmation() {
+    fun cellExposesDeleteCustomAction_whichAlwaysConfirms() {
         seedCard()
         val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
@@ -150,7 +191,8 @@ class OneClickDeleteUiTest {
         // The mandatory a11y custom action exists (the only delete path for screen readers)…
         val node = composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).fetchSemanticsNode()
         val delete = node.config[SemanticsActions.CustomActions].first { it.label == "Delete card" }
-        // …and invoking it opens the same confirmation.
+        // …and it ALWAYS confirms, whatever `confirmCardDeletion` says: a screen reader has no
+        // trash to aim at and no reverse swipe, so this path is a single step with no safety net.
         composeRule.runOnUiThread { delete.action?.invoke() }
         composeRule.onNodeWithTag(HiPayCardEntryTags.CONFIRM_DELETE).assertIsDisplayed()
     }

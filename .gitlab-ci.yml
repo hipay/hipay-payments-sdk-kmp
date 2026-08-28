@@ -57,17 +57,110 @@ include:
     inputs:
       template_version: "1.4.0"
 
+  # AI MR review (Cursor CLI + MCP GitLab + Atlassian Rovo). Manual-only, `allow_failure: true`:
+  # it can never block a release pipeline. The job reviews the MERGE REQUEST diff, so it only has
+  # something to say when an MR is open for the branch.
+  #
+  # SCOPE WARNING for this monorepo: the Swift sources live in the `HiPay_Payments_SDK_iOS`
+  # submodule, and a merge-request diff renders a submodule as a single pointer line. This job
+  # therefore reviews the Kotlin/Gradle/docs surface ONLY — the Swift surface needs its own MR in
+  # the iOS project, which carries the same component.
+  - component: $CI_SERVER_FQDN/common/ci-components/ai-review-component/ai-review@2.3.0
+    inputs:
+      gitlab_private_token: $AI_REVIEW_GITLAB_TOKEN
+
 # Overrides the template's `workflow:` (which would create a pipeline on EVERY push).
-# This project has no build/test stage yet, so anything outside a tag or a release branch
-# would produce a jobless pipeline.
+# Outside a tag or a release branch this project has no build/test stage, so a push would
+# otherwise produce a jobless pipeline — except on `feature/*` and `hotfix/*`, which carry the
+# manual `ai-review` job and must be allowed to create one.
 workflow:
   rules:
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_REF_NAME =~ /^(release|hotfix)\/\d+\.\d+\.\d+$/
+    - if: $CI_COMMIT_REF_NAME =~ /^(feature|hotfix)\//
     - when: never
 
 stages:
+  - review
   - release
+  - docs
+
+# Versioned documentation site.
+#
+# `mike` keeps ONE SUBTREE PER VERSION on the `gh-pages` branch plus a `versions.json` the
+# Material theme reads to build its selector. It APPENDS to that branch, so the job must fetch
+# the existing `gh-pages` first — starting from nothing would wipe every previously published
+# version.
+#
+# `gh-pages` lives on GitLab and reaches GitHub through the repository mirror, which serves it
+# via GitHub Pages. It must therefore be a PROTECTED branch, otherwise the mirror (restricted to
+# protected branches) leaves it behind. It is written only by this job — never by hand.
+#
+# Docker/Linux runner: unlike `publish-release`, nothing here needs macOS.
+pages-deploy:
+  stage: docs
+  image: python:3.12-slim
+  rules:
+    # Stable tags only. An RC must never move `latest`.
+    - if: '$CI_COMMIT_TAG =~ /^[0-9]+\.[0-9]+\.[0-9]+$/'
+      when: manual
+      allow_failure: false
+  variables:
+    GIT_DEPTH: "0"
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq git >/dev/null
+    - pip install --quiet -r docs/requirements.txt
+    - git config user.email "pi-ecommerce@hipay.com"
+    - git config user.name "HiPay Mobile SDK CI"
+    # Push over HTTPS with a token that can write to the repository; CI_JOB_TOKEN cannot.
+    - git remote set-url origin "https://oauth2:${GITLAB_DOCS_TOKEN}@${CI_SERVER_HOST}/${CI_PROJECT_PATH}.git"
+    # Bring the published versions into the local branch, or mike would publish this one alone.
+    #
+    # An UNREACHABLE branch must NOT be mistaken for an ABSENT one. A bare `|| echo` swallows both,
+    # and the difference matters: absent is a legitimate first deploy, unreachable (expired
+    # GITLAB_DOCS_TOKEN, branch protection, network) means the published versions are simply not
+    # here — after which mike republishes this version alone and the site loses every release,
+    # with a GREEN pipeline. `ls-remote --exit-code` answers 2 for "no such ref" and 128 for a real
+    # failure, which is exactly the distinction needed.
+    - |
+      rc=0
+      git ls-remote --exit-code --heads origin gh-pages >/dev/null 2>&1 || rc=$?
+      case "$rc" in
+        0) echo "gh-pages found — fetching the published versions"
+           git fetch origin gh-pages:gh-pages ;;
+        2) echo "no gh-pages branch yet — this deploy creates it" ;;
+        *) echo "FATAL: cannot reach gh-pages (git ls-remote exit $rc)." >&2
+           echo "Refusing to deploy: mike would republish $CI_COMMIT_TAG alone and drop every" >&2
+           echo "previously published version. Check GITLAB_DOCS_TOKEN and branch protection." >&2
+           exit 1 ;;
+      esac
+    # Snapshot of what is already published, to assert the deploy was additive.
+    - git show gh-pages:versions.json > /tmp/versions-before.json 2>/dev/null || echo '[]' > /tmp/versions-before.json
+  script:
+    # Deploy WITHOUT --push: mike appends to gh-pages, but a destructive deploy pushed straight away
+    # is irreversible by the time anything can check it. Local first, assert, then push.
+    # --update-aliases moves `latest` onto this version; --strict fails the build on a broken link.
+    - mike deploy --update-aliases "$CI_COMMIT_TAG" latest -- --strict
+    # Makes the site root redirect to `latest` instead of listing bare directories.
+    - mike set-default latest
+    # The guarantee: no previously published version may disappear. This is what turns a silent
+    # site wipe into a failed job.
+    - |
+      git show gh-pages:versions.json > /tmp/versions-after.json
+      python - <<'PY'
+      import json, sys
+
+      def versions(path):
+          with open(path) as f:
+              return {entry["version"] for entry in json.load(f)}
+
+      before, after = versions("/tmp/versions-before.json"), versions("/tmp/versions-after.json")
+      lost = sorted(before - after)
+      if lost:
+          sys.exit(f"FATAL: this deploy would drop published versions {lost} — nothing pushed.")
+      print(f"additive deploy OK — versions on the site: {sorted(after)}")
+      PY
+    - git push origin gh-pages
 
 publish-release:
   stage: release
@@ -117,7 +210,7 @@ publish-release:
         || gh release create "$CI_COMMIT_TAG" --repo "$GITHUB_SPM_REPO" --verify-tag \
              --title "$CI_COMMIT_TAG" --notes-file release_changelog.txt
       gh release upload "$CI_COMMIT_TAG" --repo "$GITHUB_SPM_REPO" \
-        build-output-local/spm/HiPayFullservice.xcframework.zip \
+        build-output-local/spm/HiPayPayments.xcframework.zip \
         build-output-local/spm/Package.swift \
         build-output-local/spm/checksum.txt
     - |

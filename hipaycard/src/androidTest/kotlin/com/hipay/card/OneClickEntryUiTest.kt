@@ -4,6 +4,8 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
@@ -14,8 +16,12 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
+import androidx.compose.ui.test.swipeRight
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.hipay.card.store.MAX_SAVED_CARDS_DISPLAY_COUNT
 import com.hipay.card.store.SavedCard
 import com.hipay.card.store.createSecureCardStore
 import com.hipay.core.Environment
@@ -107,8 +113,6 @@ class OneClickEntryUiTest {
         // "New card" is a button that reads its expanded/collapsed state (no radio selection).
         composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD)
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "collapsed"))
-        // A single card has no collapsible "Saved cards" header (identical to the single-card layout).
-        assertEquals(0, countTag(HiPayCardEntryTags.SAVED_CARDS_HEADER))
         // Bullet-masked display, last4 only — the BIN never shows.
         composeRule.onNodeWithText("•••• •••• •••• 1111").assertIsDisplayed()
         // Entry fields are not rendered while the saved card is selected.
@@ -183,47 +187,6 @@ class OneClickEntryUiTest {
     }
 
     @Test
-    fun newCardBranch_collapsesListToMru_andHeaderChevronReexpands() {
-        seedCards()
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
-        composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
-        awaitSections()
-
-        // Enter the new-card branch: the list collapses to the single most-recent card,
-        // the "Saved cards" header becomes a collapsed button.
-        composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD).performClick()
-        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(0)))
-        assertEquals(0, countTag(HiPayCardEntryTags.savedCard(1))) // collapsed away
-        composeRule.onNodeWithTag(HiPayCardEntryTags.SAVED_CARDS_HEADER)
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "collapsed"))
-
-        // Re-expand via the header: the full list comes back, header reads "expanded".
-        composeRule.onNodeWithTag(HiPayCardEntryTags.SAVED_CARDS_HEADER).performClick()
-        composeRule.onNodeWithTag(HiPayCardEntryTags.SAVED_CARDS_HEADER)
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "expanded"))
-        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(1)))
-        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(2)))
-    }
-
-    @Test
-    fun reenteringNewCard_afterAManualReexpand_collapsesTheListAgain() {
-        seedCards()
-        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
-        composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
-        awaitSections()
-        // Enter new-card, manually re-expand the list, then pick a card (leaves the new-card branch).
-        composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD).performClick()
-        composeRule.onNodeWithTag(HiPayCardEntryTags.SAVED_CARDS_HEADER).performClick() // expand
-        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(1)))
-        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(1)).performClick() // → saved-card branch
-        // Re-enter new-card: the list must collapse again (the manual expand was forgotten).
-        composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD).performClick()
-        assertEquals(0, countTag(HiPayCardEntryTags.savedCard(1)))
-        composeRule.onNodeWithTag(HiPayCardEntryTags.SAVED_CARDS_HEADER)
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "collapsed"))
-    }
-
-    @Test
     fun saveSwitch_togglesConsentState() {
         seedCard()
         val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
@@ -236,4 +199,174 @@ class OneClickEntryUiTest {
         composeRule.onNodeWithTag(HiPayCardEntryTags.SAVE_SWITCH).assertIsOn()
         assertTrue(controller.saveCardOptIn)
     }
+
+    // Left-swipe reveals a trash action; confirming deletes, an accidental swipe alone
+    // never does. No trash is shown at rest (reverses hidden delete — now visible on swipe).
+    @Test
+    fun swipeRevealsTrash_thenTapDeletesCard() {
+        seedNCards(2) // both fit the default display count of 3
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
+        composeRule.setContent { HiPayCardEntry(controller) }
+        awaitSections()
+        val before = controller.savedCards.size
+        // Which card must survive — asserting only the count would pass even if the WRONG card went.
+        val swiped = controller.savedCards[0]
+        val survivor = controller.savedCards[1]
+        assertEquals(0, countTag(HiPayCardEntryTags.savedCardDelete(0))) // no trash at rest
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).performTouchInput { swipeLeft() }
+        composeRule.waitUntil(5_000) { countTag(HiPayCardEntryTags.savedCardDelete(0)) == 1 }
+        // No dialog by default: the swipe plus this tap are already two deliberate steps.
+        assertEquals(0, countTag(HiPayCardEntryTags.CONFIRM_DELETE))
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCardDelete(0)).performClick()
+        composeRule.waitUntil(5_000) { controller.savedCards.size == before - 1 }
+        assertEquals(listOf(survivor), controller.savedCards)
+        assertEquals(false, controller.savedCards.contains(swiped))
+    }
+
+    @Test
+    fun swipeRevealsTrash_reverseSwipeKeepsCard() {
+        seedNCards(2)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
+        composeRule.setContent { HiPayCardEntry(controller) }
+        awaitSections()
+        val cardsBefore = controller.savedCards
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).performTouchInput { swipeLeft() }
+        composeRule.waitUntil(5_000) { countTag(HiPayCardEntryTags.savedCardDelete(0)) == 1 }
+        // Cancelling is swiping the row back — there is no dialog to dismiss any more.
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).performTouchInput { swipeRight() }
+        composeRule.waitUntil(5_000) { countTag(HiPayCardEntryTags.savedCardDelete(0)) == 0 }
+        // Deletion is asynchronous: settle before asserting, or this would pass even if the swipe
+        // had wrongly enqueued one.
+        composeRule.waitForIdle()
+        assertEquals(cardsBefore, controller.savedCards)
+    }
+
+    // collapse-to-MRU model is replaced by a display count + a "Show more / Show less" toggle.
+    @Test
+    fun showMore_togglesCardsBeyondTheDefaultDisplayCount() {
+        seedNCards(4) // default display count = 3
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
+        composeRule.setContent { HiPayCardEntry(controller) }
+        awaitSections()
+        // The first 3 (MRU-first) show; the 4th is behind "Show more".
+        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(0)))
+        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(2)))
+        assertEquals(0, countTag(HiPayCardEntryTags.savedCard(3)))
+        assertEquals(1, countTag(HiPayCardEntryTags.SHOW_MORE))
+        // Expand: the rest appears and the toggle STAYS present (now "Show less").
+        composeRule.onNodeWithTag(HiPayCardEntryTags.SHOW_MORE).performClick()
+        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(3)))
+        assertEquals(1, countTag(HiPayCardEntryTags.SHOW_MORE))
+        // Collapse again: the 4th hides, the toggle stays.
+        composeRule.onNodeWithTag(HiPayCardEntryTags.SHOW_MORE).performClick()
+        assertEquals(0, countTag(HiPayCardEntryTags.savedCard(3)))
+        assertEquals(1, countTag(HiPayCardEntryTags.SHOW_MORE))
+    }
+
+    // The paying card is never hidden — selecting a card beyond the default fold force-expands the
+    // list and disables "Show less" until a card within the fold is selected.
+    @Test
+    fun selectingCardBeyondFold_forcesExpandAndDisablesShowLess() {
+        seedNCards(4) // default display count = 3
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
+        composeRule.setContent { HiPayCardEntry(controller) }
+        awaitSections()
+        // Expand, then select the 4th card (index 3, beyond the fold of 3).
+        composeRule.onNodeWithTag(HiPayCardEntryTags.SHOW_MORE).performClick()
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(3)).performClick()
+        assertEquals(controller.savedCards[3], controller.selectedSavedCard)
+        // The list stays expanded (4th visible) and "Show less" is disabled.
+        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(3)))
+        composeRule.onNodeWithTag(HiPayCardEntryTags.SHOW_MORE).assertIsNotEnabled()
+        // Selecting a card within the fold re-enables "Show less".
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).performClick()
+        composeRule.onNodeWithTag(HiPayCardEntryTags.SHOW_MORE).assertIsEnabled()
+    }
+
+    @Test
+    fun showMore_absentWhenAllCardsFitTheDisplayCount() {
+        seedCards() // 3 cards, default display count 3 → nothing hidden
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
+        composeRule.setContent { HiPayCardEntry(controller) }
+        awaitSections()
+        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(2)))
+        assertEquals(0, countTag(HiPayCardEntryTags.SHOW_MORE))
+    }
+
+    // A forced expansion is DERIVED from the selection, not latched: once the selection returns within
+    // the fold the list collapses again, because the payer never asked for it to be open. Distinct from
+    // `selectingCardBeyondFold_...`, where the payer DID tap "Show more" first and it must stay open.
+    @Test
+    fun forcedExpansion_releasesWhenTheSelectionReturnsWithinTheFold() {
+        seedNCards(4) // default display count = 3
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
+        composeRule.setContent { HiPayCardEntry(controller) }
+        awaitSections()
+        assertEquals(0, countTag(HiPayCardEntryTags.savedCard(3))) // collapsed, never toggled
+        // Host-driven selection of a card beyond the fold (the public headless path).
+        composeRule.runOnIdle { controller.selectSavedCard(controller.savedCards[3]) }
+        composeRule.waitUntil(5_000) { countTag(HiPayCardEntryTags.savedCard(3)) == 1 }
+        composeRule.onNodeWithTag(HiPayCardEntryTags.SHOW_MORE).assertIsNotEnabled()
+        // Back within the fold: the list collapses on its own and "Show less" is usable again.
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).performClick()
+        composeRule.waitUntil(5_000) { countTag(HiPayCardEntryTags.savedCard(3)) == 0 }
+        composeRule.onNodeWithTag(HiPayCardEntryTags.SHOW_MORE).assertIsEnabled()
+    }
+
+    // With a single card the screen carries no disclosure control at all.
+    @Test
+    fun showMore_absentWithASingleCard() {
+        seedNCards(1)
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
+        composeRule.setContent { HiPayCardEntry(controller) }
+        awaitSections()
+        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(0)))
+        assertEquals(0, countTag(HiPayCardEntryTags.SHOW_MORE))
+    }
+
+    // The UPPER bound reaches the rendered list, not just the controller property: an over-large count
+    // clamps to 10, which still exceeds the 4 stored cards, so nothing is hidden.
+    @Test
+    fun displayCountAboveTheUpperBound_clampsAndHidesNothing() {
+        seedNCards(4)
+        val controller =
+            HiPayCardEntryController(config, oneClickEnabled = true, savedCardsDisplayCount = 99)
+                .withOfflineCeiling()
+        // The controller clamped it (the rendered assertions below cannot tell 10 from 99 on their own).
+        assertEquals(MAX_SAVED_CARDS_DISPLAY_COUNT, controller.savedCardsDisplayCount)
+        composeRule.setContent { HiPayCardEntry(controller) }
+        awaitSections()
+        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(3)))
+        assertEquals(0, countTag(HiPayCardEntryTags.SHOW_MORE))
+    }
+
+    @Test
+    fun customDisplayCount_boundsTheVisibleList() {
+        seedCards() // 3 cards
+        val controller =
+            HiPayCardEntryController(config, oneClickEnabled = true, savedCardsDisplayCount = 1).withOfflineCeiling()
+        composeRule.setContent { HiPayCardEntry(controller) }
+        awaitSections()
+        assertEquals(1, countTag(HiPayCardEntryTags.savedCard(0)))
+        assertEquals(0, countTag(HiPayCardEntryTags.savedCard(1))) // hidden behind Show more
+        assertEquals(1, countTag(HiPayCardEntryTags.SHOW_MORE))
+    }
+
+    /** Seeds [n] distinct cards in order → the store's MRU-first list is [n-1 … 0]. */
+    private fun seedNCards(n: Int) = runBlocking(Dispatchers.IO) {
+        val store = createSecureCardStore(context, config)
+        repeat(n) { i ->
+            assertTrue(
+                store.save(
+                    SavedCard(
+                        token = i.toString().repeat(64),
+                        maskedPan = "411111xxxxxx${1000 + i}",
+                        network = "VISA", holder = "CARD $i", expiryMonth = "12", expiryYear = "2031",
+                    ),
+                    consentGiven = true,
+                ),
+            )
+        }
+    }
+
 }

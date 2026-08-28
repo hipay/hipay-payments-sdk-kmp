@@ -11,7 +11,7 @@ SwiftUI card-entry + headless payment over a binary KMP `XCFramework`, exposed b
 - Two SPM products: `HiPayCore` (headless) and `HiPayCard` (UI), both resolved from the package below
 
 > **Why isn't `HiPayCard` in the `.xcframework`?** The `.xcframework` is **only** the compiled
-> KMP/Kotlin core (`HiPayFullservice`). `HiPayCore`/`HiPayCard` are the **hand-written Swift facade
+> KMP/Kotlin core (`HiPayPayments`). `HiPayCore`/`HiPayCard` are the **hand-written Swift facade
 > (D4)** — Swift *source*, shipped in the package, depending on the binary. They cannot live inside a
 > KMP-compiled framework.
 
@@ -19,13 +19,13 @@ SwiftUI card-entry + headless payment over a binary KMP `XCFramework`, exposed b
 
 In Xcode: **File ▸ Add Package Dependencies…**, enter
 `https://github.com/hipay/hipay-payments-sdk-ios`, choose **Up to Next Major Version** from
-**1.0.0**, then add the **`HiPayCore`** and **`HiPayCard`** products to your target.
+**1.1.0**, then add the **`HiPayCore`** and **`HiPayCard`** products to your target.
 
 From a `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/hipay/hipay-payments-sdk-ios.git", from: "1.0.0")
+    .package(url: "https://github.com/hipay/hipay-payments-sdk-ios.git", from: "1.1.0")
 ],
 targets: [
     .target(name: "YourApp", dependencies: [
@@ -35,7 +35,7 @@ targets: [
 ]
 ```
 
-> SwiftPM downloads the compiled `HiPayFullservice.xcframework` from the release assets and verifies
+> SwiftPM downloads the compiled `HiPayPayments.xcframework` from the release assets and verifies
 > it against the checksum recorded in the tag's manifest, so a tampered binary fails to resolve.
 
 ## Use the component
@@ -121,7 +121,9 @@ HiPayCardEntryView(controller: controller, theme: theme)
 ```
 
 > **Notes.** A custom placeholder color applies from iOS 17 (iOS 15/16 keep the system gray). The
-> default baseline is light-mode — pass a dark-adapted theme for dark hosts.
+> default theme follows the host's light/dark appearance on its own — its colours are the system's
+> semantic ones. A theme you build from a `HiPayCardEntryStyle` keeps exactly the colours you gave it,
+> in both appearances; adapting them is then yours to do.
 
 ## Localization
 
@@ -143,6 +145,81 @@ presenting — it wins over `HiPaySettings`:
 ```swift
 HiPayCardStrings.localeOverride = Locale(identifier: "fr")
 ```
+
+## One-click / saved cards
+
+A returning payer pays with a card saved on a previous purchase — no card number, no security code.
+**Off by default**; nothing is stored and no card store is created until you enable it.
+
+```swift
+@StateObject var card = HiPayCardEntryController(
+    configuration: config,
+    oneClickEnabled: true,
+    // Optional (default 3, clamped 1...10): how many cards show before "Show more".
+    savedCardsDisplayCount: 3
+)
+```
+
+**Give the component a scrollable host.** `HiPayCardEntryView` renders a plain `VStack` and never
+scrolls on its own. With one-click enabled the payer can reveal every stored card at once via "Show
+more" (up to 20 are kept), so the view can grow past a screen height. Put it inside a `ScrollView` —
+otherwise "Show less", "New card" and your own Pay button end up off-screen with no way back:
+
+```swift
+ScrollView {
+    HiPayCardEntryView(controller: card)
+    // your Pay button
+}
+```
+
+A saved-card row handles a left-swipe of its own (to reveal the delete action), and it shares the
+gesture space with your scroll view: only a horizontal drag claims the row, so a vertical drag started
+anywhere — including on a card — scrolls the page as usual.
+
+Offer to save on a successful payment — the component asks the payer for consent:
+
+```swift
+let tx = try await card.pay(/* … */, saveCard: true)
+card.lastSaveOutcome        // saved / notEligible / storageFailed
+```
+
+**Paying with a saved card needs no new call.** When the payer selects one, your existing `pay(...)`
+routes through the stored token by itself, so your Pay button stays a single touch-point:
+
+```swift
+card.savedCards             // [HiPaySavedCard]: maskedPan, network, holder, expiry
+card.selectSavedCard(saved)
+card.selectNewCard()        // back to card entry
+await card.deleteSavedCard(saved)
+await card.refreshSavedCards()
+```
+
+`payWithSavedCard(...)` exists for headless hosts that drive the choice themselves.
+
+**How the payer deletes a card.** A left-swipe *or* a long-press on a row reveals a trash affordance;
+tapping the trash deletes, swiping the row back cancels. That is two deliberate steps, so there is no
+confirmation dialog by default — pass `confirmCardDeletion: true` if your checkout wants one anyway:
+
+```swift
+@StateObject var card = HiPayCardEntryController(
+    configuration: config,
+    oneClickEnabled: true,
+    confirmCardDeletion: true      // optional; off by default
+)
+```
+
+The dialog is shown regardless of that flag when the deletion comes from the screen-reader "Delete
+card" action: that path is a single step, with no trash to aim at and no reverse swipe to undo it.
+
+
+The payer's card list is filtered by the same account rules as a new entry: a stored card on a
+network your account no longer accepts is dropped from the list.
+
+Only a **token** is stored — never the card number, never the security code. On iOS the token is held in the Keychain.
+
+A stored token can stop being accepted: the card expired, was replaced, or the issuer revoked it.
+The payment then fails with `HiPayError.cardNoLongerValid`, the card is dropped from the list, and the payer must enter a
+card again. Handle that case explicitly — it is the one one-click failure that is not worth retrying.
 
 ## 3DS presentation (turnkey, default on)
 
@@ -223,12 +300,24 @@ import HiPayCore
 
 A complete, runnable example is the demo at `src/HiPay-SDK-ios-Demo` (`PaymentScreen.swift`).
 
+## Upgrading from 1.0.0
+
+**One required change: the return deep link changed host.** It is now
+`{yourScheme}://hipay-payments/gateway/orders/{orderId}/{status}` — `hipay-fullservice` is gone. The
+SDK builds and parses it for you on the turnkey path, so a card integration needs no edit. If you
+build the five redirect URLs yourself against the headless core, read the host from
+`CallbackHostKt.HIPAY_CALLBACK_HOST` or build the prefix with
+`CallbackHostKt.hipayCallbackBase(scheme:orderId:)` rather than retyping it.
+
+No source break and no behaviour change on iOS. One-click is no longer flagged experimental, and
+Apple Pay is new — see [Apple Pay](apple-pay.md).
+
 ## Notes
 
 - **Localization**: FR/EN/IT (default EN) ship in the `HiPayCard` resource bundle; **device locale** (no per-view `localeOverride` on iOS — that knob is Android-only).
 - **Accessibility**: VoiceOver labels/traits, relative sort priority (opt-out `setsAccessibilityOrder: false`), inline errors announced politely, CVV tooltip.
 - **PCI**: the raw PAN and the vault token never leave the controller; never log card data.
-- **Facade only (D4)**: integrate via `HiPayCore`/`HiPayCard` — do not `import HiPayFullservice` (the raw KMP) directly.
+- **Facade only (D4)**: integrate via `HiPayCore`/`HiPayCard` — do not `import HiPayPayments` (the raw KMP) directly.
 
 ---
 
