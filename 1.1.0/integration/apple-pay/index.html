@@ -1,0 +1,924 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Integration guides for the HiPay Payments SDK (Kotlin Multiplatform, Android, iOS).">
+      
+      
+      
+        <link rel="canonical" href="https://hipay.github.io/hipay-payments-sdk-kmp/1.1.0/integration/apple-pay/">
+      
+      
+        <link rel="prev" href="../cmp/">
+      
+      
+        <link rel="next" href="../../accessibility/">
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.49">
+    
+    
+      
+        <title>Apple Pay - HiPay Payments Mobile SDK</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.6f8fc17f.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#apple-pay" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="HiPay Payments Mobile SDK" class="md-header__button md-logo" aria-label="HiPay Payments Mobile SDK" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            HiPay Payments Mobile SDK
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Apple Pay
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m17.75 4.09-2.53 1.94.91 3.06-2.63-1.81-2.63 1.81.91-3.06-2.53-1.94L12.44 4l1.06-3 1.06 3zm3.5 6.91-1.64 1.25.59 1.98-1.7-1.17-1.7 1.17.59-1.98L15.75 11l2.06-.05L18.5 9l.69 1.95zm-2.28 4.95c.83-.08 1.72 1.1 1.19 1.85-.32.45-.66.87-1.08 1.27C15.17 23 8.84 23 4.94 19.07c-3.91-3.9-3.91-10.24 0-14.14.4-.4.82-.76 1.27-1.08.75-.53 1.93.36 1.85 1.19-.27 2.86.69 5.83 2.89 8.02a9.96 9.96 0 0 0 8.02 2.89m-1.64 2.02a12.08 12.08 0 0 1-7.8-3.47c-2.17-2.19-3.33-5-3.49-7.82-2.81 3.14-2.7 7.96.31 10.98 3.02 3.01 7.84 3.12 10.98.31"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 7a5 5 0 0 1 5 5 5 5 0 0 1-5 5 5 5 0 0 1-5-5 5 5 0 0 1 5-5m0 2a3 3 0 0 0-3 3 3 3 0 0 0 3 3 3 3 0 0 0 3-3 3 3 0 0 0-3-3m0-7 2.39 3.42C13.65 5.15 12.84 5 12 5s-1.65.15-2.39.42zM3.34 7l4.16-.35A7.2 7.2 0 0 0 5.94 8.5c-.44.74-.69 1.5-.83 2.29zm.02 10 1.76-3.77a7.131 7.131 0 0 0 2.38 4.14zM20.65 7l-1.77 3.79a7.02 7.02 0 0 0-2.38-4.15zm-.01 10-4.14.36c.59-.51 1.12-1.14 1.54-1.86.42-.73.69-1.5.83-2.29zM12 22l-2.41-3.44c.74.27 1.55.44 2.41.44.82 0 1.63-.17 2.37-.44z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/hipay/hipay-payments-sdk-kmp" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    hipay-payments-sdk-kmp
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="HiPay Payments Mobile SDK" class="md-nav__button md-logo" aria-label="HiPay Payments Mobile SDK" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    HiPay Payments Mobile SDK
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/hipay/hipay-payments-sdk-kmp" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.1 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    hipay-payments-sdk-kmp
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Integration
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            Integration
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../android/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Android
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ios/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    iOS
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cmp/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Kotlin / Compose Multiplatform
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Apple Pay
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    Apple Pay
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-apple-developer-account" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Apple Developer account
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-send-the-certificate-to-hipay" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Send the certificate to HiPay
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-hipay-account" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. HiPay account
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-configure-the-sdk" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Configure the SDK
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-show-the-button-only-when-it-can-pay" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Show the button — only when it can pay
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-pay" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Pay
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      Troubleshooting
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../accessibility/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Accessibility
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Changelog
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1-apple-developer-account" class="md-nav__link">
+    <span class="md-ellipsis">
+      1. Apple Developer account
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2-send-the-certificate-to-hipay" class="md-nav__link">
+    <span class="md-ellipsis">
+      2. Send the certificate to HiPay
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3-hipay-account" class="md-nav__link">
+    <span class="md-ellipsis">
+      3. HiPay account
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-configure-the-sdk" class="md-nav__link">
+    <span class="md-ellipsis">
+      4. Configure the SDK
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-show-the-button-only-when-it-can-pay" class="md-nav__link">
+    <span class="md-ellipsis">
+      5. Show the button — only when it can pay
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-pay" class="md-nav__link">
+    <span class="md-ellipsis">
+      6. Pay
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      Troubleshooting
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+    <a href="https://github.com/hipay/hipay-payments-sdk-kmp/edit/main/docs/integration/apple-pay.md" title="Edit this page" class="md-content__button md-icon">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="apple-pay">Apple Pay<a class="headerlink" href="#apple-pay" title="Permanent link">&para;</a></h1>
+<p>Apple Pay is <strong>iOS-only</strong>. On Android the button renders nothing, so the same shared code can run on
+both platforms without a conditional.</p>
+<p>Most of the work happens <strong>outside the SDK</strong>, in your Apple Developer account. Do that first — the
+SDK cannot be configured without it.</p>
+<h2 id="1-apple-developer-account">1. Apple Developer account<a class="headerlink" href="#1-apple-developer-account" title="Permanent link">&para;</a></h2>
+<p>Create a <strong>Merchant ID</strong> at <em>Identifiers → Merchant IDs</em>, in reverse-domain form
+<code>merchant.com.hipay.{yourcompany}</code>. Create <strong>separate identifiers for production and staging</strong>.</p>
+<p>Generate an <strong>Apple Pay Payment Processing Certificate</strong> for that Merchant ID: create a CSR
+following Apple's instructions, upload it, download the <code>.cer</code>, and add it to your Keychain.</p>
+<p>Export it from Keychain as a <strong><code>.p12</code> file with a strong password</strong>. Keep that password — the SDK
+needs it, and it is the only Apple Pay secret your app carries.</p>
+<p>On your <strong>App ID</strong>, enable the <em>Apple Pay Payment Processing</em> capability and attach the Merchant
+ID(s). Then <strong>regenerate your provisioning profiles</strong>, otherwise the entitlement is missing at
+runtime and the sheet never opens.</p>
+<h2 id="2-send-the-certificate-to-hipay">2. Send the certificate to HiPay<a class="headerlink" href="#2-send-the-certificate-to-hipay" title="Permanent link">&para;</a></h2>
+<p>Email the <strong><code>.p12</code> file and its password</strong> to <code>support@hipay.com</code>.</p>
+<p>The certificate is <strong>yours</strong>, not HiPay's: the gateway uses it to decrypt the payment tokens your app
+produces. Nothing works until it is installed on your account.</p>
+<h2 id="3-hipay-account">3. HiPay account<a class="headerlink" href="#3-hipay-account" title="Permanent link">&para;</a></h2>
+<p>In most cases your <strong>existing HiPay account is enough</strong> — the same credentials you already use for
+card payments, and the same signature passphrase. Apple Pay does <strong>not</strong> add a passphrase.</p>
+<p>Some accounts are set up with a <strong>dedicated Apple Pay account</strong>. Only then do you supply its
+username, through <code>applePayUsername</code>. Your account manager will confirm whether yours needs one; if
+you are unsure, leave it out and try — a missing dedicated account surfaces as an authentication
+error, not as a silent wrong result.</p>
+<h2 id="4-configure-the-sdk">4. Configure the SDK<a class="headerlink" href="#4-configure-the-sdk" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kd">val</span><span class="w"> </span><span class="nv">applePay</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">HiPayApplePayConfig</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="n">merchantIdentifier</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;merchant.com.hipay.yourcompany&quot;</span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="n">privateKeyPassword</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;…&quot;</span><span class="p">,</span><span class="w">              </span><span class="c1">// the .p12 export password from step 1</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="n">merchantDisplayName</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;Your Company&quot;</span><span class="p">,</span><span class="w">  </span><span class="c1">// shown at the top of the Apple Pay sheet</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="c1">// Only when your account manager told you to use a dedicated Apple Pay account.</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="n">applePayUsername</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="c1">// Optional. Narrows what the account already accepts — never widens it.</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="n">allowedNetworks</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">emptyList</span><span class="p">(),</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="p">)</span>
+</code></pre></div>
+<p><code>privateKeyPassword</code> is the password <strong>you chose when exporting the <code>.p12</code></strong>. It is not a HiPay
+credential and has nothing to do with your account passphrase — a common and costly confusion.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kd">let</span><span class="w"> </span><span class="nv">applePay</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="n">HiPayApplePayConfiguration</span><span class="p">(</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="n">merchantIdentifier</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;merchant.com.hipay.yourcompany&quot;</span><span class="p">,</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="n">privateKeyPassword</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;…&quot;</span><span class="p">,</span><span class="w">              </span><span class="c1">// the .p12 export password from step 1</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="n">merchantDisplayName</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Your Company&quot;</span><span class="p">,</span><span class="w">  </span><span class="c1">// shown on the Apple Pay sheet&#39;s total line</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">    </span><span class="n">applePayUsername</span><span class="p">:</span><span class="w"> </span><span class="kc">nil</span><span class="w">                 </span><span class="c1">// only for a dedicated Apple Pay account</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="p">)</span>
+</code></pre></div>
+<p>Ship the staging Merchant ID in your staging build and the production one in production: a
+certificate mismatch is only visible at payment time.</p>
+<p><strong>The entitlement holds a <em>list</em>.</strong> <code>com.apple.developer.in-app-payments</code> is an array, so one build can
+be entitled to several Merchant IDs and choose at runtime — but only among those it was signed for.
+PassKit refuses any identifier absent from the entitlement, and the entitlement is fixed at build time.</p>
+<h2 id="5-show-the-button-only-when-it-can-pay">5. Show the button — only when it can pay<a class="headerlink" href="#5-show-the-button-only-when-it-can-pay" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">HiPayApplePayButton</span><span class="p">(</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">    </span><span class="n">onTap</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* start the payment */</span><span class="w"> </span><span class="p">},</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="n">isAvailable</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">available</span><span class="p">,</span><span class="w">    </span><span class="c1">// required — see below</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="n">style</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">HiPayApplePayButtonStyle</span><span class="p">.</span><span class="na">AUTOMATIC</span><span class="p">,</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">    </span><span class="n">type</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">HiPayApplePayButtonType</span><span class="p">.</span><span class="na">BUY</span><span class="p">,</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">HiPayApplePayButton</span><span class="p">(</span><span class="n">style</span><span class="p">:</span><span class="w"> </span><span class="p">.</span><span class="n">automatic</span><span class="p">,</span><span class="w"> </span><span class="n">type</span><span class="p">:</span><span class="w"> </span><span class="p">.</span><span class="n">buy</span><span class="p">,</span><span class="w"> </span><span class="n">isAvailable</span><span class="p">:</span><span class="w"> </span><span class="n">available</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">    </span><span class="c1">// start the payment</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="p">}</span>
+</code></pre></div>
+<p><strong><code>isAvailable</code> is required, and you should start it at <code>false</code>.</strong> There is deliberately no default:
+the only value the SDK could pick for you is <code>canMakePayments()</code>, which is <code>true</code> on any
+Apple-Pay-capable device <em>even with no card provisioned</em> — the button would appear and the payment
+would then fail, a mistake you cannot see outside a real device. Hold the verdict in your own state,
+initialised to <code>false</code>, and set it from the check below.</p>
+<p><strong>Do not decide availability on <code>canMakePayments()</code> alone.</strong> Three conditions must hold: the device
+can pay, your HiPay account is contracted for a network Apple Pay can route, and your optional
+restriction leaves at least one of them. Ask the SDK:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kd">let</span><span class="w"> </span><span class="nv">availability</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="k">try</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="n">HiPayApplePayPayment</span><span class="p">.</span><span class="n">availability</span><span class="p">(</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="n">configuration</span><span class="p">:</span><span class="w"> </span><span class="n">hipayConfiguration</span><span class="p">,</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="n">currency</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;EUR&quot;</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="p">)</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="k">if</span><span class="w"> </span><span class="n">availability</span><span class="p">.</span><span class="n">isAvailable</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* show the button */</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1">// Compose Multiplatform</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kd">val</span><span class="w"> </span><span class="nv">eligibility</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">resolveHiPayApplePayAvailability</span><span class="p">(</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="n">config</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">hipayConfig</span><span class="p">,</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="n">currency</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;EUR&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="p">)</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="k">if</span><span class="w"> </span><span class="p">(</span><span class="n">eligibility</span><span class="p">.</span><span class="na">state</span><span class="w"> </span><span class="o">==</span><span class="w"> </span><span class="n">ApplePayEligibilityState</span><span class="p">.</span><span class="na">AVAILABLE</span><span class="p">)</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="cm">/* show the button */</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>When it is unavailable you also get a <strong>reason</strong>. Use it: a button that silently disappears is the
+hardest Apple Pay problem to diagnose, for you and for your support team.</p>
+<p><strong>Read the reason together with the network list.</strong> <code>DEVICE_NO_USABLE_CARD</code> covers two different
+causes, told apart by whether the resolved networks are empty:</p>
+<table>
+<thead>
+<tr>
+<th>Networks</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>empty</td>
+<td>The <strong>device</strong> said no — <code>canMakePayments()</code> is false. Nothing to do with cards or your account.</td>
+</tr>
+<tr>
+<td>non-empty</td>
+<td>Your account routes <strong>only those</strong> networks and the Wallet holds no card on any of them.</td>
+</tr>
+</tbody>
+</table>
+<p>The second one catches people out: a Wallet full of sandbox Visa and Mastercard cards is still
+unavailable if your account only routes <strong>CB</strong>. And note <strong>Amex is never routable via Apple Pay at
+HiPay</strong> — it is excluded by the platform, not by your account.</p>
+<p>A thrown error is a <strong>third</strong> case, and not the same as unavailable: it means the check itself failed
+(bad credentials, gateway unreachable). Do not collapse it into "unavailable", or a configuration
+mistake looks like a phone without a card.</p>
+<h2 id="6-pay">6. Pay<a class="headerlink" href="#6-pay" title="Permanent link">&para;</a></h2>
+<p><strong>The SDK presents the sheet.</strong> You do not touch PassKit: one call presents it, captures the
+authorized token, tokenizes it, creates the order, resolves any authentication step-up and reports the
+outcome.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kd">let</span><span class="w"> </span><span class="nv">outcome</span><span class="w"> </span><span class="p">=</span><span class="w"> </span><span class="k">try</span><span class="w"> </span><span class="k">await</span><span class="w"> </span><span class="n">HiPayApplePayPayment</span><span class="p">.</span><span class="n">pay</span><span class="p">(</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">    </span><span class="n">configuration</span><span class="p">:</span><span class="w"> </span><span class="n">hipayConfiguration</span><span class="p">,</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="n">applePay</span><span class="p">:</span><span class="w"> </span><span class="n">applePay</span><span class="p">,</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="n">order</span><span class="p">:</span><span class="w"> </span><span class="n">HiPayApplePayOrder</span><span class="p">(</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">        </span><span class="n">orderId</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;ORDER-123&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">        </span><span class="n">amount</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;10.00&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">        </span><span class="n">currency</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;EUR&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">        </span><span class="n">countryCode</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;FR&quot;</span><span class="p">,</span><span class="w">         </span><span class="c1">// your merchant country, required by PassKit</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">        </span><span class="n">description</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;…&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">        </span><span class="n">redirectScheme</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;yourscheme&quot;</span><span class="p">,</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">        </span><span class="n">signature</span><span class="p">:</span><span class="w"> </span><span class="n">signature</span><span class="w">       </span><span class="c1">// computed by YOUR BACKEND, as for a card payment</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">    </span><span class="p">)</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="p">)</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="k">switch</span><span class="w"> </span><span class="n">outcome</span><span class="w"> </span><span class="p">{</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="k">case</span><span class="w"> </span><span class="p">.</span><span class="n">completed</span><span class="p">:</span><span class="w">    </span><span class="k">break</span><span class="w">  </span><span class="c1">// paid</span>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="k">case</span><span class="w"> </span><span class="p">.</span><span class="n">declined</span><span class="p">:</span><span class="w">     </span><span class="k">break</span><span class="w">  </span><span class="c1">// the wallet authorized, the gateway refused</span>
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="k">case</span><span class="w"> </span><span class="p">.</span><span class="n">pending</span><span class="p">:</span><span class="w">      </span><span class="k">break</span><span class="w">  </span><span class="c1">// re-query the transaction to settle it</span>
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="k">case</span><span class="w"> </span><span class="p">.</span><span class="n">notCompleted</span><span class="p">:</span><span class="w"> </span><span class="k">break</span>
+<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="k">case</span><span class="w"> </span><span class="p">.</span><span class="n">cancelled</span><span class="p">:</span><span class="w">    </span><span class="k">break</span><span class="w">  </span><span class="c1">// the payer closed the sheet — NOT an error</span>
+<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="p">}</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1">// Compose Multiplatform</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kd">val</span><span class="w"> </span><span class="nv">result</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">runHiPayApplePayPayment</span><span class="p">(</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="n">config</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">hipayConfig</span><span class="p">,</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span><span class="n">applePayConfig</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">applePay</span><span class="p">,</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">    </span><span class="n">order</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">ApplePayOrder</span><span class="p">(</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="w">        </span><span class="n">orderId</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;ORDER-123&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">        </span><span class="n">amount</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;10.00&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="w">        </span><span class="n">currency</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;EUR&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="w">        </span><span class="n">countryCode</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;FR&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="w">        </span><span class="n">description</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;…&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a><span class="w">        </span><span class="n">redirectScheme</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s">&quot;yourscheme&quot;</span><span class="p">,</span>
+<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="w">        </span><span class="n">signature</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">signature</span><span class="p">,</span>
+<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="w">    </span><span class="p">),</span>
+<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="p">)</span>
+</code></pre></div>
+<p>On Android <code>runHiPayApplePayPayment</code> throws <code>UnsupportedOperationException</code> — gate on
+<code>hiPayApplePaySupported()</code>.</p>
+<p><strong>Sign the order exactly as you sign a card order.</strong> <code>ApplePayOrder.signature</code> is computed by your
+backend; the SDK never computes one and your passphrase must never reach the app. If your account
+requires signed orders, an unsigned wallet order is refused just like an unsigned card order.</p>
+<p><strong>A closed sheet is not an error.</strong> <code>cancelled</code> is the payer's normal way out; only invalid input and
+an unreachable gateway raise. A second call while one is in flight fails immediately without
+presenting a second sheet, so a double tap cannot create two orders.</p>
+<p><strong>The order is submitted once and never retried.</strong> If the outcome cannot be determined, the SDK says
+so rather than resubmitting — a silent retry is the one way it could authorize twice. Reconcile on
+the same <code>orderId</code>.</p>
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Symptom</th>
+<th>Cause</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>The sheet never opens</td>
+<td>Capability missing, or provisioning profiles not regenerated after enabling it</td>
+</tr>
+<tr>
+<td>The button never appears</td>
+<td>Eligibility is unavailable — read the reason AND the network list (see §5)</td>
+</tr>
+<tr>
+<td>Unavailable with a Wallet full of cards</td>
+<td>Your account routes only networks you hold no card for — often <strong>CB</strong> only. Amex never counts</td>
+</tr>
+<tr>
+<td>Unavailable on the Simulator</td>
+<td><code>canMakePayments()</code> is false until a test card is added in Settings ▸ Wallet</td>
+</tr>
+<tr>
+<td><code>merchantIdentifier</code> rejected at sheet time</td>
+<td>It is not in the app's entitlement, or the profile was not regenerated</td>
+</tr>
+<tr>
+<td>Payment fails at tokenization</td>
+<td>Wrong <code>.p12</code> password, or the certificate is not installed on your HiPay account</td>
+</tr>
+<tr>
+<td>Works in staging, fails in production</td>
+<td>Production Merchant ID and certificate not created, or the staging one shipped</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p><strong>Other integration paths:</strong> <a href="../android/">Android</a> · <a href="../ios/">iOS</a> · <a href="../cmp/">Compose Multiplatform</a>
+<strong>See also:</strong> <a href="../../">Overview</a> · <a href="../../changelog/">Changelog</a> · <a href="https://github.com/hipay/hipay-payments-sdk-kmp/issues">Report an issue</a></p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": "../..", "features": ["navigation.sections", "navigation.top", "content.code.copy", "content.action.edit"], "search": "../../assets/javascripts/workers/search.6ce7567c.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"default": "latest", "provider": "mike"}}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.88dd0f4e.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+         <loc>https://hipay.github.io/hipay-payments-sdk-kmp/1.1.0/</loc>
+         <lastmod>2026-08-28</lastmod>
+    </url>
+    <url>
+         <loc>https://hipay.github.io/hipay-payments-sdk-kmp/1.1.0/accessibility/</loc>
+         <lastmod>2026-08-28</lastmod>
+    </url>
+    <url>
+         <loc>https://hipay.github.io/hipay-payments-sdk-kmp/1.1.0/changelog/</loc>
+         <lastmod>2026-08-28</lastmod>
+    </url>
+    <url>
+         <loc>https://hipay.github.io/hipay-payments-sdk-kmp/1.1.0/integration/android/</loc>
+         <lastmod>2026-08-28</lastmod>
+    </url>
+    <url>
+         <loc>https://hipay.github.io/hipay-payments-sdk-kmp/1.1.0/integration/apple-pay/</loc>
+         <lastmod>2026-08-28</lastmod>
+    </url>
+    <url>
+         <loc>https://hipay.github.io/hipay-payments-sdk-kmp/1.1.0/integration/cmp/</loc>
+         <lastmod>2026-08-28</lastmod>
+    </url>
+    <url>
+         <loc>https://hipay.github.io/hipay-payments-sdk-kmp/1.1.0/integration/ios/</loc>
+         <lastmod>2026-08-28</lastmod>
+    </url>
+</urlset>
