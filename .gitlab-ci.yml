@@ -147,8 +147,15 @@ pages-deploy:
   script:
     # Deploy WITHOUT --push: mike appends to gh-pages, but a destructive deploy pushed straight away
     # is irreversible by the time anything can check it. Local first, assert, then push.
-    # --update-aliases moves `latest` onto this version; --strict fails the build on a broken link.
-    - mike deploy --update-aliases "$CI_COMMIT_TAG" latest -- --strict
+    # --update-aliases moves `latest` onto this version. Strictness lives in mkdocs.yml, NOT here:
+    # `mike deploy` takes `VERSION [ALIAS ...]` and has no passthrough, so a trailing `-- --strict`
+    # became an alias literally named `--strict` in versions.json.
+    #
+    # --alias-type=redirect is REQUIRED for GitHub Pages. mike defaults to `symlink`, and Pages does
+    # not serve symlinked content — since `mike set-default` makes the site root redirect to
+    # `latest/`, a symlinked alias means the site's front door 404s. `redirect` writes real HTML
+    # redirect pages instead.
+    - mike deploy --update-aliases --alias-type=redirect "$CI_COMMIT_TAG" latest
     # Makes the site root redirect to `latest` instead of listing bare directories.
     - mike set-default latest
     # The guarantee: no previously published version may disappear. This is what turns a silent
