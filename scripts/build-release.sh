@@ -77,6 +77,23 @@ echo "$CHECKSUM" > "$OUT/checksum.txt"
 echo "==> Generating remote Package.swift…"
 TEMPLATE="$ROOT/HiPay_Payments_SDK_iOS/Package.remote.swift.template"
 [ -f "$TEMPLATE" ] || { echo "ERROR: missing $TEMPLATE" >&2; exit 1; }
+
+# The template is a hand-maintained mirror of Package.swift, so adding an SPM product means
+# editing TWO files — and forgetting the second one is invisible: the generated manifest still
+# parses, `swift package dump-package` still passes, and the tag simply ships without that
+# product. That happened between 1.0.0 and 1.1.0 (HiPayApplePay was missing from the template
+# for the whole Apple Pay epic). Compare the declared products and targets and refuse to
+# generate a manifest that does not match the repository's own.
+DEV_MANIFEST="$ROOT/HiPay_Payments_SDK_iOS/Package.swift"
+decls() { grep -oE '(library\(name: "|name: ")[A-Za-z]+"' "$1" | grep -oE '"[A-Za-z]+"' | sort -u; }
+if ! MISMATCH="$(diff <(decls "$DEV_MANIFEST") <(decls "$TEMPLATE"))"; then
+    echo "ERROR: Package.remote.swift.template is out of step with Package.swift." >&2
+    echo "       A product or target declared in one is absent from the other, so the tagged" >&2
+    echo "       manifest would ship an incomplete package. Reconcile them, then re-run." >&2
+    echo "       ('<' = only in Package.swift, '>' = only in the template)" >&2
+    echo "$MISMATCH" >&2
+    exit 1
+fi
 # Substitute placeholders. Delimiter '|' avoids the slashes in URLs; escape '&'
 # (means "the matched text" in a sed replacement) so an exotic REPO_SLUG can't
 # corrupt the output. CHECKSUM is hex, so it needs no escaping.
