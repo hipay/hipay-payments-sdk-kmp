@@ -100,6 +100,14 @@ stages:
 pages-deploy:
   stage: docs
   image: python:3.12-slim
+  # `needs: []` detaches this job from the stage order, and it is REQUIRED, not a nicety.
+  # `publish-release` is a manual job in the previous stage with allow_failure: false, so it holds
+  # the pipeline in `blocked` until it is played — and while no macOS runner exists it must NOT be
+  # played (see release-procedure.md §6bis). Without this line the two rules contradict each other
+  # and the docs can never be deployed: on 1.1.0 the job sat "not been triggered yet" forever and
+  # the site had to be published by hand. The docs do not depend on the artifacts being published;
+  # the job is manual, so a maintainer still chooses when it runs.
+  needs: []
   rules:
     # Stable tags only. An RC must never move `latest`.
     - if: '$CI_COMMIT_TAG =~ /^[0-9]+\.[0-9]+\.[0-9]+$/'
