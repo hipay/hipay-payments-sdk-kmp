@@ -3,6 +3,7 @@ package com.hipay.card.applepay
 import com.hipay.core.Environment
 import com.hipay.core.HiPayConfig
 import com.hipay.core.HiPayException
+import com.hipay.core.gateway.model.OrderOptions
 import com.hipay.core.gateway.model.TransactionState
 import com.hipay.golden.GOLDEN_ORDER_RESPONSE
 import io.ktor.client.engine.mock.MockEngine
@@ -238,6 +239,40 @@ class WalletCoordinatorTest {
         assertTrue(PAYMENT_DATA !in failure.message.orEmpty())
         assertTrue(PAYMENT_DATA !in failure.toString())
         assertTrue("p12pass" !in applePayConfig.toString())
+    }
+
+    // A wallet payment ends in an ordinary order, so the options attached to the ApplePayOrder must
+    // reach that order's body. Asserted ON THE WIRE rather than on the model: the plumbing runs
+    // ApplePayOrder -> WalletCoordinator -> OrderRequest, and a break anywhere along it leaves the
+    // model correct while the gateway receives nothing. That is the shape of defect that shipped the
+    // one-click regression, where a value was set on the controller and never forwarded.
+    @Test
+    fun optionsOnTheWalletOrderReachTheOrderBody() = runTest {
+        val options = OrderOptions.Builder()
+            .notifyUrl("https://backend.example/notify")
+            .softDescriptor("MYSHOP")
+            .custom("website_id", "STWAK4897048")
+            .build()
+
+        pay(coordinator(), applePayOrder = order().withOptions(options))
+
+        val form = orderRequest!!.form()
+        assertEquals("https://backend.example/notify", form["notify_url"])
+        // No space in the descriptor on purpose: the shared `form()` helper does not decode the
+        // `+` that form-encoding uses for one, and this test is about the plumbing, not the encoding.
+        assertEquals("MYSHOP", form["soft_descriptor"])
+        assertEquals("STWAK4897048", form["website_id"])
+    }
+
+    // Without options the body must be exactly what it was before the feature existed — an empty
+    // option set must not start emitting blank parameters.
+    @Test
+    fun aWalletOrderWithoutOptionsEmitsNothingExtra() = runTest {
+        pay(coordinator())
+
+        val form = orderRequest!!.form()
+        assertNull(form["notify_url"])
+        assertNull(form["soft_descriptor"])
     }
 
     private companion object {

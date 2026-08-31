@@ -423,6 +423,15 @@ val options = OrderOptions.Builder()
 gateway.requestNewOrder(order.withOptions(options), signature)
 ```
 
+On the **component** path the same options are a parameter of the payment call itself:
+
+```kotlin
+val tx = controller.pay(/* … */, options = options)   // and payWithSavedCard(...)
+```
+
+`build()` throws `HiPayException` with `HiPayErrorCode.VALIDATION` if a value is rejected, so a bad
+`notifyUrl` fails before any order is created rather than at the gateway.
+
 A method rather than a constructor parameter, so future parameters never break your build. The same
 `withOptions` exists on `ApplePayOrder` — a wallet payment ends in an ordinary order.
 
