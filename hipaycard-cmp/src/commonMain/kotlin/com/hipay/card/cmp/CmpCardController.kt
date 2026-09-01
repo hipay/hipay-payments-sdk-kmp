@@ -520,6 +520,11 @@ public class CmpCardController(
      *  [tokenizer]. Same spirit as the [lastOneClickError] internal setter. */
     internal var cardInfoResolver: (suspend (digits: String) -> CardInfo)? = null
 
+    /** In-module test seam for the ORDER call — null in production, so the gateway is called.
+     *  There is no injectable HTTP engine here, unlike `WalletCoordinator`, so this is the only way
+     *  a test can see what the controller actually put on the order. */
+    internal var orderResolver: (suspend (OrderRequest, String?) -> Transaction)? = null
+
     /** Backend co-brand refinement (mirrors the native controllers): the Secure Vault is the
      *  only source that can see a domestic co-brand (CB/BCMC), so the offered set is re-derived
      *  from its verdict. A stale verdict (the payer kept typing) is dropped; a failure degrades
@@ -718,7 +723,7 @@ public class CmpCardController(
             oneClick = effectiveSave,
         )
         options?.let { order.withOptions(it) }
-        val transaction = gateway.requestNewOrder(order, signature)
+        val transaction = (orderResolver?.invoke(order, signature) ?: gateway.requestNewOrder(order, signature))
         // Clear sensitive/derived state after a successful order (parity with :hipaycard).
         holder = ""; cardNumber = ""; expiry = ""; cvc = ""
         networks = emptyList(); selectedNetwork = null
@@ -795,7 +800,7 @@ public class CmpCardController(
             )
             val transaction = try {
                 options?.let { order.withOptions(it) }
-                gateway.requestNewOrder(order, signature)
+                (orderResolver?.invoke(order, signature) ?: gateway.requestNewOrder(order, signature))
             } catch (e: HiPayException) {
                 val cnlv = cardNoLongerValidOrNull(e)
                 if (cnlv != null) {

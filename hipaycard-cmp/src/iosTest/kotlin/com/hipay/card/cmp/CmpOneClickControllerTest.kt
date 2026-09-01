@@ -7,6 +7,9 @@ import com.hipay.card.store.createSecureCardStore
 import com.hipay.core.Environment
 import com.hipay.core.HiPayConfig
 import com.hipay.core.HiPayException
+import com.hipay.core.gateway.model.OrderOptions
+import com.hipay.core.gateway.model.OrderRequest
+import com.hipay.core.gateway.model.Transaction
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -225,4 +228,57 @@ class CmpOneClickControllerTest {
         assertTrue(c.savedCards.isEmpty())
         kotlin.test.assertNull(c.selectedSavedCard)
     }
+
+    /** What the controller puts ON THE ORDER when paying from a stored token, asserted through
+     *  [CmpCardController.orderResolver] — the only way in. `oneClick` once went missing from this
+     *  very order and shipped, surfacing as a recurring payment. */
+    @Test
+    fun payWithSavedCard_ordersTheStoredTokenAsACustomerInitiatedOneClick() = runBlocking {
+        seedCard()
+        val c = CmpCardController(config, oneClickEnabled = true)
+        c.refreshSavedCards()
+        val card = assertNotNull(c.selectedSavedCard)
+
+        var captured: OrderRequest? = null
+        c.orderResolver = { order, _ -> captured = order; Transaction("completed") }
+
+        c.payWithSavedCard(
+            card = card, orderId = "OC-1", amount = "12.00",
+            description = "d", redirectScheme = "hipaydemo",
+        )
+
+        val order = assertNotNull(captured)
+        assertEquals("OC-1", order.orderId)
+        assertEquals(card.token, order.cardToken)
+        // Declared on EVERY payment made from a stored token, not only on the enrolling order.
+        assertTrue(order.oneClick)
+        // Customer-initiated: a recurring payment would be eci 9 plus recurring_payment, and the
+        // SDK sends neither.
+        assertEquals(7, order.eci)
+    }
+
+    /** `pay(...)` with a card selected must route to the stored token rather than tokenize, and it
+     *  must carry its arguments across that delegation — a silent drop there is invisible to the host. */
+    @Test
+    fun pay_withASelectedCard_delegatesToTheStoredTokenPath() = runBlocking {
+        seedCard()
+        val c = CmpCardController(config, oneClickEnabled = true)
+        c.refreshSavedCards()
+        val card = assertNotNull(c.selectedSavedCard)
+
+        var captured: OrderRequest? = null
+        c.orderResolver = { order, _ -> captured = order; Transaction("completed") }
+
+        c.pay(
+            orderId = "OC-2", amount = "34.00",
+            description = "d", redirectScheme = "hipaydemo",
+        )
+
+        val order = assertNotNull(captured)
+        assertEquals("OC-2", order.orderId)
+        assertEquals("34.00", order.amount)
+        assertEquals(card.token, order.cardToken)   // the stored token, so no tokenization happened
+        assertTrue(order.oneClick)
+    }
+
 }

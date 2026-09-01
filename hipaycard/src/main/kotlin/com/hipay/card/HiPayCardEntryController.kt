@@ -414,6 +414,11 @@ public class HiPayCardEntryController(
      *  Same convention as the CMP controller's resolver seam. */
     internal var cardInfoResolver: (suspend (digits: String) -> com.hipay.card.model.CardInfo)? = null
 
+    /** In-module test seam for the ORDER call — null in production, so the gateway is called.
+     *  There is no injectable HTTP engine here, unlike `WalletCoordinator`, so this is the only way
+     *  a test can see what the controller actually put on the order. */
+    internal var orderResolver: (suspend (OrderRequest, String?) -> Transaction)? = null
+
     // ---- Derived rules (all from the shared contract — no reimplementation) ----
     private val panDigits: String get() = cardNumber.filter { it in '0'..'9' }
     private val expiryDigits: String get() = expiry.filter { it in '0'..'9' }
@@ -814,7 +819,7 @@ public class HiPayCardEntryController(
             oneClick = effectiveSave,
         )
         options?.let { order.withOptions(it) }
-        val transaction = gateway.requestNewOrder(order, signature)
+        val transaction = (orderResolver?.invoke(order, signature) ?: gateway.requestNewOrder(order, signature))
         // Clear sensitive/derived state after a successful order (code-review 7.2): PAN, CVC,
         // the cardholder name (PII), networks, and the blur flags so a reused controller does
         // not show stale errors against now-empty fields.
@@ -944,7 +949,7 @@ public class HiPayCardEntryController(
             )
             val transaction = try {
                 options?.let { order.withOptions(it) }
-                gateway.requestNewOrder(order, signature)
+                (orderResolver?.invoke(order, signature) ?: gateway.requestNewOrder(order, signature))
             } catch (e: HiPayException) {
                 val cnlv = cardNoLongerValidOrNull(e)
                 if (cnlv != null) {
