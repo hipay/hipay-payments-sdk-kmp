@@ -8,6 +8,7 @@ import com.hipay.card.style.HiPayCardEntryStyle
 import com.hipay.card.validation.CardNetwork
 import com.hipay.core.HiPayConfig
 import com.hipay.core.gateway.model.CustomerInfo
+import com.hipay.core.gateway.model.OrderOptions
 import com.hipay.core.gateway.model.Transaction
 
 /**
@@ -61,6 +62,7 @@ actual class HiPayCardController actual constructor(
         shipping: CustomerInfo?,
         threeDS: HiPayThreeDSMode,
         saveCard: Boolean,
+        options: OrderOptions?,
     ): Transaction = impl.pay(
         orderId = orderId,
         amount = amount,
@@ -74,6 +76,7 @@ actual class HiPayCardController actual constructor(
         shipping = shipping,
         threeDS = threeDS,
         saveCard = saveCard,
+        options = options,
     )
 
     actual suspend fun payWithSavedCard(
@@ -89,6 +92,7 @@ actual class HiPayCardController actual constructor(
         customer: CustomerInfo?,
         shipping: CustomerInfo?,
         threeDS: HiPayThreeDSMode,
+        options: OrderOptions?,
     ): Transaction = impl.payWithSavedCard(
         card = card,
         orderId = orderId,
@@ -102,6 +106,7 @@ actual class HiPayCardController actual constructor(
         customer = customer,
         shipping = shipping,
         threeDS = threeDS,
+        options = options,
     )
 
     actual val lastSaveOutcome: SavedCardOutcome? get() = impl.lastSaveOutcome

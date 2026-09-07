@@ -9,6 +9,7 @@ import com.hipay.card.store.SavedCardOutcome
 import com.hipay.card.validation.CardNetwork
 import com.hipay.core.HiPayConfig
 import com.hipay.core.gateway.model.CustomerInfo
+import com.hipay.core.gateway.model.OrderOptions
 import com.hipay.core.gateway.model.Transaction
 
 /**
@@ -94,6 +95,8 @@ expect class HiPayCardController(
         shipping: CustomerInfo? = null,
         threeDS: HiPayThreeDSMode = HiPayThreeDSMode.IN_APP_SESSION,
         saveCard: Boolean = false,
+        /** Optional gateway parameters for this order — see [OrderOptions]. */
+        options: OrderOptions? = null,
     ): Transaction
 
     /**
@@ -120,6 +123,8 @@ expect class HiPayCardController(
         customer: CustomerInfo? = null,
         shipping: CustomerInfo? = null,
         threeDS: HiPayThreeDSMode = HiPayThreeDSMode.IN_APP_SESSION,
+        /** Optional gateway parameters for this order — see [OrderOptions]. */
+        options: OrderOptions? = null,
     ): Transaction
 
     /**

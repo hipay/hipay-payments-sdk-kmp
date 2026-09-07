@@ -9,6 +9,7 @@ import com.hipay.card.style.HiPayCardEntryStyle
 import com.hipay.card.validation.CardNetwork
 import com.hipay.core.HiPayConfig
 import com.hipay.core.gateway.model.CustomerInfo
+import com.hipay.core.gateway.model.OrderOptions
 import com.hipay.core.gateway.model.Transaction
 import com.hipay.card.HiPayCardEntry as NativeCardEntry
 import com.hipay.card.HiPayCardEntryController as NativeController
@@ -63,6 +64,7 @@ actual class HiPayCardController actual constructor(
         shipping: CustomerInfo?,
         threeDS: HiPayThreeDSMode,
         saveCard: Boolean,
+        options: OrderOptions?,
     ): Transaction = delegate.pay(
         orderId = orderId,
         amount = amount,
@@ -78,6 +80,7 @@ actual class HiPayCardController actual constructor(
         // no soft-lock); the host forwards the return via resume3DS either way.
         autoPresent3DS = true,
         saveCard = saveCard,
+        options = options,
     )
 
     actual suspend fun payWithSavedCard(
@@ -93,6 +96,7 @@ actual class HiPayCardController actual constructor(
         customer: CustomerInfo?,
         shipping: CustomerInfo?,
         threeDS: HiPayThreeDSMode,
+        options: OrderOptions?,
     ): Transaction = delegate.payWithSavedCard(
         card = card,
         orderId = orderId,
@@ -106,6 +110,7 @@ actual class HiPayCardController actual constructor(
         customer = customer,
         shipping = shipping,
         autoPresent3DS = true,
+        options = options,
     )
 
     actual val lastSaveOutcome: SavedCardOutcome? get() = delegate.lastSaveOutcome

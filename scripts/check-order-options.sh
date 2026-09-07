@@ -49,6 +49,31 @@ check_kotlin() {
 check_kotlin hipaycard/src/main/kotlin/com/hipay/card/HiPayCardEntryController.kt
 check_kotlin hipaycard-cmp/src/commonMain/kotlin/com/hipay/card/cmp/CmpCardController.kt
 
+# --- CMP public facade: the HOST must be able to supply the options in the first place ------------
+# Checking the order sends above is not enough, and this is not hypothetical: `CmpCardController`
+# attached the options correctly while `HiPayCardController` — the expect/actual class CMP hosts
+# actually call — had no `options` parameter at all. Every check passed and the feature was simply
+# unreachable on that channel. A missing forward in an actual is worse still: it compiles, because
+# the parameter is merely unused, and the value is dropped in silence.
+check_cmp_facade() {
+    local file="$1" expected="$2" what="$3" found
+    found=$(grep -c "$what" "$file" || true)
+    if [ "$found" -ne "$expected" ]; then
+        echo "ERROR: $file — expected $expected '$what', found $found." >&2
+        echo "       Both pay() and payWithSavedCard() must carry the caller's OrderOptions." >&2
+        fail=1
+    else
+        echo "OK: ${file##*/} — $found/$expected ($what)"
+    fi
+}
+
+check_cmp_facade hipaycard-cmp/src/commonMain/kotlin/com/hipay/card/cmp/HiPayCardEntry.kt \
+    2 "options: OrderOptions? = null"
+check_cmp_facade hipaycard-cmp/src/androidMain/kotlin/com/hipay/card/cmp/HiPayCardEntry.android.kt \
+    2 "options = options,"
+check_cmp_facade hipaycard-cmp/src/iosMain/kotlin/com/hipay/card/cmp/HiPayCardEntry.ios.kt \
+    2 "options = options,"
+
 # --- Swift: the card controller forwards `options:` inside every order request --------------------
 # Counted per CALL, not per file: `pay` also delegates to `payWithSavedCard` with `options: options`,
 # so a file-wide count reads three forwardings for two requests and cries wolf.
