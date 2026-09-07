@@ -65,8 +65,29 @@ class OrderRequestParityTest {
         assertEquals("CSDK", parsed.getValue("source").jsonPrimitive.content)
         assertTrue(parsed.getValue("brand").jsonPrimitive.content in setOf("android", "ios"))
         // The version the merchant is actually running — the point of the whole field.
-        assertTrue(parsed.getValue("integration_version").jsonPrimitive.content.isNotBlank())
+        val version = parsed.getValue("integration_version").jsonPrimitive.content
+        assertTrue(version.isNotBlank())
+        // The gateway parses this value and refuses a pre-release suffix, so not-blank alone would
+        // let a suffixed build through and every payment would fail.
+        assertTrue(
+            RELEASE_SHAPED.matches(version),
+            "integration_version must be release-shaped, was \"$version\"",
+        )
         assertTrue("brand_version" in parsed)
+    }
+
+    /** Every way the artifact can be versioned must strip down to a payable value, not just one. */
+    @Test
+    fun integrationVersionDropsAnyPreReleaseSuffix() {
+        assertEquals("1.2.0", integrationVersion("1.2.0-SNAPSHOT"))
+        assertEquals("1.1.0", integrationVersion("1.1.0-rc.3"))
+        assertEquals("1.1.0", integrationVersion("1.1.0+build.7"))
+        assertEquals("1.1.0", integrationVersion("  1.1.0  "))
+        // A plain release passes through untouched.
+        assertEquals("1.1.0", integrationVersion("1.1.0"))
+        for (raw in listOf("1.2.0-SNAPSHOT", "1.1.0-rc.3", "1.1.0+build.7", "1.1.0")) {
+            assertTrue(RELEASE_SHAPED.matches(integrationVersion(raw)), "rejected: $raw")
+        }
     }
 
     @Test
@@ -235,3 +256,6 @@ private fun OrderRequest.copyWithAmount(amount: String) = OrderRequest(
     acceptUrl = "a://x", declineUrl = "a://x", pendingUrl = "a://x",
     exceptionUrl = "a://x", cancelUrl = "a://x",
 )
+
+/** What the gateway accepts in `integration_version`: digits and dots only, no suffix. */
+private val RELEASE_SHAPED = Regex("""\d+(\.\d+)*""")
