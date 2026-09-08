@@ -9,6 +9,7 @@ import com.hipay.card.style.HiPayCardEntryStyle
 import com.hipay.card.validation.CardNetwork
 import com.hipay.core.HiPayConfig
 import com.hipay.core.gateway.model.CustomerInfo
+import com.hipay.card.HiPayPaymentPhase
 import com.hipay.core.gateway.model.OrderOptions
 import com.hipay.core.gateway.model.Transaction
 import com.hipay.card.HiPayCardEntry as NativeCardEntry
@@ -112,6 +113,8 @@ actual class HiPayCardController actual constructor(
         autoPresent3DS = true,
         options = options,
     )
+
+    actual val paymentPhase: HiPayPaymentPhase? get() = delegate.paymentPhase
 
     actual val lastSaveOutcome: SavedCardOutcome? get() = delegate.lastSaveOutcome
 

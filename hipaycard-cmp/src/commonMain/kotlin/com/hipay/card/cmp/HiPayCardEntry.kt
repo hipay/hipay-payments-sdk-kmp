@@ -9,6 +9,7 @@ import com.hipay.card.store.SavedCardOutcome
 import com.hipay.card.validation.CardNetwork
 import com.hipay.core.HiPayConfig
 import com.hipay.core.gateway.model.CustomerInfo
+import com.hipay.card.HiPayPaymentPhase
 import com.hipay.core.gateway.model.OrderOptions
 import com.hipay.core.gateway.model.Transaction
 
@@ -43,6 +44,9 @@ expect class HiPayCardController(
 ) {
     /** True when every required field is valid, or a saved card is selected (Compose-observable). */
     val canPay: Boolean
+
+    /** Where the running payment is, for a host progress indicator; null when idle. Read-only. */
+    val paymentPhase: HiPayPaymentPhase?
 
     /** The saved cards offered for one-click, most recent first; empty when none or not loaded. */
     val savedCards: List<SavedCard>
