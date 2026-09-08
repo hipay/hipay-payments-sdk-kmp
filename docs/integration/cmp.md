@@ -140,6 +140,7 @@ val style = HiPayCardEntryStyle(
     cornerRadius = 12f,
     backgroundColor = 0xFFFFFFFF,
     fieldHeight = 42f,      // a MINIMUM (heightIn); grows under large font scales
+    fieldSpacing = 8f,      // gap between fields; omit to keep this platform's own spacing
 )
 HiPayCardEntry(controller = controller, style = style)   // shared expect/actual, Android + iOS
 ```

@@ -3,7 +3,11 @@ package com.hipay.card
 
 import android.content.res.Configuration
 import android.provider.Settings
-import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -246,19 +250,15 @@ private fun CardEntryContent(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(16.dp)
-            // Animate the expand/collapse only when one-click is on — an opted-out integrator must
-            // see no new animation of pre-existing size changes (errors, tooltip). Suppressed under
-            // the reduce-motion accessibility setting (WCAG 2.3.3): the size change applies instantly.
-            .then(
-                if (controller.oneClickEnabled && !reduceMotion) Modifier.animateContentSize()
-                else Modifier,
-            )
+            // Deliberately NOT animateContentSize() here. It clips its content to the animating
+            // size, which cut a swiped saved-card row off at the component's edge — invisible while
+            // the component still had an outer margin, obvious once that went. The collapse it used
+            // to animate now lives on the entry fields, the only part that collapses.
             .then(if (setsAccessibilityOrder) Modifier.semantics { isTraversalGroup = true } else Modifier),
-        // A floating label rises into the top of its own field, which eats most of the visual gap
-        // between two stacked fields: 8.dp read as cramped. 12.dp is the value the SwiftUI surface
-        // already ships, so this also brings the three surfaces back into line.
-        verticalArrangement = Arrangement.spacedBy(ROW_GAP),
+        // Smaller than the SwiftUI surface's gap on purpose: here the floating label rises into
+        // the top of its own field and already supplies visual separation, so the same number would
+        // read as loose. Set `fieldSpacing` on the style to override it.
+        verticalArrangement = Arrangement.spacedBy(style.fieldSpacing?.dp ?: ROW_GAP),
     ) {
         // Also composed when the list just emptied with a section-level one-click error to show
         // (the last card was purged as no longer valid) — the payer must learn why it vanished.
@@ -272,7 +272,15 @@ private fun CardEntryContent(
                 SavedCardsSections(controller, enabled, savedCardsScope)
             }
         }
-        if (showEntryFields) {
+        // Animated here rather than on the whole component: only these fields appear and disappear
+        // (a saved card being selected hides them), and confining the animation confines its clip.
+        // Reduce motion (WCAG 2.3.3) keeps the change instant.
+        AnimatedVisibility(
+            visible = showEntryFields,
+            enter = if (reduceMotion) EnterTransition.None else expandVertically(),
+            exit = if (reduceMotion) ExitTransition.None else shrinkVertically(),
+        ) {
+        Column(verticalArrangement = Arrangement.spacedBy(style.fieldSpacing?.dp ?: ROW_GAP)) {
         // Holder
         FieldGroup(setsAccessibilityOrder, 0f) {
             HiPayStyledField(
@@ -379,6 +387,7 @@ private fun CardEntryContent(
         if (controller.isCvcRequired && showCvvInfo) CvvInfoText()
         // In-frame save switch + one-line consent — the new-card branch of one-click only.
         if (controller.oneClickEnabled) SaveCardSwitch(controller, enabled)
+        }
         } // showEntryFields
     }
     } // LocalHiPayCardStyle
@@ -828,6 +837,7 @@ private fun SaveCardSwitch(controller: HiPayCardEntryController, enabled: Boolea
  * shrank to keep the form from spreading out. It cannot be dropped to zero in exchange: it also
  * separates the rows that carry no reserve, such as an inline error and the row below it.
  */
+/** The gap when the style leaves `fieldSpacing` unset — this platform's historical value. */
 private val ROW_GAP = 6.dp
 
 /** A field + its error slot, carrying the relative traversal index so the error follows its field. */

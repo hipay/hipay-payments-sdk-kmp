@@ -55,6 +55,8 @@ public enum class HiPayFontWeight { REGULAR, MEDIUM, SEMIBOLD, BOLD }
  *  beyond it when content needs the room (e.g. large accessibility font scales), so entered
  *  card data is never clipped.
  * @property backgroundColor field container color (ARGB).
+ * @property fieldSpacing vertical gap between fields in density-independent units. `null` keeps
+ *  each platform's own gap.
  *
  * @throws IllegalArgumentException when a value is outside the documented bounds.
  * @since 0.3.0
@@ -73,6 +75,7 @@ public data class HiPayCardEntryStyle(
     val cornerRadius: Float = 12f,
     val backgroundColor: Long = 0xFFFFFFFF,
     val fieldHeight: Float = 42f,
+    val fieldSpacing: Float? = null,
 ) {
     init {
         requireArgb("textColor", textColor)
@@ -90,6 +93,7 @@ public data class HiPayCardEntryStyle(
         requireFinite("fieldHeight", fieldHeight, atLeast = MUST_BE_POSITIVE)
         requireFinite("borderWidth", borderWidth, atLeast = 0f)
         requireFinite("cornerRadius", cornerRadius, atLeast = 0f)
+        fieldSpacing?.let { requireFinite("fieldSpacing", it, atLeast = 0f) }
     }
 
     public companion object {

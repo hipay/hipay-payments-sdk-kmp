@@ -14,6 +14,15 @@ the iOS XCFramework/SPM package.
 - **Optional gateway parameters on an order**, for the fields the SDK does not model as its own: a
   per-order notification URL, the bank-statement descriptor, the basket, and anything else the gateway
   accepts. Nothing changes for an order that does not use them.
+- **The vertical gap between card fields is now settable** on the shared style. Left alone it keeps
+  each platform's current spacing, so an existing integration's layout does not move.
+
+### Changed
+
+- **BREAKING on Swift only — the shared card style takes one more value.** Building it directly in
+  Swift needs that value passed; building the theme by mutation, as the iOS guide shows, is unaffected.
+- **The card component no longer adds its own outer margin on Android and Compose Multiplatform**,
+  matching iOS. Add your own padding around it if you were relying on the one it used to insert.
 
 ## 1.1.0
 

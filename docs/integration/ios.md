@@ -150,8 +150,14 @@ mutation, and the setters enforce fail-fast bounds:
 var theme = HiPayCardTheme.hipayDefault
 theme.iconColor = UIColor(red: 0.38, green: 0, blue: 0.93, alpha: 1)
 theme.cornerRadius = 12
+theme.fieldSpacing = 8          // gap between fields; leave it for this platform's own spacing
 HiPayCardEntryView(controller: controller, theme: theme)
 ```
+
+> **Upgrading to 1.2.0.** `HiPayCardEntryStyle` gained `fieldSpacing`, and Kotlin default arguments
+> are not exported, so a `HiPayCardEntryStyle(...)` built **directly in Swift** must now pass
+> `fieldSpacing: nil` (or a value). Building the theme by mutation, as above, needs no change — which
+> is why it is the recommended path.
 
 > **Notes.** A custom placeholder color applies from iOS 17 (iOS 15/16 keep the system gray). The
 > default theme follows the host's light/dark appearance on its own — its colours are the system's
