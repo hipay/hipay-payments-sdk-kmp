@@ -7,7 +7,7 @@ package com.hipay.card
  * phases are the ones the SDK genuinely crosses — a payer-facing label like "contacting your bank"
  * is the host's wording to choose, not the SDK's.
  */
-public enum class HiPayPaymentPhase {
+public enum class PaymentPhase {
     /** Exchanging the entered card for a vault token. Skipped when paying from a saved card. */
     TOKENIZING,
 

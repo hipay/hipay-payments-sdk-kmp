@@ -5,7 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.hipay.card.CardTokenizer
-import com.hipay.card.HiPayPaymentPhase
+import com.hipay.card.PaymentPhase
 import com.hipay.core.callback.hipayCallbackBase
 import com.hipay.card.model.CardInfo
 import com.hipay.card.model.CardToken
@@ -155,7 +155,7 @@ public class CmpCardController(
     public var isProcessing: Boolean by mutableStateOf(false); private set
 
     /** Where the running payment is, for a host progress indicator; null when idle. Read-only. */
-    public var paymentPhase: HiPayPaymentPhase? by mutableStateOf(null); private set
+    public var paymentPhase: PaymentPhase? by mutableStateOf(null); private set
 
     public var holderBlurred: Boolean by mutableStateOf(false); private set
     public var numberBlurred: Boolean by mutableStateOf(false); private set
@@ -693,7 +693,7 @@ public class CmpCardController(
         if (effectiveSave) lastSaveOutcome = null
         // Lock the fields for the whole flow (incl. the suspended 3DS); reset on every exit (11.14).
         isProcessing = true
-        paymentPhase = HiPayPaymentPhase.TOKENIZING
+        paymentPhase = PaymentPhase.TOKENIZING
         try {
         val product = network.productCode()
         val token = tokenizer.generateToken(
@@ -705,7 +705,7 @@ public class CmpCardController(
             multiUse = effectiveSave,
         )
         val base = hipayCallbackBase(redirectScheme, orderId)
-        paymentPhase = HiPayPaymentPhase.CREATING_ORDER
+        paymentPhase = PaymentPhase.CREATING_ORDER
         val order = OrderRequest(
             orderId = orderId,
             paymentProduct = product,
@@ -785,7 +785,7 @@ public class CmpCardController(
         val expiredAtAttempt = savedCardExpiredNow(card)
         isProcessing = true
         // No tokenization on this path: the stored token goes straight to the order.
-        paymentPhase = HiPayPaymentPhase.CREATING_ORDER
+        paymentPhase = PaymentPhase.CREATING_ORDER
         try {
             val base = hipayCallbackBase(redirectScheme, orderId)
             val order = OrderRequest(
@@ -919,7 +919,7 @@ public class CmpCardController(
         if (forwardUrl == null || !willPresent3DS(transaction)) {
             return transaction
         }
-        paymentPhase = HiPayPaymentPhase.AUTHENTICATING
+        paymentPhase = PaymentPhase.AUTHENTICATING
         val callbackUrl: String? = when (threeDS) {
             // In-app session self-captures the scheme:// callback. Suspend until it completes;
             // a null callback = user cancelled the sheet → reconcile with the server below (never assume abort).
@@ -943,7 +943,7 @@ public class CmpCardController(
                 }
             }
         }
-        paymentPhase = HiPayPaymentPhase.CONFIRMING
+        paymentPhase = PaymentPhase.CONFIRMING
         return if (callbackUrl != null) {
             confirm3DS(callbackUrl, transaction.transactionReference, signature)
         } else {

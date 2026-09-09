@@ -350,7 +350,7 @@ public class HiPayCardEntryController(
     public var isProcessing: Boolean by mutableStateOf(false); private set
 
     /** Where the running payment is, for a host progress indicator; null when idle. Read-only. */
-    public var paymentPhase: HiPayPaymentPhase? by mutableStateOf(null); private set
+    public var paymentPhase: PaymentPhase? by mutableStateOf(null); private set
 
     // ---- Blur state (consumed by the 7.4 inline-error UI; exposed now, no UI here) ----
     public var holderBlurred: Boolean by mutableStateOf(false); private set
@@ -784,7 +784,7 @@ public class HiPayCardEntryController(
         if (effectiveSave) lastSaveOutcome = null
         // Lock the fields for the whole flow (incl. the suspended 3DS); reset on every exit (11.14).
         isProcessing = true
-        paymentPhase = HiPayPaymentPhase.TOKENIZING
+        paymentPhase = PaymentPhase.TOKENIZING
         try {
         // Falls back to the LOCALLY DETECTED network, never to a hardcoded brand: while the account
         // ceiling is still pending there is no selected network, and a blind "visa" would declare the
@@ -799,7 +799,7 @@ public class HiPayCardEntryController(
             cvc = if (isCvcRequired) cvc else "",
             multiUse = effectiveSave,
         )
-        paymentPhase = HiPayPaymentPhase.CREATING_ORDER
+        paymentPhase = PaymentPhase.CREATING_ORDER
         val base = hipayCallbackBase(redirectScheme, orderId)
         val order = OrderRequest(
             orderId = orderId,
@@ -878,7 +878,7 @@ public class HiPayCardEntryController(
         if (context == null || forwardUrl.isNullOrBlank() || !willPresent3DS(transaction, autoPresent3DS)) {
             return transaction
         }
-        paymentPhase = HiPayPaymentPhase.AUTHENTICATING
+        paymentPhase = PaymentPhase.AUTHENTICATING
         val deferred = CompletableDeferred<Transaction>()
         pending3DS = Pending3DS(deferred, transaction.transactionReference, signature)
         // Watch for a dismissed Custom Tab (story 11.15) BEFORE launching, so we never miss the return.
@@ -934,7 +934,7 @@ public class HiPayCardEntryController(
         val expiredAtAttempt = savedCardExpiredNow(card)
         isProcessing = true
         // No tokenization on this path: the stored token goes straight to the order.
-        paymentPhase = HiPayPaymentPhase.CREATING_ORDER
+        paymentPhase = PaymentPhase.CREATING_ORDER
         try {
             val base = hipayCallbackBase(redirectScheme, orderId)
             val order = OrderRequest(
@@ -1037,7 +1037,7 @@ public class HiPayCardEntryController(
         val pending = pending3DS ?: return
         pending3DS = null
         unregisterCancellationWatcher() // a real return arrived → stop watching for a dismissal
-        paymentPhase = HiPayPaymentPhase.CONFIRMING
+        paymentPhase = PaymentPhase.CONFIRMING
         scope.launch {
             val reference = pending.reference
                 ?: runCatching { CallbackUrlParser.parse(uri).queryParams["reference"] }.getOrNull()
