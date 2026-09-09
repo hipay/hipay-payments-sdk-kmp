@@ -87,7 +87,8 @@ accepts — a per-order notification URL, a bank-statement descriptor, the baske
 let options = HiPayOrderOptions(
     notifyUrl: "https://your-backend.example/hipay/notify",   // overrides the back-office URL
     softDescriptor: "MY SHOP",                                // shown on the payer's statement
-    custom: ["website_id": "STWAK4897048"]                    // any other gateway parameter
+    customData: ["internal_reference": "ORD-987465"],         // your own data, shown in the back office
+    custom: ["shipping": "1.00"]                              // a gateway parameter the SDK does not model
 )
 
 let tx = try await card.pay(/* … */, options: options)
@@ -100,6 +101,10 @@ Validation happens when the order is built, so **`pay(...)` throws `HiPayError.v
 rejected value — a non-`http(s)` `notifyUrl`, a blank value, or a `custom` name the SDK owns. It
 fails before any order is created rather than at the gateway, and the rules are the shared ones, so
 Android and iOS refuse exactly the same inputs.
+
+`customData` and `custom` are not interchangeable. Your own data goes through `customData`, which
+fills the gateway's `custom_data`; the order schema accepts no arbitrary top-level parameter, so an
+invented wire name passed to `custom` is refused by the gateway.
 
 Names the SDK owns are rejected in `custom`: the signature-covered ones (`orderid`, `amount`,
 `currency`), the card token, the return URLs, and the customer/shipping blocks, which have typed

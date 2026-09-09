@@ -3,6 +3,8 @@ package com.hipay.core.gateway.model
 import com.hipay.core.HiPayErrorCode
 import com.hipay.core.HiPayException
 import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Optional gateway parameters for an order, attached with [OrderRequest.withOptions]:
@@ -13,8 +15,9 @@ import kotlin.coroutines.cancellation.CancellationException
  * ```
  *
  * Grows by methods, never by parameters: Kotlin default arguments are not exported to Swift, so a new
- * constructor parameter breaks every Swift caller while a new method breaks none. Parameters this SDK
- * does not model go through [Builder.custom], so a missing one never blocks an integrator.
+ * constructor parameter breaks every Swift caller while a new method breaks none. A gateway parameter
+ * this SDK does not model goes through [Builder.custom]; your own data goes through
+ * [Builder.customData]. Neither a missing parameter nor a merchant-specific field blocks an integrator.
  *
  * Every value is rejected by [Builder.build], never by the setter that took it: an exception out of a
  * non-`@Throws` function does not cross the Kotlin/Native boundary, it terminates the Swift host. Same
@@ -28,6 +31,9 @@ public class OrderOptions private constructor(
     /** Accumulates the parameters; each method overwrites its own key if called twice. */
     public class Builder {
         private val fields = linkedMapOf<String, String>()
+
+        /** Entries for the gateway's `custom_data`, serialized together by [build]. */
+        private val customDataEntries = linkedMapOf<String, String>()
 
         /** First rejection seen, raised by [build]. Kept rather than thrown so a bad value cannot
          *  terminate a Swift host — see the note on [OrderOptions]. */
@@ -64,8 +70,29 @@ public class OrderOptions private constructor(
             apply { put("basket", json, label = "basket") }
 
         /**
-         * Any other gateway parameter, by its exact wire name. Sent verbatim: a wrong name or shape
-         * surfaces as a gateway rejection, not a local error.
+         * One entry of your own data, carried in the gateway's `custom_data` and shown on the
+         * transaction in the back office. Call once per entry; the keys are yours to choose.
+         *
+         * This — not [custom] — is where data the gateway does not model belongs: the order schema
+         * accepts no arbitrary top-level parameter, so an invented wire name is refused, while
+         * `custom_data` takes any key.
+         */
+        public fun customData(name: String, value: String): Builder = apply {
+            val key = name.trim()
+            when {
+                key.isEmpty() -> reject("customData: the entry name must not be blank")
+                value.isBlank() -> reject("customData: '$key' must not be blank")
+                else -> customDataEntries[key] = value
+            }
+        }
+
+        /**
+         * A gateway parameter the SDK does not model yet, by its exact wire name — `shipping`, `tax`
+         * and `browser_info` are examples. Sent verbatim: a wrong name or shape surfaces as a gateway
+         * rejection, not a local error.
+         *
+         * NOT for your own data: the order schema is closed, so a name of your invention is refused.
+         * Use [customData] for that.
          *
          * Refuses [RESERVED_FIELDS] and the `shipto_` prefix — those have typed parameters on
          * [OrderRequest], and two sources of truth for one field is a payment that fails invisibly.
@@ -85,7 +112,13 @@ public class OrderOptions private constructor(
         @Throws(HiPayException::class, CancellationException::class)
         public fun build(): OrderOptions {
             rejection?.let { throw HiPayException(code = HiPayErrorCode.VALIDATION, message = it) }
-            return OrderOptions(LinkedHashMap(fields))
+            val all = LinkedHashMap(fields)
+            // A JSON string, not an object: that is the shape the order schema declares for this one.
+            if (customDataEntries.isNotEmpty()) {
+                all["custom_data"] =
+                    JsonObject(customDataEntries.mapValues { JsonPrimitive(it.value) }).toString()
+            }
+            return OrderOptions(all)
         }
 
         private fun put(key: String, value: String, label: String = key) {
@@ -112,6 +145,8 @@ public class OrderOptions private constructor(
             // Return URLs: built from the integrator's scheme, and matched again on the way back.
             "accept_url", "decline_url", "pending_url", "exception_url", "cancel_url",
             "cardtoken", "eci", "authentication_indicator", "one_click",
+            // custom_data is reachable, but only through Builder.customData: one way in, so two
+            // callers cannot each believe they own the field.
             "cid", "ipaddr", "custom_data",
             // Derived from the running device, so a supplied value could only be less accurate.
             "source", "http_user_agent",

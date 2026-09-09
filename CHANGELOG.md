@@ -12,8 +12,9 @@ the iOS XCFramework/SPM package.
 ### Added
 
 - **Optional gateway parameters on an order**, for the fields the SDK does not model as its own: a
-  per-order notification URL, the bank-statement descriptor, the basket, and anything else the gateway
-  accepts. Nothing changes for an order that does not use them.
+  per-order notification URL, the bank-statement descriptor, the basket, your own data shown on the
+  transaction in the back office, and any other parameter the gateway accepts. Nothing changes for an
+  order that does not use them.
 - **The vertical gap between card fields is now settable** on the shared style. Left alone it keeps
   each platform's current spacing, so an existing integration's layout does not move.
 

@@ -418,7 +418,8 @@ attach an `OrderOptions`:
 val options = OrderOptions.Builder()
     .notifyUrl("https://your-backend.example/hipay/notify")   // overrides the back-office URL
     .softDescriptor("MY SHOP")                                // shown on the payer's statement
-    .custom("website_id", "STWAK4897048")                     // any other gateway parameter
+    .customData("internal_reference", "ORD-987465")           // your own data, shown in the back office
+    .custom("shipping", "1.00")                               // a gateway parameter the SDK does not model
     .build()
 
 gateway.requestNewOrder(order.withOptions(options), signature)

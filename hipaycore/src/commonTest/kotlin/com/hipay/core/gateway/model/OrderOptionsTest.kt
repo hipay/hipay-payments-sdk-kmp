@@ -10,7 +10,8 @@ import kotlin.test.assertTrue
 
 class OrderOptionsTest {
 
-    private fun order() = OrderRequest(
+    private fun order(customData: Map<String, String> = emptyMap()) = OrderRequest(
+        customData = customData,
         orderId = "TEST-ORDER-1",
         paymentProduct = "visa",
         amount = "1.00",
@@ -63,6 +64,45 @@ class OrderOptionsTest {
             .withOptions(OrderOptions.Builder().custom("website_id", "STWAK4897048").build())
             .toFields()
         assertEquals("STWAK4897048", fields["website_id"])
+    }
+
+    /** The order schema declares `custom_data` as a JSON string, not an object. */
+    @Test
+    fun customDataReachesTheWireAsOneJsonString() {
+        val fields = order().withOptions(
+            OrderOptions.Builder()
+                .customData("internal_reference", "ORD-987465")
+                .customData("shipping_method", "express")
+                .build(),
+        ).toFields()
+
+        assertEquals(
+            """{"internal_reference":"ORD-987465","shipping_method":"express"}""",
+            fields["custom_data"],
+        )
+    }
+
+    @Test
+    fun customDataRefusesBlankNamesAndValues() {
+        validation { OrderOptions.Builder().customData(" ", "value").build() }
+        validation { OrderOptions.Builder().customData("internal_reference", " ").build() }
+    }
+
+    /** One way in: `custom_data` stays reserved for [OrderOptions.Builder.custom], so the two cannot
+     *  each write the field and silently drop one another. */
+    @Test
+    fun customCannotWriteCustomDataItself() {
+        validation { OrderOptions.Builder().custom("custom_data", """{"a":"b"}""").build() }
+    }
+
+    /** Freezes the documented precedence: the order's own typed value wins and the option is dropped.
+     *  No card controller sets it today, so this cannot bite yet — the test is what keeps it visible. */
+    @Test
+    fun anOrderThatAlreadyCarriesCustomDataKeepsItsOwn() {
+        val fields = order(customData = mapOf("from" to "order"))
+            .withOptions(OrderOptions.Builder().customData("from", "options").build())
+            .toFields()
+        assertEquals("""{"from":"order"}""", fields["custom_data"])
     }
 
     @Test
