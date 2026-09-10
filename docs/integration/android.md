@@ -70,6 +70,18 @@ when (tx.state) {                           // tx is the FINAL state (3DS alread
 > After a successful order the SDK also clears the card (PCI), so `canPay` is false — a new payment
 > needs a fresh card entry.
 
+## Payment progress
+
+`controller.paymentPhase` reports which step the payment is on — `TOKENIZING`, `CREATING_ORDER`,
+`AUTHENTICATING`, `CONFIRMING` — and is `null` when idle. Read-only, observable from Compose, so a
+host can replace one opaque spinner with its own wording:
+
+```kotlin
+controller.paymentPhase?.let { phase -> Text(myLabelFor(phase)) }
+```
+
+The payer-facing wording is deliberately yours: the SDK ships no localized strings for these.
+
 ## Optional gateway parameters
 
 `pay(...)` and `payWithSavedCard(...)` send what the SDK models. For anything else the gateway

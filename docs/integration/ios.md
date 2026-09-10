@@ -77,6 +77,18 @@ default: /* error */
 > The SDK also clears the card after tokenisation (PCI), so `canPay` is false after a successful
 > payment — a new payment needs a fresh card entry.
 
+## Payment progress
+
+`controller.paymentPhase` reports which step the payment is on — `.tokenizing`, `.creatingOrder`,
+`.authenticating`, `.confirming` — and is `nil` when idle. `@Published` and read-only, so a host can
+replace one opaque spinner with its own wording:
+
+```swift
+if let phase = controller.paymentPhase { Text(myLabel(for: phase)) }
+```
+
+The payer-facing wording is deliberately yours: the SDK ships no localized strings for these.
+
 ## Optional gateway parameters
 
 `pay(...)` and `payWithSavedCard(...)` send what the SDK models. For anything else the gateway

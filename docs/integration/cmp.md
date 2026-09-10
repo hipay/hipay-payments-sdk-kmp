@@ -408,6 +408,18 @@ suspend fun pay(): TransactionState {
 }
 ```
 
+### Payment progress
+
+`controller.paymentPhase` reports which step the payment is on — `TOKENIZING`, `CREATING_ORDER`,
+`AUTHENTICATING`, `CONFIRMING` — and is `null` when idle. Read-only, observable from Compose, so a
+host can replace one opaque spinner with its own wording:
+
+```kotlin
+controller.paymentPhase?.let { phase -> Text(myLabelFor(phase)) }
+```
+
+The payer-facing wording is deliberately yours: the SDK ships no localized strings for these.
+
 ### Optional gateway parameters
 
 The order above sends what the SDK models. For anything else the gateway accepts — a per-order

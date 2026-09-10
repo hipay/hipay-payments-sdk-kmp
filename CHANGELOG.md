@@ -17,6 +17,9 @@ the iOS XCFramework/SPM package.
   order that does not use them.
 - **The vertical gap between card fields is now settable** on the shared style. Left alone it keeps
   each platform's current spacing, so an existing integration's layout does not move.
+- **The card controller reports which step of a payment it is on** — tokenizing, creating the order,
+  authenticating, confirming — so a host can show its own progress wording instead of one opaque
+  spinner. Read-only, and `null` when idle.
 
 ### Changed
 

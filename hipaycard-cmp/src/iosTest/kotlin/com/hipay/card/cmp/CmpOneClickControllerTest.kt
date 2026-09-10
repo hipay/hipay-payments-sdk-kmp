@@ -7,7 +7,6 @@ import com.hipay.card.store.createSecureCardStore
 import com.hipay.core.Environment
 import com.hipay.core.HiPayConfig
 import com.hipay.core.HiPayException
-import com.hipay.core.gateway.model.OrderOptions
 import com.hipay.core.gateway.model.OrderRequest
 import com.hipay.core.gateway.model.Transaction
 import kotlin.test.AfterTest
