@@ -74,6 +74,16 @@ check_cmp_facade hipaycard-cmp/src/androidMain/kotlin/com/hipay/card/cmp/HiPayCa
 check_cmp_facade hipaycard-cmp/src/iosMain/kotlin/com/hipay/card/cmp/HiPayCardEntry.ios.kt \
     2 "options = options,"
 
+# --- The Swift surface lives in a submodule ------------------------------------------------------
+# Without it the file reads are empty and every check below would report "no longer attaches its
+# options" — a wrong cause. Say what is actually missing instead, and never pass silently: skipping
+# two of the four surfaces would leave the gate green while half of it went unverified.
+if [ ! -d HiPay_Payments_SDK_iOS/Sources ]; then
+    echo "ERROR: HiPay_Payments_SDK_iOS/Sources is absent — the Swift surface cannot be checked." >&2
+    echo "       Run: git submodule update --init HiPay_Payments_SDK_iOS" >&2
+    exit 1
+fi
+
 # --- Swift: the card controller forwards `options:` inside every order request --------------------
 # Counted per CALL, not per file: `pay` also delegates to `payWithSavedCard` with `options: options`,
 # so a file-wide count reads three forwardings for two requests and cries wolf.
