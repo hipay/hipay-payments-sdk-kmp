@@ -105,6 +105,19 @@ else
     echo "OK: ${SWIFT_CARD##*/} — $sends order request(s), all forwarding the options"
 fi
 
+# --- Swift: the one order builder actually attaches what its callers forwarded --------------------
+# The check above proves the callers pass `options:`; this proves the value is not then dropped on
+# the floor. Both Swift card paths go through this single call, so losing it costs every order at
+# once while every caller still looks correct.
+SWIFT_ORDER="HiPay_Payments_SDK_iOS/Sources/HiPayCore/HiPayPayment.swift"
+if grep -q 'order.withOptions(options:' "$SWIFT_ORDER"; then
+    echo "OK: ${SWIFT_ORDER##*/} — the built order attaches its options"
+else
+    echo "ERROR: $SWIFT_ORDER — the order no longer attaches the caller's options." >&2
+    echo "       Callers forwarding 'options:' is not enough; the order must carry them." >&2
+    fail=1
+fi
+
 # --- Swift: an Apple Pay order carries its options into the Kotlin order --------------------------
 SWIFT_APPLE="HiPay_Payments_SDK_iOS/Sources/HiPayApplePay/HiPayApplePayPayment.swift"
 if grep -q 'withOptions(options:' "$SWIFT_APPLE"; then
