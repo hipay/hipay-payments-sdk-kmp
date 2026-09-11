@@ -170,14 +170,13 @@ public class CmpCardController(
     public var lastSaveOutcome: SavedCardOutcome? by mutableStateOf(null); private set
 
     /**
-     * The most recent one-click failure, as a transient observable outcome (the sibling of
-     * [lastSaveOutcome] for the pay path): the affected card's masked identity plus a reason.
-     * Set inside [payWithSavedCard] — the call still throws/returns exactly as before; this is
-     * additive. Cleared at the start of the next attempt, on any selection change, on a new-card
-     * field edit, and by a [refreshSavedCards] that no longer lists the affected card. The
-     * component renders it via the shared `oneClickErrorSurface` policy; hosts may read it too.
-     * Setter internal (not private): the in-module test harness drives outcomes the tests cannot
-     * obtain without a gateway stub (declined / token-invalid); never written by the component.
+     * The most recent one-click failure: the affected card's masked identity plus a reason. Set by
+     * [payWithSavedCard], which still throws or returns exactly as before — this is additive.
+     * Cleared at the next attempt, on a selection change, on a new-card field edit, and by a
+     * [refreshSavedCards] that no longer lists the card. The component renders it via the shared
+     * `oneClickErrorSurface` policy; hosts may read it too.
+     *
+     * Setter internal so the in-module test harness can drive outcomes a stub-less test cannot.
      */
     public var lastOneClickError: OneClickError? by mutableStateOf(null); internal set
 
@@ -206,8 +205,38 @@ public class CmpCardController(
 
     /** Select the new-card branch (expands the entry fields). */
     public fun selectNewCard() {
+        // Remembered so [collapseNewCard] can put back what the payer was looking at.
+        previousSelection = selectedSavedCard ?: previousSelection
         selectedSavedCard = null
         lastOneClickError = null // a new intent supersedes the previous failure
+    }
+
+    private var previousSelection: SavedCard? = null
+
+    /** Drops the entered card and all derived state, on EVERY payment exit — success or failure.
+     *  Blur flags too, or a reused controller shows stale errors against now-empty fields. */
+    private fun clearEnteredCard() {
+        holder = ""; cardNumber = ""; expiry = ""; cvc = ""
+        networks = emptyList(); selectedNetwork = null
+        userSelectedNetwork = false; lastDetected = CardNetwork.UNKNOWN; lastResolvedDigits = null
+        lastResolvedNetworks = emptyList()
+        holderBlurred = false; numberBlurred = false; expiryBlurred = false; cvcBlurred = false
+    }
+
+    /** True while [collapseNewCard] has a card to go back to. */
+    public val canCollapseNewCard: Boolean
+        get() = selectedSavedCard == null && savedCards.isNotEmpty()
+
+    /**
+     * Re-selects the card shown before [selectNewCard], hiding the entry fields. Typed values are
+     * hidden, not cleared. Falls back to the most recent card when the remembered one was deleted —
+     * an inert control would look broken for a reason the payer cannot see.
+     */
+    public fun collapseNewCard() {
+        val target = previousSelection?.takeIf { it in savedCards } ?: savedCards.firstOrNull() ?: return
+        selectedSavedCard = target
+        previousSelection = null
+        lastOneClickError = null
     }
 
     /** Save-switch handler (called from the component's toggle). */
@@ -218,6 +247,13 @@ public class CmpCardController(
     // True once the first load has run: the first load pre-selects the most recent card; later
     // re-appearance refreshes must NOT (they preserve the payer's current choice — see [reload]).
     private var hasLoadedOnce = false
+
+    /**
+     * False until the first saved-cards load has settled. The component holds the entry fields back
+     * until then: rendered before the store answers, they expand and immediately collapse again as
+     * soon as a pre-selected card arrives.
+     */
+    public var savedCardsLoaded: Boolean by mutableStateOf(false); private set
 
     /**
      * (Re)loads [savedCards] for the card entry. Called after composition and on each re-appearance.
@@ -244,7 +280,9 @@ public class CmpCardController(
      * kept and a vanished one (e.g. a purged card) falls back to the new-card branch.
      */
     private suspend fun reload(reselectMostRecent: Boolean) {
-        if (!oneClickEnabled) return
+        // Fail-open: the flag means "nothing more is coming". Left false on an early exit, the
+        // component would hide its entry fields for good.
+        if (!oneClickEnabled) { savedCardsLoaded = true; return }
         val cards = try {
             withStore { it.list() }.allowedByMerchant()
         } catch (e: CancellationException) {
@@ -260,6 +298,8 @@ public class CmpCardController(
         } else {
             selectedSavedCard?.let { prev -> cards.firstOrNull { it == prev } }
         }
+        // Last, so the view never sees 'loaded' with the selection not yet applied.
+        savedCardsLoaded = true
     }
 
     /** Saved cards whose resolved network the merchant accepts (empty allow-list → all kept). */
@@ -704,6 +744,9 @@ public class CmpCardController(
             cvc = if (isCvcRequired) cvc else "",
             multiUse = effectiveSave,
         )
+        // The CVV goes the moment it has been used: PCI-DSS forbids retaining it past
+        // authorisation. The other fields stay until the outcome, so a refusal costs no retyping.
+        cvc = ""
         val base = hipayCallbackBase(redirectScheme, orderId)
         paymentPhase = PaymentPhase.CREATING_ORDER
         val order = OrderRequest(
@@ -730,13 +773,6 @@ public class CmpCardController(
         )
         options?.let { order.withOptions(it) }
         val transaction = (orderResolver?.invoke(order, signature) ?: gateway.requestNewOrder(order, signature))
-        // Clear sensitive/derived state after a successful order (parity with :hipaycard).
-        holder = ""; cardNumber = ""; expiry = ""; cvc = ""
-        networks = emptyList(); selectedNetwork = null
-        userSelectedNetwork = false; lastDetected = CardNetwork.UNKNOWN; lastResolvedDigits = null
-        lastResolvedNetworks = emptyList()
-        holderBlurred = false; numberBlurred = false; expiryBlurred = false; cvcBlurred = false
-
         val final = resolve3DS(transaction, redirectScheme, signature, threeDS)
         if (effectiveSave) {
             persistSavedCard(token, final, product)
@@ -749,6 +785,7 @@ public class CmpCardController(
         } finally {
             isProcessing = false
             paymentPhase = null
+            clearEnteredCard()
         }
     }
 
@@ -854,6 +891,7 @@ public class CmpCardController(
         } finally {
             isProcessing = false
             paymentPhase = null
+            clearEnteredCard()
         }
     }
 

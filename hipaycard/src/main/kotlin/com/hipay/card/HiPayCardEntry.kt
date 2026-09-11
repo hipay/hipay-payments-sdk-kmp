@@ -211,7 +211,12 @@ private fun CardEntryContent(
     val enabled = !controller.isProcessing
     // With a saved card selected, the entry fields are not rendered — their values stay in the
     // controller (nothing is cleared until a payment succeeds).
-    val showEntryFields = !(controller.oneClickEnabled && controller.selectedSavedCard != null)
+    // Also held back while the store is still answering: rendered before the first load settles,
+    // the fields expand and then collapse the instant a pre-selected card arrives.
+    val showEntryFields = !(
+        controller.oneClickEnabled &&
+            (controller.selectedSavedCard != null || !controller.savedCardsLoaded)
+        )
     // Focus auto-advance on field completion (story 11.10, parity with iOS). Keyed on the
     // completion booleans → fires only on the incomplete→complete edge, so editing a complete
     // field never rips focus. Gated on showEntryFields: the FocusRequesters below are attached
@@ -700,7 +705,18 @@ private fun NewCardHeader(controller: HiPayCardEntryController, enabled: Boolean
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
-            .clickable(enabled = enabled, role = Role.Button) { controller.selectNewCard() }
+            // Toggles BOTH ways. Selecting is idempotent, so re-tapping an expanded row used to do
+            // nothing — the payer had no way back other than picking a card from the list.
+            .clickable(
+                enabled = enabled,
+                role = Role.Button,
+                // No ripple: the row spans the component's full width, and a flash that wide reads
+                // as a style the SDK imposes on its host. Hosts own the theming, so it stays neutral.
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) {
+                if (expanded) controller.collapseNewCard() else controller.selectNewCard()
+            }
             .testTag(HiPayCardEntryTags.NEW_CARD)
             .semantics(mergeDescendants = true) { stateDescription = expandState },
     ) {
@@ -761,8 +777,10 @@ private fun ShowMoreToggle(
 @Composable
 private fun ChevronGlyph(expanded: Boolean) {
     Text(
-        text = if (expanded) "▾" else "▸",
-        style = MaterialTheme.typography.bodyMedium,
+        // Solid triangles, not "▾"/"▸": those are the SMALL variants and fill a fraction of
+        // their box, so no font size makes them read as a disclosure control.
+        text = if (expanded) "▼" else "▶",
+        style = MaterialTheme.typography.titleMedium,
         color = if (expanded) MaterialTheme.colorScheme.primary
         else styleColor(LocalHiPayCardStyle.current.iconColor),
         modifier = Modifier.clearAndSetSemantics {},

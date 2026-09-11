@@ -205,8 +205,47 @@ public class HiPayCardEntryController(
 
     /** Select the new-card branch (expands the entry fields). */
     public fun selectNewCard() {
+        // Remembered so [collapseNewCard] can put back what the payer was looking at.
+        previousSelection = selectedSavedCard ?: previousSelection
         selectedSavedCard = null
         lastOneClickError = null // a new intent supersedes the previous failure
+    }
+
+    private var previousSelection: SavedCard? = null
+
+    /** Drops the entered card and all derived state, on EVERY payment exit — success or failure.
+     *  Blur flags too, or a reused controller shows stale errors against now-empty fields. */
+    private fun clearEnteredCard() {
+        holder = ""
+        cardNumber = ""
+        expiry = ""
+        cvc = ""
+        networks = emptyList()
+        selectedNetwork = null
+        lastResolvedDigits = null
+        lastResolvedNetworks = emptyList()
+        userSelectedNetwork = false
+        lastDetected = CardNetwork.UNKNOWN
+        holderBlurred = false
+        numberBlurred = false
+        expiryBlurred = false
+        cvcBlurred = false
+    }
+
+    /** True while [collapseNewCard] has a card to go back to. */
+    public val canCollapseNewCard: Boolean
+        get() = selectedSavedCard == null && savedCards.isNotEmpty()
+
+    /**
+     * Re-selects the card shown before [selectNewCard], hiding the entry fields. Typed values are
+     * hidden, not cleared. Falls back to the most recent card when the remembered one was deleted —
+     * an inert control would look broken for a reason the payer cannot see.
+     */
+    public fun collapseNewCard() {
+        val target = previousSelection?.takeIf { it in savedCards } ?: savedCards.firstOrNull() ?: return
+        selectedSavedCard = target
+        previousSelection = null
+        lastOneClickError = null
     }
 
     /** Save-switch handler (called from the component's toggle). */
@@ -219,13 +258,19 @@ public class HiPayCardEntryController(
     private var hasLoadedOnce = false
 
     /**
-     * (Re)loads [savedCards] for the component. Called after composition and on each re-appearance.
-     * The selection is PRESERVED across a reload when it still resolves to a present card (a
-     * re-appearance must never silently switch the payer back to a stored card after they picked
-     * "new card"); the most recent card is pre-selected only on the very first load. Fail-soft:
-     * a no-op (and no store created) unless [oneClickEnabled] with a bound presentation context.
-     * Headless-host note: this pre-selection makes a subsequent plain [pay] route to the stored
-     * token — call [selectNewCard] to opt back into card entry.
+     * False until the first saved-cards load has settled; the component holds the entry fields back
+     * until then. Shown earlier, they expand and collapse again the instant a pre-selection lands.
+     */
+    public var savedCardsLoaded: Boolean by mutableStateOf(false); private set
+
+    /**
+     * (Re)loads [savedCards]; called after composition and on each re-appearance. A selection that
+     * still resolves is PRESERVED — a re-appearance must never switch the payer back to a stored
+     * card after they picked "new card". Only the first load pre-selects the most recent one.
+     * Fail-soft: a no-op, and no store created, unless [oneClickEnabled] with a bound context.
+     *
+     * Headless hosts: that pre-selection makes a plain [pay] route to the stored token — call
+     * [selectNewCard] to opt back into card entry.
      */
     public suspend fun refreshSavedCards() {
         reload(reselectMostRecent = false)
@@ -243,8 +288,11 @@ public class HiPayCardEntryController(
      * kept and a vanished one (e.g. a purged card) falls back to the new-card branch.
      */
     private suspend fun reload(reselectMostRecent: Boolean) {
-        if (!oneClickEnabled) return
-        val context = presentationContext?.applicationContext ?: return
+        // Fail-open: the flag means "nothing more is coming". Left false on an early exit, the
+        // component would hide its entry fields for good.
+        if (!oneClickEnabled) { savedCardsLoaded = true; return }
+        val context = presentationContext?.applicationContext
+            ?: run { savedCardsLoaded = true; return }
         val cards = try {
             withContext(storeDispatcher) { obtainStore(context).list() }.allowedByMerchant()
         } catch (e: CancellationException) {
@@ -260,6 +308,8 @@ public class HiPayCardEntryController(
         } else {
             selectedSavedCard?.let { prev -> cards.firstOrNull { it == prev } }
         }
+        // Last, so the view never sees 'loaded' with the selection not yet applied.
+        savedCardsLoaded = true
     }
 
     /** Saved cards whose resolved network the merchant accepts (empty allow-list → all kept). */
@@ -799,6 +849,9 @@ public class HiPayCardEntryController(
             cvc = if (isCvcRequired) cvc else "",
             multiUse = effectiveSave,
         )
+        // The CVV goes the moment it has been used: PCI-DSS forbids retaining it past
+        // authorisation. The other fields stay until the outcome, so a refusal costs no retyping.
+        cvc = ""
         paymentPhase = PaymentPhase.CREATING_ORDER
         val base = hipayCallbackBase(redirectScheme, orderId)
         val order = OrderRequest(
@@ -825,24 +878,6 @@ public class HiPayCardEntryController(
         )
         options?.let { order.withOptions(it) }
         val transaction = (orderResolver?.invoke(order, signature) ?: gateway.requestNewOrder(order, signature))
-        // Clear sensitive/derived state after a successful order (code-review 7.2): PAN, CVC,
-        // the cardholder name (PII), networks, and the blur flags so a reused controller does
-        // not show stale errors against now-empty fields.
-        holder = ""
-        cardNumber = ""
-        expiry = ""
-        cvc = ""
-        networks = emptyList()
-        selectedNetwork = null
-        lastResolvedDigits = null
-        lastResolvedNetworks = emptyList()
-        userSelectedNetwork = false
-        lastDetected = CardNetwork.UNKNOWN
-        holderBlurred = false
-        numberBlurred = false
-        expiryBlurred = false
-        cvcBlurred = false
-
         val final = present3DSAndAwait(transaction, signature, autoPresent3DS)
         if (storeContext != null) {
             persistSavedCard(storeContext, token, final, product)
@@ -855,6 +890,7 @@ public class HiPayCardEntryController(
         } finally {
             isProcessing = false
             paymentPhase = null
+            clearEnteredCard()
             // If the host scope was cancelled mid-3DS, await() resumes here without resume3DS or the
             // watcher having cleaned up → release both so we never leak the Activity-lifecycle callback
             // (idempotent on the happy path, where they are already cleared).
@@ -1003,6 +1039,7 @@ public class HiPayCardEntryController(
         } finally {
             isProcessing = false
             paymentPhase = null
+            clearEnteredCard()
             pending3DS = null
             unregisterCancellationWatcher()
         }

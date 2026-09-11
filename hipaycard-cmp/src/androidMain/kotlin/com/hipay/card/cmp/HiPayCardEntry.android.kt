@@ -48,6 +48,9 @@ actual class HiPayCardController actual constructor(
     actual val saveCardOptIn: Boolean get() = delegate.saveCardOptIn
     actual fun selectSavedCard(card: SavedCard) = delegate.selectSavedCard(card)
     actual fun selectNewCard() = delegate.selectNewCard()
+    actual val savedCardsLoaded: Boolean get() = delegate.savedCardsLoaded
+    actual val canCollapseNewCard: Boolean get() = delegate.canCollapseNewCard
+    actual fun collapseNewCard() = delegate.collapseNewCard()
     actual fun onSaveCardOptInChange(optIn: Boolean) = delegate.onSaveCardOptInChange(optIn)
     actual suspend fun refreshSavedCards() = delegate.refreshSavedCards()
     actual suspend fun deleteSavedCard(card: SavedCard) = delegate.deleteSavedCard(card)
