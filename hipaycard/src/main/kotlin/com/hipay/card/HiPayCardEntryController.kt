@@ -853,8 +853,12 @@ public class HiPayCardEntryController(
             multiUse = effectiveSave,
         )
         // The CVV goes the moment it has been used: PCI-DSS forbids retaining it past
-        // authorisation. The other fields stay until the outcome, so a refusal costs no retyping.
+        // authorisation. Its blur flag goes WITH it: `cvcErrorKey` is blur-gated, so an emptied
+        // field that still counts as blurred turns red for the whole rest of the flow — the order
+        // call and, on the external-browser path, minutes of 3DS. The other fields go on the way
+        // out, in `clearEnteredCard`.
         cvc = ""
+        cvcBlurred = false
         paymentPhase = PaymentPhase.CREATING_ORDER
         val base = hipayCallbackBase(redirectScheme, orderId)
         val order = OrderRequest(
