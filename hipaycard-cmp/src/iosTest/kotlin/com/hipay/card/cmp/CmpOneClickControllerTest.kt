@@ -1,5 +1,6 @@
 package com.hipay.card.cmp
 
+import com.hipay.card.PaymentPhase
 import com.hipay.card.store.OneClickError
 import com.hipay.card.store.OneClickErrorReason
 import com.hipay.card.store.SavedCard
@@ -278,6 +279,100 @@ class CmpOneClickControllerTest {
         assertEquals("34.00", order.amount)
         assertEquals(card.token, order.cardToken)   // the stored token, so no tokenization happened
         assertTrue(order.oneClick)
+    }
+
+    // ---- The new-card row toggles both ways ----
+
+    @Test
+    fun collapseNewCard_returnsToTheCardTheExpandWasLeftFrom() = runBlocking {
+        seedCards()
+        val c = CmpCardController(config, oneClickEnabled = true)
+        c.refreshSavedCards()
+        // Not the pre-selected MRU, so a fallback to `savedCards.first()` cannot pass by accident.
+        val chosen = c.savedCards[1]
+        c.selectSavedCard(chosen)
+
+        c.selectNewCard()
+        assertNull(c.selectedSavedCard)
+        assertTrue(c.canCollapseNewCard)
+
+        c.collapseNewCard()
+        assertEquals(chosen, c.selectedSavedCard)
+        assertFalse(c.canCollapseNewCard) // nothing left to collapse back to
+    }
+
+    /** The remembered card can be deleted while the fields are open. An inert control would look
+     *  broken for a reason the payer cannot see, so it falls back to the most recent one. */
+    @Test
+    fun collapseNewCard_fallsBackToTheMostRecentWhenTheRememberedCardIsGone() = runBlocking {
+        seedCards()
+        val c = CmpCardController(config, oneClickEnabled = true)
+        c.refreshSavedCards()
+        val chosen = c.savedCards[1]
+        c.selectSavedCard(chosen)
+        c.selectNewCard()
+        c.deleteSavedCard(chosen)
+        // The delete re-selected nothing (the deleted card was not the selected one — that is the
+        // new-card branch), so the fields are still open.
+        assertNull(c.selectedSavedCard)
+
+        c.collapseNewCard()
+        assertEquals(c.savedCards.first(), c.selectedSavedCard)
+    }
+
+    @Test
+    fun collapseNewCard_isANoOpWithoutSavedCards() = runBlocking {
+        val c = CmpCardController(config, oneClickEnabled = true)
+        c.refreshSavedCards()
+        assertFalse(c.canCollapseNewCard)
+        c.collapseNewCard()
+        assertNull(c.selectedSavedCard) // still the new-card branch, nothing to go back to
+    }
+
+    // ---- The load-settled flag the component gates its entry fields on ----
+
+    @Test
+    fun savedCardsLoaded_isFalseUntilTheFirstLoadSettles() = runBlocking {
+        seedCard()
+        val c = CmpCardController(config, oneClickEnabled = true)
+        assertFalse(c.savedCardsLoaded)
+        c.refreshSavedCards()
+        assertTrue(c.savedCardsLoaded)
+        // Set LAST, so the component never renders a settled load with the selection not yet applied.
+        assertEquals("411111xxxxxx1111", assertNotNull(c.selectedSavedCard).maskedPan)
+    }
+
+    /** Fail-open: the flag means "nothing more is coming". Left false on the opted-out early exit,
+     *  the component would hide its entry fields for good. */
+    @Test
+    fun savedCardsLoaded_settlesEvenWithOneClickOff() = runBlocking {
+        val c = CmpCardController(config, oneClickEnabled = false)
+        c.refreshSavedCards()
+        assertTrue(c.savedCardsLoaded)
+    }
+
+    // ---- The phase a host reads to show its own progress wording ----
+
+    @Test
+    fun paymentPhase_reportsCreatingOrderDuringTheOrderCall_andIsNullAgainAtTheEnd() = runBlocking {
+        seedCard()
+        val c = CmpCardController(config, oneClickEnabled = true)
+        c.refreshSavedCards()
+        val card = assertNotNull(c.selectedSavedCard)
+        assertNull(c.paymentPhase) // idle
+
+        // Read from INSIDE the order call: that is the only moment the phase is observable without
+        // a second thread, and the saved-card path skips tokenization so it must already be here.
+        var duringOrder: PaymentPhase? = null
+        c.orderResolver = { _, _ -> duringOrder = c.paymentPhase; Transaction("completed") }
+
+        c.payWithSavedCard(
+            card = card, orderId = "OC-3", amount = "12.00",
+            description = "d", redirectScheme = "hipaydemo",
+        )
+
+        assertEquals(PaymentPhase.CREATING_ORDER, duringOrder)
+        assertNull(c.paymentPhase) // every exit releases it
     }
 
 }

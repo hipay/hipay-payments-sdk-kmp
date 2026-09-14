@@ -13,6 +13,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -136,6 +138,170 @@ class OneClickControllerTest {
             // Customer-initiated: a recurring payment would be eci 9 plus recurring_payment, and the
             // SDK sends neither.
             assertEquals(7, order.eci)
+        } finally {
+            controller.dispose()
+            clearNamespace()
+        }
+    }
+
+    /** Seeds 3 cards in order, so the store's MRU-first list is [CARD THREE, CARD TWO, CARD ONE]. */
+    private fun seedCards() {
+        runBlocking(Dispatchers.IO) {
+            val store = createSecureCardStore(context, config)
+            listOf(
+                Triple("411111xxxxxx1111", "VISA", "CARD ONE"),
+                Triple("510510xxxxxx2222", "MASTERCARD", "CARD TWO"),
+                Triple("411111xxxxxx3333", "VISA", "CARD THREE"),
+            ).forEachIndexed { i, (pan, net, holder) ->
+                assertTrue(
+                    store.save(
+                        SavedCard(
+                            token = i.toString().repeat(64), maskedPan = pan, network = net,
+                            holder = holder, expiryMonth = "12", expiryYear = "2031",
+                        ),
+                        consentGiven = true,
+                    ),
+                )
+            }
+        }
+    }
+
+    private fun boundController(): HiPayCardEntryController =
+        HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
+            .also { it.bindPresentationContext(context) }
+
+    // ---- The new-card row toggles both ways (mirrored in the CMP module) ----
+
+    @Test
+    fun collapseNewCard_returnsToTheCardTheExpandWasLeftFrom() {
+        clearNamespace()
+        seedCards()
+        val controller = boundController()
+        try {
+            runBlocking { controller.refreshSavedCards() }
+            // Not the pre-selected MRU, so a fallback to the first card cannot pass by accident.
+            val chosen = controller.savedCards[1]
+            controller.selectSavedCard(chosen)
+
+            controller.selectNewCard()
+            assertNull(controller.selectedSavedCard)
+            assertTrue(controller.canCollapseNewCard)
+
+            controller.collapseNewCard()
+            assertEquals(chosen, controller.selectedSavedCard)
+            assertFalse(controller.canCollapseNewCard) // nothing left to collapse back to
+        } finally {
+            controller.dispose()
+            clearNamespace()
+        }
+    }
+
+    /** The remembered card can be deleted while the fields are open. An inert control would look
+     *  broken for a reason the payer cannot see, so it falls back to the most recent one. */
+    @Test
+    fun collapseNewCard_fallsBackToTheMostRecentWhenTheRememberedCardIsGone() {
+        clearNamespace()
+        seedCards()
+        val controller = boundController()
+        try {
+            runBlocking { controller.refreshSavedCards() }
+            val chosen = controller.savedCards[1]
+            controller.selectSavedCard(chosen)
+            controller.selectNewCard()
+            runBlocking { controller.deleteSavedCard(chosen) }
+            // The deleted card was not the selected one (that is the new-card branch), so the
+            // delete re-selected nothing and the fields are still open.
+            assertNull(controller.selectedSavedCard)
+
+            controller.collapseNewCard()
+            assertEquals(controller.savedCards.first(), controller.selectedSavedCard)
+        } finally {
+            controller.dispose()
+            clearNamespace()
+        }
+    }
+
+    @Test
+    fun collapseNewCard_isANoOpWithoutSavedCards() {
+        clearNamespace()
+        val controller = boundController()
+        try {
+            runBlocking { controller.refreshSavedCards() }
+            assertFalse(controller.canCollapseNewCard)
+            controller.collapseNewCard()
+            assertNull(controller.selectedSavedCard) // still the new-card branch
+        } finally {
+            controller.dispose()
+            clearNamespace()
+        }
+    }
+
+    // ---- The load-settled flag the component gates its entry fields on ----
+
+    @Test
+    fun savedCardsLoaded_isFalseUntilTheFirstLoadSettles() {
+        clearNamespace()
+        seedCards()
+        val controller = boundController()
+        try {
+            assertFalse(controller.savedCardsLoaded)
+            runBlocking { controller.refreshSavedCards() }
+            assertTrue(controller.savedCardsLoaded)
+            // Set LAST, so the component never renders a settled load with no selection applied.
+            assertEquals(controller.savedCards.first(), controller.selectedSavedCard)
+        } finally {
+            controller.dispose()
+            clearNamespace()
+        }
+    }
+
+    /** Fail-open: the flag means "nothing more is coming". Left false on an early exit — opted out,
+     *  or no bound context — the component would hide its entry fields for good. */
+    @Test
+    fun savedCardsLoaded_settlesOnBothEarlyExits() {
+        val optedOut = HiPayCardEntryController(config, oneClickEnabled = false).withOfflineCeiling()
+        optedOut.bindPresentationContext(context)
+        val unbound = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
+        try {
+            runBlocking { optedOut.refreshSavedCards() }
+            assertTrue(optedOut.savedCardsLoaded)
+            runBlocking { unbound.refreshSavedCards() }
+            assertTrue(unbound.savedCardsLoaded)
+        } finally {
+            optedOut.dispose()
+            unbound.dispose()
+        }
+    }
+
+    // ---- The phase a host reads to show its own progress wording ----
+
+    @Test
+    fun paymentPhase_reportsCreatingOrderDuringTheOrderCall_andIsNullAgainAtTheEnd() {
+        clearNamespace()
+        seedCards()
+        val controller = boundController()
+        try {
+            runBlocking { controller.refreshSavedCards() }
+            val card = controller.savedCards.first()
+            assertNull(controller.paymentPhase) // idle
+
+            // Read from INSIDE the order call: the only moment the phase is observable without a
+            // second thread, and the saved-card path skips tokenization so it must already be here.
+            var duringOrder: PaymentPhase? = null
+            controller.orderResolver = { _, _ ->
+                duringOrder = controller.paymentPhase
+                Transaction("completed")
+            }
+
+            runBlocking {
+                controller.payWithSavedCard(
+                    card = card, orderId = "OC-2", amount = "12.00",
+                    description = "d", redirectScheme = "hipaydemo",
+                )
+            }
+
+            assertEquals(PaymentPhase.CREATING_ORDER, duringOrder)
+            assertNull(controller.paymentPhase) // every exit releases it
         } finally {
             controller.dispose()
             clearNamespace()
