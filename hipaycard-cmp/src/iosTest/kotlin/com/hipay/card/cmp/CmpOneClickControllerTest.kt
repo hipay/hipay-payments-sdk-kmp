@@ -218,10 +218,10 @@ class CmpOneClickControllerTest {
         c.deleteSavedCard(c.savedCards[1])
         assertEquals(2, c.savedCards.size)
         assertEquals(mru, c.selectedSavedCard)
-        // Deleting the SELECTED card drops the selection to the new-card branch (not the next card).
+        // Deleting the SELECTED card hands the selection to the most recent card.
         c.deleteSavedCard(mru)
         assertEquals(1, c.savedCards.size)
-        kotlin.test.assertNull(c.selectedSavedCard)
+        assertEquals(c.savedCards.first(), c.selectedSavedCard)
         // Deleting the last card yields the no-card state.
         c.deleteSavedCard(c.savedCards.first())
         assertTrue(c.savedCards.isEmpty())

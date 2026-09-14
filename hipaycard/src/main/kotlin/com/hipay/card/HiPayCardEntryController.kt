@@ -327,14 +327,15 @@ public class HiPayCardEntryController(
 
     /**
      * Removes [card] from the saved-card store (in-component delete, driven by the gesture +
-     * confirmation), then refreshes: a deleted **selected** card drops the selection to the
-     * new-card branch, a **non-selected** one is preserved, the **last** one yields the no-card
-     * state. Fail-visible — if the store delete does not take effect the refreshed list still
+     * confirmation), then refreshes: a deleted **selected** card hands the selection to the most
+     * recent card left, a **non-selected** one is preserved, and only the **last** one yields the
+     * no-card state. Fail-visible — if the store delete does not take effect the refreshed list still
      * shows the card. No-op unless [oneClickEnabled] with a bound presentation context.
      */
     public suspend fun deleteSavedCard(card: SavedCard) {
         if (!oneClickEnabled) return
         val context = presentationContext?.applicationContext ?: return
+        val wasSelected = selectedSavedCard == card
         try {
             withContext(storeDispatcher) { obtainStore(context).delete(card) }
         } catch (e: CancellationException) {
@@ -343,6 +344,8 @@ public class HiPayCardEntryController(
             // Fail-soft: the reload below reveals whether the card is still present.
         }
         reload(reselectMostRecent = false)
+        // Deleting the selected card hands selection to the most recent if another is saved
+        if (wasSelected && selectedSavedCard == null) selectedSavedCard = savedCards.firstOrNull()
         // Deleting the card an error pointed at is an intent too — once the card is really
         // gone there is nothing left to recover, so don't keep a stale outcome observable.
         val error = lastOneClickError
