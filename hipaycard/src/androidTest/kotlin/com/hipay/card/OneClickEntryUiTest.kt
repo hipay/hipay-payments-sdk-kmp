@@ -124,6 +124,9 @@ class OneClickEntryUiTest {
     fun withoutCards_noHeaders_fieldsAndSwitchOnly() {
         val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller) }
+        // The component holds its fields back until the store answers, so wait for that settle
+        // rather than asserting against the frame before it.
+        composeRule.waitUntil(timeoutMillis = 5_000) { countTag(HiPayCardEntryTags.HOLDER) == 1 }
         composeRule.onNodeWithTag(HiPayCardEntryTags.HOLDER).assertIsDisplayed()
         composeRule.onNodeWithTag(HiPayCardEntryTags.SAVE_SWITCH).assertIsDisplayed()
         composeRule.onNodeWithTag(HiPayCardEntryTags.CONSENT).assertIsDisplayed()
