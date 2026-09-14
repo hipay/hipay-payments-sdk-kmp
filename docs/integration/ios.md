@@ -77,6 +77,56 @@ default: /* error */
 > The SDK also clears the card after tokenisation (PCI), so `canPay` is false after a successful
 > payment — a new payment needs a fresh card entry.
 
+## Payment progress
+
+`controller.paymentPhase` reports which step the payment is on — `.tokenizing`, `.creatingOrder`,
+`.authenticating`, `.confirming` — and is `nil` when idle. `@Published` and read-only, so a host can
+replace one opaque spinner with its own wording:
+
+```swift
+if let phase = controller.paymentPhase { Text(myLabel(for: phase)) }
+```
+
+The payer-facing wording is deliberately yours: the SDK ships no localized strings for these.
+
+## Optional gateway parameters
+
+`pay(...)` and `payWithSavedCard(...)` send what the SDK models. For anything else the gateway
+accepts — a per-order notification URL, a bank-statement descriptor, the basket — pass a
+`HiPayOrderOptions`:
+
+```swift
+let options = HiPayOrderOptions(
+    notifyUrl: "https://your-backend.example/hipay/notify",   // overrides the back-office URL
+    softDescriptor: "MY SHOP",                                // shown on the payer's statement
+    customData: ["internal_reference": "ORD-987465"],         // your own data, shown in the back office
+    custom: ["shipping": "1.00"]                              // a gateway parameter the SDK does not model
+)
+
+let tx = try await card.pay(/* … */, options: options)
+```
+
+Every property is optional and a `nil` one is not sent. A struct with defaulted properties rather
+than a builder: adding a property later stays source-compatible for you.
+
+Validation happens when the order is built, so **`pay(...)` throws `HiPayError.validation`** on a
+rejected value — a non-`http(s)` `notifyUrl`, a blank value, or a `custom` name the SDK owns. It
+fails before any order is created rather than at the gateway, and the rules are the shared ones, so
+Android and iOS refuse exactly the same inputs.
+
+`customData` and `custom` are not interchangeable. Your own data goes through `customData`, which
+fills the gateway's `custom_data`; the order schema accepts no arbitrary top-level parameter, so an
+invented wire name passed to `custom` is refused by the gateway.
+
+Names the SDK owns are rejected in `custom`: the signature-covered ones (`orderid`, `amount`,
+`currency`), the card token, the return URLs, and the customer/shipping blocks, which have typed
+parameters.
+
+**On `notifyUrl` specifically:** it overrides your account configuration and is **not covered by the
+order signature**, so a tampered build of your app could point the notification elsewhere.
+Notifications remain signed, so nothing can be forged in your name — but yours can be suppressed,
+leaving a reconciliation gap. Prefer the back-office setting in production.
+
 ## Accepted card networks — the account decides
 
 The component asks your HiPay account which card products it is contracted for as soon as the view
@@ -117,8 +167,14 @@ mutation, and the setters enforce fail-fast bounds:
 var theme = HiPayCardTheme.hipayDefault
 theme.iconColor = UIColor(red: 0.38, green: 0, blue: 0.93, alpha: 1)
 theme.cornerRadius = 12
+theme.fieldSpacing = 8          // gap between fields; leave it for this platform's own spacing
 HiPayCardEntryView(controller: controller, theme: theme)
 ```
+
+> **Upgrading to 1.2.0.** `HiPayCardEntryStyle` gained `fieldSpacing`, and Kotlin default arguments
+> are not exported, so a `HiPayCardEntryStyle(...)` built **directly in Swift** must now pass
+> `fieldSpacing: nil` (or a value). Building the theme by mutation, as above, needs no change — which
+> is why it is the recommended path.
 
 > **Notes.** A custom placeholder color applies from iOS 17 (iOS 15/16 keep the system gray). The
 > default theme follows the host's light/dark appearance on its own — its colours are the system's

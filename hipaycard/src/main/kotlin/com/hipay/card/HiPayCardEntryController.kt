@@ -41,6 +41,7 @@ import com.hipay.core.HiPayErrorCode
 import com.hipay.core.HiPayException
 import com.hipay.core.gateway.GatewayClient
 import com.hipay.core.gateway.model.CustomerInfo
+import com.hipay.core.gateway.model.OrderOptions
 import com.hipay.core.gateway.model.OrderRequest
 import com.hipay.core.gateway.model.Transaction
 import com.hipay.core.gateway.model.TransactionState
@@ -348,6 +349,9 @@ public class HiPayCardEntryController(
      *  `!canPay || isProcessing`. Read-only — no integrator wiring needed. */
     public var isProcessing: Boolean by mutableStateOf(false); private set
 
+    /** Where the running payment is, for a host progress indicator; null when idle. Read-only. */
+    public var paymentPhase: PaymentPhase? by mutableStateOf(null); private set
+
     // ---- Blur state (consumed by the 7.4 inline-error UI; exposed now, no UI here) ----
     public var holderBlurred: Boolean by mutableStateOf(false); private set
     public var numberBlurred: Boolean by mutableStateOf(false); private set
@@ -412,6 +416,11 @@ public class HiPayCardEntryController(
      *  this (no network); null in production — [resolve] then calls the real [tokenizer].
      *  Same convention as the CMP controller's resolver seam. */
     internal var cardInfoResolver: (suspend (digits: String) -> com.hipay.card.model.CardInfo)? = null
+
+    /** In-module test seam for the ORDER call — null in production, so the gateway is called.
+     *  There is no injectable HTTP engine here, unlike `WalletCoordinator`, so this is the only way
+     *  a test can see what the controller actually put on the order. */
+    internal var orderResolver: (suspend (OrderRequest, String?) -> Transaction)? = null
 
     // ---- Derived rules (all from the shared contract — no reimplementation) ----
     private val panDigits: String get() = cardNumber.filter { it in '0'..'9' }
@@ -739,6 +748,8 @@ public class HiPayCardEntryController(
         shipping: CustomerInfo? = null,
         autoPresent3DS: Boolean = true,
         saveCard: Boolean = false,
+        /** Optional gateway parameters for this order — see [OrderOptions]. */
+        options: OrderOptions? = null,
     ): Transaction {
         // One-click routing: with a saved card selected, the same host call pays via the
         // stored token — no tokenization, no CVV; the host's single touch-point is preserved.
@@ -762,6 +773,7 @@ public class HiPayCardEntryController(
                 customer = customer,
                 shipping = shipping,
                 autoPresent3DS = autoPresent3DS,
+                options = options,
             )
         }
         // The component's save switch and the parameter express the same consent.
@@ -772,6 +784,7 @@ public class HiPayCardEntryController(
         if (effectiveSave) lastSaveOutcome = null
         // Lock the fields for the whole flow (incl. the suspended 3DS); reset on every exit (11.14).
         isProcessing = true
+        paymentPhase = PaymentPhase.TOKENIZING
         try {
         // Falls back to the LOCALLY DETECTED network, never to a hardcoded brand: while the account
         // ceiling is still pending there is no selected network, and a blind "visa" would declare the
@@ -786,6 +799,7 @@ public class HiPayCardEntryController(
             cvc = if (isCvcRequired) cvc else "",
             multiUse = effectiveSave,
         )
+        paymentPhase = PaymentPhase.CREATING_ORDER
         val base = hipayCallbackBase(redirectScheme, orderId)
         val order = OrderRequest(
             orderId = orderId,
@@ -809,7 +823,8 @@ public class HiPayCardEntryController(
             // it has no reason to fall back on another classification for a reusable token.
             oneClick = effectiveSave,
         )
-        val transaction = gateway.requestNewOrder(order, signature)
+        options?.let { order.withOptions(it) }
+        val transaction = (orderResolver?.invoke(order, signature) ?: gateway.requestNewOrder(order, signature))
         // Clear sensitive/derived state after a successful order (code-review 7.2): PAN, CVC,
         // the cardholder name (PII), networks, and the blur flags so a reused controller does
         // not show stale errors against now-empty fields.
@@ -839,6 +854,7 @@ public class HiPayCardEntryController(
         return final
         } finally {
             isProcessing = false
+            paymentPhase = null
             // If the host scope was cancelled mid-3DS, await() resumes here without resume3DS or the
             // watcher having cleaned up → release both so we never leak the Activity-lifecycle callback
             // (idempotent on the happy path, where they are already cleared).
@@ -862,6 +878,7 @@ public class HiPayCardEntryController(
         if (context == null || forwardUrl.isNullOrBlank() || !willPresent3DS(transaction, autoPresent3DS)) {
             return transaction
         }
+        paymentPhase = PaymentPhase.AUTHENTICATING
         val deferred = CompletableDeferred<Transaction>()
         pending3DS = Pending3DS(deferred, transaction.transactionReference, signature)
         // Watch for a dismissed Custom Tab (story 11.15) BEFORE launching, so we never miss the return.
@@ -907,6 +924,8 @@ public class HiPayCardEntryController(
         customer: CustomerInfo? = null,
         shipping: CustomerInfo? = null,
         autoPresent3DS: Boolean = true,
+        /** Optional gateway parameters for this order — see [OrderOptions]. */
+        options: OrderOptions? = null,
     ): Transaction {
         val storeContext = requireOneClickContext()
         lastOneClickError = null // a fresh attempt supersedes the previous outcome
@@ -914,6 +933,8 @@ public class HiPayCardEntryController(
         // card as it was when the payer tapped Pay.
         val expiredAtAttempt = savedCardExpiredNow(card)
         isProcessing = true
+        // No tokenization on this path: the stored token goes straight to the order.
+        paymentPhase = PaymentPhase.CREATING_ORDER
         try {
             val base = hipayCallbackBase(redirectScheme, orderId)
             val order = OrderRequest(
@@ -936,7 +957,8 @@ public class HiPayCardEntryController(
                 oneClick = true,
             )
             val transaction = try {
-                gateway.requestNewOrder(order, signature)
+                options?.let { order.withOptions(it) }
+                (orderResolver?.invoke(order, signature) ?: gateway.requestNewOrder(order, signature))
             } catch (e: HiPayException) {
                 val cnlv = cardNoLongerValidOrNull(e)
                 if (cnlv != null) {
@@ -980,6 +1002,7 @@ public class HiPayCardEntryController(
             return final
         } finally {
             isProcessing = false
+            paymentPhase = null
             pending3DS = null
             unregisterCancellationWatcher()
         }
@@ -1014,6 +1037,7 @@ public class HiPayCardEntryController(
         val pending = pending3DS ?: return
         pending3DS = null
         unregisterCancellationWatcher() // a real return arrived → stop watching for a dismissal
+        paymentPhase = PaymentPhase.CONFIRMING
         scope.launch {
             val reference = pending.reference
                 ?: runCatching { CallbackUrlParser.parse(uri).queryParams["reference"] }.getOrNull()

@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.hipay.card.CardTokenizer
+import com.hipay.card.PaymentPhase
 import com.hipay.core.callback.hipayCallbackBase
 import com.hipay.card.model.CardInfo
 import com.hipay.card.model.CardToken
@@ -34,6 +35,7 @@ import com.hipay.core.HiPayException
 import com.hipay.core.callback.CallbackUrlParser
 import com.hipay.core.gateway.GatewayClient
 import com.hipay.core.gateway.model.CustomerInfo
+import com.hipay.core.gateway.model.OrderOptions
 import com.hipay.core.gateway.model.OrderRequest
 import com.hipay.core.gateway.model.Transaction
 import com.hipay.core.gateway.model.TransactionState
@@ -151,6 +153,9 @@ public class CmpCardController(
     /** True while a [pay] is in flight (set by the SDK, story 11.14). The card UI locks its fields
      *  on this; the host disables its Pay button with `!canPay || isProcessing`. Read-only. */
     public var isProcessing: Boolean by mutableStateOf(false); private set
+
+    /** Where the running payment is, for a host progress indicator; null when idle. Read-only. */
+    public var paymentPhase: PaymentPhase? by mutableStateOf(null); private set
 
     public var holderBlurred: Boolean by mutableStateOf(false); private set
     public var numberBlurred: Boolean by mutableStateOf(false); private set
@@ -519,6 +524,11 @@ public class CmpCardController(
      *  [tokenizer]. Same spirit as the [lastOneClickError] internal setter. */
     internal var cardInfoResolver: (suspend (digits: String) -> CardInfo)? = null
 
+    /** In-module test seam for the ORDER call — null in production, so the gateway is called.
+     *  There is no injectable HTTP engine here, unlike `WalletCoordinator`, so this is the only way
+     *  a test can see what the controller actually put on the order. */
+    internal var orderResolver: (suspend (OrderRequest, String?) -> Transaction)? = null
+
     /** Backend co-brand refinement (mirrors the native controllers): the Secure Vault is the
      *  only source that can see a domestic co-brand (CB/BCMC), so the offered set is re-derived
      *  from its verdict. A stale verdict (the payer kept typing) is dropped; a failure degrades
@@ -650,6 +660,8 @@ public class CmpCardController(
         shipping: CustomerInfo? = null,
         threeDS: HiPayThreeDSMode = HiPayThreeDSMode.IN_APP_SESSION,
         saveCard: Boolean = false,
+        /** Optional gateway parameters for this order — see [OrderOptions]. */
+        options: OrderOptions? = null,
     ): Transaction {
         // One-click routing: with a saved card selected, the same host call pays via the
         // stored token — no tokenization, no CVV; the host's single touch-point is preserved.
@@ -673,6 +685,7 @@ public class CmpCardController(
                 customer = customer,
                 shipping = shipping,
                 threeDS = threeDS,
+                options = options,
             )
         }
         // The component's save switch and the parameter express the same consent.
@@ -680,6 +693,7 @@ public class CmpCardController(
         if (effectiveSave) lastSaveOutcome = null
         // Lock the fields for the whole flow (incl. the suspended 3DS); reset on every exit (11.14).
         isProcessing = true
+        paymentPhase = PaymentPhase.TOKENIZING
         try {
         val product = network.productCode()
         val token = tokenizer.generateToken(
@@ -691,6 +705,7 @@ public class CmpCardController(
             multiUse = effectiveSave,
         )
         val base = hipayCallbackBase(redirectScheme, orderId)
+        paymentPhase = PaymentPhase.CREATING_ORDER
         val order = OrderRequest(
             orderId = orderId,
             paymentProduct = product,
@@ -713,7 +728,8 @@ public class CmpCardController(
             // it has no reason to fall back on another classification for a reusable token.
             oneClick = effectiveSave,
         )
-        val transaction = gateway.requestNewOrder(order, signature)
+        options?.let { order.withOptions(it) }
+        val transaction = (orderResolver?.invoke(order, signature) ?: gateway.requestNewOrder(order, signature))
         // Clear sensitive/derived state after a successful order (parity with :hipaycard).
         holder = ""; cardNumber = ""; expiry = ""; cvc = ""
         networks = emptyList(); selectedNetwork = null
@@ -732,6 +748,7 @@ public class CmpCardController(
         return final
         } finally {
             isProcessing = false
+            paymentPhase = null
         }
     }
 
@@ -759,12 +776,16 @@ public class CmpCardController(
         customer: CustomerInfo? = null,
         shipping: CustomerInfo? = null,
         threeDS: HiPayThreeDSMode = HiPayThreeDSMode.IN_APP_SESSION,
+        /** Optional gateway parameters for this order — see [OrderOptions]. */
+        options: OrderOptions? = null,
     ): Transaction {
         lastOneClickError = null // a fresh attempt supersedes the previous outcome
         // Sampled before the (possibly long) 3DS round-trip: the reason must reflect the
         // card as it was when the payer tapped Pay.
         val expiredAtAttempt = savedCardExpiredNow(card)
         isProcessing = true
+        // No tokenization on this path: the stored token goes straight to the order.
+        paymentPhase = PaymentPhase.CREATING_ORDER
         try {
             val base = hipayCallbackBase(redirectScheme, orderId)
             val order = OrderRequest(
@@ -787,7 +808,8 @@ public class CmpCardController(
                 oneClick = true,
             )
             val transaction = try {
-                gateway.requestNewOrder(order, signature)
+                options?.let { order.withOptions(it) }
+                (orderResolver?.invoke(order, signature) ?: gateway.requestNewOrder(order, signature))
             } catch (e: HiPayException) {
                 val cnlv = cardNoLongerValidOrNull(e)
                 if (cnlv != null) {
@@ -831,6 +853,7 @@ public class CmpCardController(
             return final
         } finally {
             isProcessing = false
+            paymentPhase = null
         }
     }
 
@@ -896,6 +919,7 @@ public class CmpCardController(
         if (forwardUrl == null || !willPresent3DS(transaction)) {
             return transaction
         }
+        paymentPhase = PaymentPhase.AUTHENTICATING
         val callbackUrl: String? = when (threeDS) {
             // In-app session self-captures the scheme:// callback. Suspend until it completes;
             // a null callback = user cancelled the sheet → reconcile with the server below (never assume abort).
@@ -919,6 +943,7 @@ public class CmpCardController(
                 }
             }
         }
+        paymentPhase = PaymentPhase.CONFIRMING
         return if (callbackUrl != null) {
             confirm3DS(callbackUrl, transaction.transactionReference, signature)
         } else {

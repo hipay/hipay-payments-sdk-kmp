@@ -137,6 +137,16 @@ val checkI18nParity = tasks.register<Exec>("checkI18nParity") {
 }
 tasks.named("check") { dependsOn(checkI18nParity) }
 
+// Order-options gate: every order send must attach the caller's OrderOptions, on all four payment
+// surfaces. Reads the Swift sources too, so it needs the HiPay_Payments_SDK_iOS submodule checked
+// out — the script says so itself rather than reporting a missing file as a missing forward.
+val checkOrderOptions = tasks.register<Exec>("checkOrderOptions") {
+    group = "verification"
+    description = "Asserts every order send attaches its optional gateway parameters"
+    commandLine("bash", rootDir.resolve("scripts/check-order-options.sh").absolutePath)
+}
+tasks.named("check") { dependsOn(checkOrderOptions) }
+
 mavenPublishing {
     publishToMavenCentral()
 

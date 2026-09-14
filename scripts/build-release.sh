@@ -73,34 +73,50 @@ echo "==> Computing SwiftPM checksum…"
 CHECKSUM="$(swift package --package-path "$ROOT/HiPay_Payments_SDK_iOS" compute-checksum "$OUT/$ASSET")"
 echo "$CHECKSUM" > "$OUT/checksum.txt"
 
-# --- 4. Generate the remote Package.swift from the template ------------------
+# --- 4. Generate the remote Package.swift FROM Package.swift -----------------
 echo "==> Generating remote Package.swift…"
-TEMPLATE="$ROOT/HiPay_Payments_SDK_iOS/Package.remote.swift.template"
-[ -f "$TEMPLATE" ] || { echo "ERROR: missing $TEMPLATE" >&2; exit 1; }
-
-# The template is a hand-maintained mirror of Package.swift, so adding an SPM product means
-# editing TWO files — and forgetting the second one is invisible: the generated manifest still
-# parses, `swift package dump-package` still passes, and the tag simply ships without that
-# product. That happened between 1.0.0 and 1.1.0 (HiPayApplePay was missing from the template
-# for the whole Apple Pay epic). Compare the declared products and targets and refuse to
-# generate a manifest that does not match the repository's own.
 DEV_MANIFEST="$ROOT/HiPay_Payments_SDK_iOS/Package.swift"
-decls() { grep -oE '(library\(name: "|name: ")[A-Za-z]+"' "$1" | grep -oE '"[A-Za-z]+"' | sort -u; }
-if ! MISMATCH="$(diff <(decls "$DEV_MANIFEST") <(decls "$TEMPLATE"))"; then
-    echo "ERROR: Package.remote.swift.template is out of step with Package.swift." >&2
-    echo "       A product or target declared in one is absent from the other, so the tagged" >&2
-    echo "       manifest would ship an incomplete package. Reconcile them, then re-run." >&2
-    echo "       ('<' = only in Package.swift, '>' = only in the template)" >&2
-    echo "$MISMATCH" >&2
-    exit 1
-fi
-# Substitute placeholders. Delimiter '|' avoids the slashes in URLs; escape '&'
-# (means "the matched text" in a sed replacement) so an exotic REPO_SLUG can't
-# corrupt the output. CHECKSUM is hex, so it needs no escaping.
-URL_ESC="${URL//&/\\&}"
-sed -e "s|{{URL}}|${URL_ESC}|g" \
-    -e "s|{{CHECKSUM}}|${CHECKSUM}|g" \
-    "$TEMPLATE" > "$OUT/Package.swift"
+[ -f "$DEV_MANIFEST" ] || { echo "ERROR: missing $DEV_MANIFEST" >&2; exit 1; }
+
+# Derived from the real manifest, not from a parallel copy of it. There used to be a
+# `Package.remote.swift.template` maintained by hand, and the two drifted: `HiPayApplePay` was added
+# to Package.swift and never to the template, so 1.1.0 came one step from tagging a manifest with no
+# Apple Pay product. Nothing caught it — the generated manifest still parsed, and
+# `swift package dump-package` proves a manifest parses, never that it is complete.
+#
+# The whole difference between the two is ONE line, so transform it instead of duplicating it: a
+# local `path:` becomes a remote `url:` + `checksum:`. Adding an SPM product is then a change to a
+# single file, and there is no second file left to forget.
+#
+# awk rather than sed: it preserves the original indentation and, more importantly, it counts the
+# matches. Exactly one is required — zero means the manifest was reshaped and this script no longer
+# understands it; more than one means the substitution would be ambiguous. Either way, stop.
+awk -v url="$URL" -v checksum="$CHECKSUM" -v version="$TAG" '
+    NR == 1 {
+        print $0
+        print ""
+        print "// GENERATED for the " version " release by scripts/build-release.sh — do not edit, and do"
+        print "// not commit it to a branch: it exists only on the release tag. The branches keep the local"
+        print "// binaryTarget so day-to-day development builds against the XCFramework on disk."
+        next
+    }
+    /path: "HiPayPayments\.xcframework"/ {
+        match($0, /^[[:space:]]*/)
+        indent = substr($0, 1, RLENGTH)
+        printf "%surl: \"%s\",\n", indent, url
+        printf "%schecksum: \"%s\"\n", indent, checksum
+        found++
+        next
+    }
+    { print }
+    END {
+        if (found != 1) {
+            printf "ERROR: expected exactly one local binaryTarget path in Package.swift, found %d.\n", found > "/dev/stderr"
+            print "       The manifest changed shape; update this transformation before releasing." > "/dev/stderr"
+            exit 1
+        }
+    }
+' "$DEV_MANIFEST" > "$OUT/Package.swift"
 
 echo ""
 echo "OK: SPM remote-release artifacts in $OUT"

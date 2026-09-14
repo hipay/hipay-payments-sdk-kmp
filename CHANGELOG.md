@@ -7,6 +7,27 @@ the iOS XCFramework/SPM package.
      A version heading must be EXACTLY "## x.y.z" — no date, no title. The release pipeline matches
      that line verbatim, so any suffix produces empty release notes. Put the date on the line below. -->
 
+## Unreleased
+
+### Added
+
+- **Optional gateway parameters on an order**, for the fields the SDK does not model as its own: a
+  per-order notification URL, the bank-statement descriptor, the basket, your own data shown on the
+  transaction in the back office, and any other parameter the gateway accepts. Nothing changes for an
+  order that does not use them.
+- **The vertical gap between card fields is now settable** on the shared style. Left alone it keeps
+  each platform's current spacing, so an existing integration's layout does not move.
+- **The card controller reports which step of a payment it is on** — tokenizing, creating the order,
+  authenticating, confirming — so a host can show its own progress wording instead of one opaque
+  spinner. Read-only, and `null` when idle.
+
+### Changed
+
+- **BREAKING on Swift only — the shared card style takes one more value.** Building it directly in
+  Swift needs that value passed; building the theme by mutation, as the iOS guide shows, is unaffected.
+- **The card component no longer adds its own outer margin on Android and Compose Multiplatform**,
+  matching iOS. Add your own padding around it if you were relying on the one it used to insert.
+
 ## 1.1.0
 
 ### Added

@@ -25,6 +25,9 @@ class HiPayCardEntryStyleTest {
         assertEquals(12f, s.cornerRadius)
         assertEquals(0xFFFFFFFF, s.backgroundColor)
         assertEquals(42f, s.fieldHeight)
+        // Unset by default: the one metric the contract leaves to the platform, so an existing
+        // integration's field gap does not move.
+        assertNull(s.fieldSpacing)
     }
 
     @Test
@@ -81,8 +84,11 @@ class HiPayCardEntryStyleTest {
         assertFailsWith<IllegalArgumentException> { HiPayCardEntryStyle(fieldHeight = Float.POSITIVE_INFINITY) }
         assertFailsWith<IllegalArgumentException> { HiPayCardEntryStyle(borderWidth = -1f) }
         assertFailsWith<IllegalArgumentException> { HiPayCardEntryStyle(cornerRadius = -4f) }
-        // Zero border and zero radius stay legal (borderless / square fields).
-        HiPayCardEntryStyle(borderWidth = 0f, cornerRadius = 0f)
+        assertFailsWith<IllegalArgumentException> { HiPayCardEntryStyle(fieldSpacing = -1f) }
+        assertFailsWith<IllegalArgumentException> { HiPayCardEntryStyle(fieldSpacing = Float.NaN) }
+        // Zero border and zero radius stay legal (borderless / square fields), and so does a zero
+        // gap — a caller may legitimately want the fields flush.
+        HiPayCardEntryStyle(borderWidth = 0f, cornerRadius = 0f, fieldSpacing = 0f)
     }
 
     @Test

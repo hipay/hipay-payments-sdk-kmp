@@ -140,6 +140,7 @@ val style = HiPayCardEntryStyle(
     cornerRadius = 12f,
     backgroundColor = 0xFFFFFFFF,
     fieldHeight = 42f,      // a MINIMUM (heightIn); grows under large font scales
+    fieldSpacing = 8f,      // gap between fields; omit to keep this platform's own spacing
 )
 HiPayCardEntry(controller = controller, style = style)   // shared expect/actual, Android + iOS
 ```
@@ -406,6 +407,57 @@ suspend fun pay(): TransactionState {
     return tx.state
 }
 ```
+
+### Payment progress
+
+`controller.paymentPhase` reports which step the payment is on — `TOKENIZING`, `CREATING_ORDER`,
+`AUTHENTICATING`, `CONFIRMING` — and is `null` when idle. Read-only, observable from Compose, so a
+host can replace one opaque spinner with its own wording:
+
+```kotlin
+controller.paymentPhase?.let { phase -> Text(myLabelFor(phase)) }
+```
+
+The payer-facing wording is deliberately yours: the SDK ships no localized strings for these.
+
+### Optional gateway parameters
+
+The order above sends what the SDK models. For anything else the gateway accepts — a per-order
+notification URL, a bank-statement descriptor, the basket —
+attach an `OrderOptions`:
+
+```kotlin
+val options = OrderOptions.Builder()
+    .notifyUrl("https://your-backend.example/hipay/notify")   // overrides the back-office URL
+    .softDescriptor("MY SHOP")                                // shown on the payer's statement
+    .customData("internal_reference", "ORD-987465")           // your own data, shown in the back office
+    .custom("shipping", "1.00")                               // a gateway parameter the SDK does not model
+    .build()
+
+gateway.requestNewOrder(order.withOptions(options), signature)
+```
+
+On the **component** path the same options are a parameter of the payment call itself:
+
+```kotlin
+val tx = controller.pay(/* … */, options = options)   // and payWithSavedCard(...)
+```
+
+`build()` throws `HiPayException` with `HiPayErrorCode.VALIDATION` if a value is rejected, so a bad
+`notifyUrl` fails before any order is created rather than at the gateway.
+
+A method rather than a constructor parameter, so future parameters never break your build. The same
+`withOptions` exists on `ApplePayOrder` — a wallet payment ends in an ordinary order.
+
+Fields the SDK owns are refused by `custom(...)`: the signature-covered ones (`orderid`, `amount`,
+`currency`), the card token, the return URLs, and the customer/shipping blocks, which have typed
+parameters. `OrderOptions.RESERVED_FIELDS` is the full list.
+
+**On `notifyUrl` specifically:** it overrides your account configuration and is **not covered by the
+order signature**, so a tampered build of your app could point the notification elsewhere.
+Notifications remain signed, so nothing can be forged in your name — but yours can be suppressed,
+leaving a reconciliation gap. Prefer the back-office setting in production and keep this for testing,
+unless you have a reason to route per order.
 
 **Enrolling a card-on-file takes TWO parameters, and they go to different APIs.** The example above is
 a one-shot payment: `multiUse = false`, no `oneClick`. To let the payer pay with the same card later,

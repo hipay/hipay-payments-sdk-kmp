@@ -43,6 +43,18 @@ public class OrderRequest(
     // ECI stays 7 (9 is recurring/MIT) and `recurring_payment` is never sent.
     public val oneClick: Boolean = false,
 ) {
+    private var extraFields: Map<String, String> = emptyMap()
+
+    /**
+     * Attaches optional gateway parameters and returns this same order, so the call reads as
+     * `requestNewOrder(order.withOptions(options), signature)`. Calling it again replaces the previous
+     * set; an option never overwrites a field this order already sets. See [OrderOptions].
+     */
+    public fun withOptions(options: OrderOptions): OrderRequest {
+        extraFields = options.fields
+        return this
+    }
+
     // Amount is validated in toFields() (called inside the @Throws suspend
     // requestNewOrder), NOT in init: a Kotlin constructor that throws is not a
     // catchable error across the Kotlin/Native boundary — it would crash the
@@ -85,6 +97,9 @@ public class OrderRequest(
                 fields["one_click"] = "1"
             }
         }
+        // Never over a field already set above — the second lock behind OrderOptions.RESERVED_FIELDS, so
+        // a newly SDK-owned field silently wins instead of corrupting the order.
+        extraFields.forEach { (key, value) -> if (key !in fields) fields[key] = value }
         return fields
     }
 

@@ -195,6 +195,41 @@ presenting a second sheet, so a double tap cannot create two orders.
 so rather than resubmitting — a silent retry is the one way it could authorize twice. Reconcile on
 the same `orderId`.
 
+## Optional gateway parameters
+
+An Apple Pay payment ends in an ordinary order, so it takes the same options a card payment does.
+
+**Swift** — a property of the order:
+
+```swift
+let order = HiPayApplePayOrder(
+    orderId: orderId, amount: "12.00", currency: "EUR",
+    countryCode: "FR", description: "Order …", redirectScheme: "yourscheme",
+    signature: signature,
+    options: HiPayOrderOptions(
+        notifyUrl: "https://your-backend.example/hipay/notify",
+        softDescriptor: "MY SHOP"
+    )
+)
+```
+
+A rejected value makes `HiPayApplePayPayment.pay(...)` throw `HiPayError.validation` before the sheet
+is presented, so the payer never sees a sheet for an order that cannot be created.
+
+**Compose Multiplatform** — attached to the shared order:
+
+```kotlin
+val options = OrderOptions.Builder()
+    .notifyUrl("https://your-backend.example/hipay/notify")
+    .softDescriptor("MY SHOP")
+    .build()
+
+val order = ApplePayOrder(/* … */).withOptions(options)
+```
+
+The field rules are the same as on the card path, including that `notifyUrl` is **not covered by the
+order signature** — see the "Optional gateway parameters" section of your platform's card guide.
+
 ## Troubleshooting
 
 | Symptom | Cause |

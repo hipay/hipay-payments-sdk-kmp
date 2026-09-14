@@ -24,9 +24,14 @@ internal fun sdkSourceField(): String = JsonObject(
         "source" to JsonPrimitive(CLIENT_SDK),
         "brand" to JsonPrimitive(platformBrand()),
         "brand_version" to JsonPrimitive(platformVersion()),
-        "integration_version" to JsonPrimitive(HIPAY_SDK_VERSION),
+        "integration_version" to JsonPrimitive(integrationVersion(HIPAY_SDK_VERSION)),
     ),
 ).toString()
+
+/** The release-shaped part of [raw]: the gateway refuses a pre-release suffix, so the wire value
+ *  stays independent of how the artifact is versioned and a snapshot or candidate can still pay. */
+internal fun integrationVersion(raw: String): String =
+    raw.trim().substringBefore('-').substringBefore('+')
 
 /** The gateway's origin value for an SDK running on the customer's device. */
 private const val CLIENT_SDK = "CSDK"
