@@ -569,7 +569,11 @@ public class CmpCardController(
 
     /** In-module test seam for the ORDER call — null in production, so the gateway is called.
      *  There is no injectable HTTP engine here, unlike `WalletCoordinator`, so this is the only way
-     *  a test can see what the controller actually put on the order. */
+     *  a test can read the order the controller built.
+     *
+     *  It shows the order's OWN fields (`oneClick`, `cardToken`, `eci`, the id) and no more: the
+     *  attached options land in a private `extraFields`, readable only through the `toFields()`
+     *  that is internal to :hipaycore. `scripts/check-order-options.sh` covers that line instead. */
     internal var orderResolver: (suspend (OrderRequest, String?) -> Transaction)? = null
 
     /** Backend co-brand refinement (mirrors the native controllers): the Secure Vault is the
@@ -689,6 +693,7 @@ public class CmpCardController(
      * - [HiPayThreeDSMode.EXTERNAL_BROWSER]: external Safari; `pay()` suspends until the host
      *   forwards the app-scheme return via [resume3DS].
      * Both confirm via `getTransaction` (FR9) and return the FINAL [Transaction].
+     * [options] carries the optional gateway parameters for this order — see [OrderOptions].
      */
     public suspend fun pay(
         orderId: String,
@@ -703,7 +708,6 @@ public class CmpCardController(
         shipping: CustomerInfo? = null,
         threeDS: HiPayThreeDSMode = HiPayThreeDSMode.IN_APP_SESSION,
         saveCard: Boolean = false,
-        /** Optional gateway parameters for this order — see [OrderOptions]. */
         options: OrderOptions? = null,
     ): Transaction {
         // One-click routing: with a saved card selected, the same host call pays via the
@@ -806,6 +810,7 @@ public class CmpCardController(
      * from local storage and a [HiPayException] with
      * `HiPayErrorCode.CARD_NO_LONGER_VALID` is thrown — fall back to card entry.
      * A declined payment is returned as a normal `DECLINED` transaction.
+     * [options] carries the optional gateway parameters for this order — see [OrderOptions].
      */
     public suspend fun payWithSavedCard(
         card: SavedCard,
@@ -820,7 +825,6 @@ public class CmpCardController(
         customer: CustomerInfo? = null,
         shipping: CustomerInfo? = null,
         threeDS: HiPayThreeDSMode = HiPayThreeDSMode.IN_APP_SESSION,
-        /** Optional gateway parameters for this order — see [OrderOptions]. */
         options: OrderOptions? = null,
     ): Transaction {
         lastOneClickError = null // a fresh attempt supersedes the previous outcome

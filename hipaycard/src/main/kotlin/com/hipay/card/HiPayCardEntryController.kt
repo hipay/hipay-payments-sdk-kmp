@@ -472,7 +472,11 @@ public class HiPayCardEntryController(
 
     /** In-module test seam for the ORDER call — null in production, so the gateway is called.
      *  There is no injectable HTTP engine here, unlike `WalletCoordinator`, so this is the only way
-     *  a test can see what the controller actually put on the order. */
+     *  a test can read the order the controller built.
+     *
+     *  It shows the order's OWN fields (`oneClick`, `cardToken`, `eci`, the id) and no more: the
+     *  attached options land in a private `extraFields`, readable only through the `toFields()`
+     *  that is internal to :hipaycore. `scripts/check-order-options.sh` covers that line instead. */
     internal var orderResolver: (suspend (OrderRequest, String?) -> Transaction)? = null
 
     // ---- Derived rules (all from the shared contract — no reimplementation) ----
@@ -787,6 +791,7 @@ public class HiPayCardEntryController(
      * [autoPresent3DS] `false` path where the host confirms the redirect manually,
      * never saves. Storage failures are silent — the payment result is unaffected;
      * the host reads [lastSaveOutcome] to learn whether the card was saved.
+     * [options] carries the optional gateway parameters for this order — see [OrderOptions].
      */
     public suspend fun pay(
         orderId: String,
@@ -801,7 +806,6 @@ public class HiPayCardEntryController(
         shipping: CustomerInfo? = null,
         autoPresent3DS: Boolean = true,
         saveCard: Boolean = false,
-        /** Optional gateway parameters for this order — see [OrderOptions]. */
         options: OrderOptions? = null,
     ): Transaction {
         // One-click routing: with a saved card selected, the same host call pays via the
@@ -953,6 +957,7 @@ public class HiPayCardEntryController(
      * Any failure outcome is ALSO reflected in [lastOneClickError] (additive — the
      * throw/return behavior above is unchanged) so the component can guide the
      * payer to another card or re-entry.
+     * [options] carries the optional gateway parameters for this order — see [OrderOptions].
      */
     public suspend fun payWithSavedCard(
         card: SavedCard,
@@ -967,7 +972,6 @@ public class HiPayCardEntryController(
         customer: CustomerInfo? = null,
         shipping: CustomerInfo? = null,
         autoPresent3DS: Boolean = true,
-        /** Optional gateway parameters for this order — see [OrderOptions]. */
         options: OrderOptions? = null,
     ): Transaction {
         val storeContext = requireOneClickContext()

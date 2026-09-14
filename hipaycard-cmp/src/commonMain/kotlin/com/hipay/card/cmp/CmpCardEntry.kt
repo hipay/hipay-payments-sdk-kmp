@@ -804,8 +804,9 @@ private fun CmpSaveCardSwitch(controller: CmpCardController, enabled: Boolean) {
  * reads as gap + reserve. The reserve grew when the label stopped landing on the border, so this
  * shrank to keep the form from spreading out. It cannot be dropped to zero in exchange: it also
  * separates the rows that carry no reserve, such as an inline error and the row below it.
+ *
+ * The default only: a style that sets `fieldSpacing` overrides it.
  */
-/** The gap when the style leaves `fieldSpacing` unset — this platform's historical value. */
 private val ROW_GAP = 6.dp
 
 @Composable
