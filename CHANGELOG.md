@@ -20,13 +20,26 @@ the iOS XCFramework/SPM package.
 - **The card controller reports which step of a payment it is on** — tokenizing, creating the order,
   authenticating, confirming — so a host can show its own progress wording instead of one opaque
   spinner. Read-only, and `null` when idle.
+- **The "new card" row now closes again.** Tapping it while it is open goes back to the card that was
+  showing before, instead of doing nothing. Typed values are hidden, not lost.
+- **Saved cards animate in and out**, and so does the saved-cards section itself. Suppressed under the
+  system reduce-motion setting.
 
 ### Changed
 
-- **BREAKING on Swift only — the shared card style takes one more value.** Building it directly in
-  Swift needs that value passed; building the theme by mutation, as the iOS guide shows, is unaffected.
+- **BREAKING — the shared card style takes one more value.** Swift code that builds it directly must
+  pass it; Kotlin code compiles unchanged but must be recompiled against this version.
+- **The entered card is now cleared when a payment ends, whatever the outcome.** Previously a refused
+  order left the fields filled; a payer retrying after a refusal now re-enters the card.
+- **Deleting the selected saved card now selects the most recent card left**, instead of dropping to
+  the card-entry fields while other cards are still saved.
 - **The card component no longer adds its own outer margin on Android and Compose Multiplatform**,
   matching iOS. Add your own padding around it if you were relying on the one it used to insert.
+
+### Fixed
+
+- **On iOS the card fields now look locked while a payment is running**, greyed out as they already
+  were on the other platforms instead of staying at full contrast.
 
 ## 1.1.0
 
