@@ -123,7 +123,8 @@ internal fun CmpCardEntry(
     // Lock all fields while a payment is in flight — driven by the SDK (story 11.14); no host param.
     val enabled = !controller.isProcessing
     // With a saved card selected, the entry fields are not rendered — their values stay in the
-    // controller (nothing is cleared until a payment succeeds).
+    // controller, so re-expanding the new-card row brings them back. A payment is what clears
+    // them, on every exit (see the controller's `clearEnteredCard`).
     // Also held back while the store is still answering: rendered before the first load settles,
     // the fields expand and then collapse the instant a pre-selected card arrives.
     val showEntryFields = !(
@@ -382,7 +383,9 @@ private fun CmpSavedCardsSections(
     var settled by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { settled = true }
     val alreadyListed = !settled
-    // Drop a pending confirmation if a concurrent refresh, or an expiry purge cleared the list
+    // Drop a pending confirmation if its card vanishes from the list underneath the open dialog
+    // (a concurrent refresh on app-foreground, or an expiry purge) — otherwise the payer would
+    // confirm deleting a card they can no longer see.
     LaunchedEffect(cards) { cardPendingDelete?.let { if (it !in cards) cardPendingDelete = null } }
     // The departing card is released once it has actually left the list.
     LaunchedEffect(cards) { departingCard?.let { if (it !in cards) departingCard = null } }
@@ -402,10 +405,24 @@ private fun CmpSavedCardsSections(
             // `departingCard` holds it on screen, and the store call fires once the row is gone.
             val rowState = remember(card) { MutableTransitionState(alreadyListed) }
             rowState.targetState = departingCard != card
-            // Delete FIRST: clearing `departingCard` here would flip targetState, and these are the
-            // effect's own keys — the coroutine would cancel itself before the store call ran.
+            // Fires on the exit's LAST frame — idle again with the row hidden — which is the one
+            // moment the animation is over and the card has not yet been touched in the store.
             LaunchedEffect(rowState.isIdle, rowState.currentState) {
-                if (rowState.isIdle && !rowState.currentState) controller.deleteSavedCard(card)
+                if (rowState.isIdle && !rowState.currentState) {
+                    // Launched on the HOISTED scope, never on this effect's own: a successful
+                    // delete removes this very row from the list, and deleting the last card
+                    // removes the whole section — either would cancel the store write mid-flight.
+                    // That is the hazard `savedCardsScope` exists for.
+                    scope.launch {
+                        controller.deleteSavedCard(card)
+                        // Fail-visible, as `deleteSavedCard` promises: a store delete that did not
+                        // take leaves the card listed, and without this release the row would stay
+                        // collapsed — the card gone from the screen and still saved. Released only
+                        // in that case, so a delete that worked cannot flash an enter animation on
+                        // its way out.
+                        if (card in controller.savedCards) departingCard = null
+                    }
+                }
             }
             AnimatedVisibility(
                 visibleState = rowState,
