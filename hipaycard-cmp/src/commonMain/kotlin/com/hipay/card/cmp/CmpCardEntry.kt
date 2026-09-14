@@ -42,6 +42,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -179,7 +183,13 @@ internal fun CmpCardEntry(
                 oneClickErrorSurface(controller.lastOneClickError, controller.savedCards) ==
                 OneClickErrorSurface.SECTION
             )
-        if (showSavedSections) {
+        // The section animates too: on the FIRST saved card it used to appear instantly while the
+        // fields collapsed animated, and the mismatch read as a jump. Same on the last delete.
+        AnimatedVisibility(
+            visible = showSavedSections,
+            enter = if (reduceMotion) EnterTransition.None else expandVertically() + fadeIn(),
+            exit = if (reduceMotion) ExitTransition.None else shrinkVertically() + fadeOut(),
+        ) {
             CmpSavedCardsSections(controller, enabled, savedCardsScope)
         }
         // Animated here rather than on the whole component: only these fields appear and disappear
@@ -363,10 +373,19 @@ private fun CmpSavedCardsSections(
     // Delete is a gesture (long-press) / a11y-action affordance. The pending card drives the
     // confirmation dialog; it lives in the UI, not the controller.
     var cardPendingDelete by remember { mutableStateOf<SavedCard?>(null) }
-    // Drop a pending confirmation if its card vanishes from the list underneath the open dialog
-    // (a concurrent refresh on app-foreground, or an expiry purge) — otherwise the payer would
-    // confirm deleting a card they can no longer see.
+    val reduceMotion = reduceMotionEnabled()
+    // The card playing its exit: it stays listed until the animation ends, because a row removed
+    // from the list is no longer composed and cannot animate at all.
+    var departingCard by remember { mutableStateOf<SavedCard?>(null) }
+    // True only while the first composition runs, so cards already in the store appear instantly
+    // and only later arrivals animate in.
+    var settled by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { settled = true }
+    val alreadyListed = !settled
+    // Drop a pending confirmation if a concurrent refresh, or an expiry purge cleared the list
     LaunchedEffect(cards) { cardPendingDelete?.let { if (it !in cards) cardPendingDelete = null } }
+    // The departing card is released once it has actually left the list.
+    LaunchedEffect(cards) { departingCard?.let { if (it !in cards) departingCard = null } }
 
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -377,6 +396,22 @@ private fun CmpSavedCardsSections(
             OneClickErrorText(oneClickError.reason.messageKey())
         }
         visibleCards.forEachIndexed { index, card ->
+            // Keyed on the card, not on its position.
+            key(card.token) {
+            // The row must still be composed to animate out, so the delete waits for the exit:
+            // `departingCard` holds it on screen, and the store call fires once the row is gone.
+            val rowState = remember(card) { MutableTransitionState(alreadyListed) }
+            rowState.targetState = departingCard != card
+            // Delete FIRST: clearing `departingCard` here would flip targetState, and these are the
+            // effect's own keys — the coroutine would cancel itself before the store call ran.
+            LaunchedEffect(rowState.isIdle, rowState.currentState) {
+                if (rowState.isIdle && !rowState.currentState) controller.deleteSavedCard(card)
+            }
+            AnimatedVisibility(
+                visibleState = rowState,
+                enter = if (reduceMotion) EnterTransition.None else expandVertically() + fadeIn(),
+                exit = if (reduceMotion) ExitTransition.None else shrinkVertically() + fadeOut(),
+            ) {
             CmpSavedCardCell(
                 controller,
                 card,
@@ -391,8 +426,10 @@ private fun CmpSavedCardsSections(
                 if (controller.confirmCardDeletion || viaAccessibility) {
                     cardPendingDelete = requested
                 } else {
-                    scope.launch { controller.deleteSavedCard(requested) }
+                    departingCard = requested
                 }
+            }
+            }
             }
         }
         if (hasMore) {
@@ -414,7 +451,7 @@ private fun CmpSavedCardsSections(
             text = { Text(cmpString(CardEntryStringKey.CONFIRM_DELETE_CARD)) },
             confirmButton = {
                 TextButton(onClick = {
-                    scope.launch { controller.deleteSavedCard(pending) }
+                    departingCard = pending
                     cardPendingDelete = null
                 }) { Text(cmpString(CardEntryStringKey.LABEL_DELETE_CARD)) }
             },
