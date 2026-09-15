@@ -69,6 +69,13 @@ include:
     inputs:
       gitlab_private_token: $AI_REVIEW_GITLAB_TOKEN
 
+# The component gates itself on feature|hotfix; a bugfix branch deserves the same review.
+ai-review:
+  rules:
+    - if: '$CI_COMMIT_REF_NAME =~ /^(feature|bugfix|hotfix)\// && $CI_OPEN_MERGE_REQUESTS'
+      when: manual
+    - when: never
+
 # Overrides the template's `workflow:` (which would create a pipeline on EVERY push).
 # Outside a tag or a release branch this project has no build/test stage, so a push would
 # otherwise produce a jobless pipeline — except on `feature/*`, `bugfix/*` and `hotfix/*`, which
