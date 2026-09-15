@@ -26,6 +26,11 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    testOptions {
+        // Test APK only: unset, AGP falls it back to minSdk and the device warns on every run.
+        targetSdk = libs.versions.android.compileSdk.get().toInt()
+    }
+
     buildFeatures {
         compose = true
     }
