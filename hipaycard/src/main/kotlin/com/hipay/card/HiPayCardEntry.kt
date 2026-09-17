@@ -9,6 +9,9 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -46,6 +49,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -210,8 +214,14 @@ private fun CardEntryContent(
     // controller sets isProcessing across pay() (incl. the 3DS round-trip), no host wiring needed.
     val enabled = !controller.isProcessing
     // With a saved card selected, the entry fields are not rendered — their values stay in the
-    // controller (nothing is cleared until a payment succeeds).
-    val showEntryFields = !(controller.oneClickEnabled && controller.selectedSavedCard != null)
+    // controller, so re-expanding the new-card row brings them back. A payment is what clears
+    // them, on every exit (see the controller's `clearEnteredCard`).
+    // Also held back while the store is still answering: rendered before the first load settles,
+    // the fields expand and then collapse the instant a pre-selected card arrives.
+    val showEntryFields = !(
+        controller.oneClickEnabled &&
+            (controller.selectedSavedCard != null || !controller.savedCardsLoaded)
+        )
     // Focus auto-advance on field completion (story 11.10, parity with iOS). Keyed on the
     // completion booleans → fires only on the incomplete→complete edge, so editing a complete
     // field never rips focus. Gated on showEntryFields: the FocusRequesters below are attached
@@ -267,7 +277,13 @@ private fun CardEntryContent(
                 oneClickErrorSurface(controller.lastOneClickError, controller.savedCards) ==
                 OneClickErrorSurface.SECTION
             )
-        if (showSavedSections) {
+        // The section animates too: on the FIRST saved card it used to appear instantly while the
+        // fields collapsed animated, and the mismatch read as a jump. Same on the last delete.
+        AnimatedVisibility(
+            visible = showSavedSections,
+            enter = if (reduceMotion) EnterTransition.None else expandVertically() + fadeIn(),
+            exit = if (reduceMotion) ExitTransition.None else shrinkVertically() + fadeOut(),
+        ) {
             FieldGroup(setsAccessibilityOrder, -1f) {
                 SavedCardsSections(controller, enabled, savedCardsScope)
             }
@@ -445,10 +461,21 @@ private fun SavedCardsSections(
     // Delete is a gesture (long-press) / a11y-action affordance. The pending card drives the
     // confirmation dialog; it lives in the UI, not the controller.
     var cardPendingDelete by remember { mutableStateOf<SavedCard?>(null) }
+    val reduceMotion = reduceMotionEnabled()
+    // The card playing its exit: it stays listed until the animation ends, because a row removed
+    // from the list is no longer composed and cannot animate at all.
+    var departingCard by remember { mutableStateOf<SavedCard?>(null) }
+    // True only while the first composition runs, so cards already in the store appear instantly
+    // and only later arrivals animate in.
+    var settled by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { settled = true }
+    val alreadyListed = !settled
     // Drop a pending confirmation if its card vanishes from the list underneath the open dialog
     // (a concurrent refresh on app-foreground, or an expiry purge) — otherwise the payer would
     // confirm deleting a card they can no longer see.
     LaunchedEffect(cards) { cardPendingDelete?.let { if (it !in cards) cardPendingDelete = null } }
+    // The departing card is released once it has actually left the list.
+    LaunchedEffect(cards) { departingCard?.let { if (it !in cards) departingCard = null } }
 
     Column(
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -459,6 +486,38 @@ private fun SavedCardsSections(
             ErrorSlot(oneClickError.reason.messageKey(), HiPayCardEntryTags.error("oneclick.section"))
         }
         visibleCards.forEachIndexed { index, card ->
+            // Keyed on the card, not on its position: without this, removing the row above makes
+            // Compose reuse this slot's state for a different card, and the survivor replays an
+            // enter animation instead of simply sliding up.
+            key(card.token) {
+            // The row must still be composed to animate out, so the delete waits for the exit:
+            // `departingCard` holds it on screen, and the store call fires once the row is gone.
+            val rowState = remember(card) { MutableTransitionState(alreadyListed) }
+            rowState.targetState = departingCard != card
+            // Fires on the exit's LAST frame — idle again with the row hidden — which is the one
+            // moment the animation is over and the card has not yet been touched in the store.
+            LaunchedEffect(rowState.isIdle, rowState.currentState) {
+                if (rowState.isIdle && !rowState.currentState) {
+                    // Launched on the HOISTED scope, never on this effect's own: a successful
+                    // delete removes this very row from the list, and deleting the last card
+                    // removes the whole section — either would cancel the store write mid-flight.
+                    // That is the hazard `savedCardsScope` exists for.
+                    scope.launch {
+                        controller.deleteSavedCard(card)
+                        // Fail-visible, as `deleteSavedCard` promises: a store delete that did not
+                        // take leaves the card listed, and without this release the row would stay
+                        // collapsed — the card gone from the screen and still saved. Released only
+                        // in that case, so a delete that worked cannot flash an enter animation on
+                        // its way out.
+                        if (card in controller.savedCards) departingCard = null
+                    }
+                }
+            }
+            AnimatedVisibility(
+                visibleState = rowState,
+                enter = if (reduceMotion) EnterTransition.None else expandVertically() + fadeIn(),
+                exit = if (reduceMotion) ExitTransition.None else shrinkVertically() + fadeOut(),
+            ) {
             SavedCardCell(
                 controller,
                 card,
@@ -476,8 +535,10 @@ private fun SavedCardsSections(
                 if (controller.confirmCardDeletion || viaAccessibility) {
                     cardPendingDelete = requested
                 } else {
-                    scope.launch { controller.deleteSavedCard(requested) }
+                    departingCard = requested
                 }
+            }
+            }
             }
         }
         if (hasMore) {
@@ -500,7 +561,7 @@ private fun SavedCardsSections(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        scope.launch { controller.deleteSavedCard(pending) }
+                        departingCard = pending
                         cardPendingDelete = null
                     },
                     modifier = Modifier.testTag(HiPayCardEntryTags.CONFIRM_DELETE),
@@ -700,7 +761,18 @@ private fun NewCardHeader(controller: HiPayCardEntryController, enabled: Boolean
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
-            .clickable(enabled = enabled, role = Role.Button) { controller.selectNewCard() }
+            // Toggles BOTH ways. Selecting is idempotent, so re-tapping an expanded row used to do
+            // nothing — the payer had no way back other than picking a card from the list.
+            .clickable(
+                enabled = enabled,
+                role = Role.Button,
+                // No ripple: the row spans the component's full width, and a flash that wide reads
+                // as a style the SDK imposes on its host. Hosts own the theming, so it stays neutral.
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) {
+                if (expanded) controller.collapseNewCard() else controller.selectNewCard()
+            }
             .testTag(HiPayCardEntryTags.NEW_CARD)
             .semantics(mergeDescendants = true) { stateDescription = expandState },
     ) {
@@ -761,8 +833,10 @@ private fun ShowMoreToggle(
 @Composable
 private fun ChevronGlyph(expanded: Boolean) {
     Text(
-        text = if (expanded) "▾" else "▸",
-        style = MaterialTheme.typography.bodyMedium,
+        // Solid triangles, not "▾"/"▸": those are the SMALL variants and fill a fraction of
+        // their box, so no font size makes them read as a disclosure control.
+        text = if (expanded) "▼" else "▶",
+        style = MaterialTheme.typography.titleMedium,
         color = if (expanded) MaterialTheme.colorScheme.primary
         else styleColor(LocalHiPayCardStyle.current.iconColor),
         modifier = Modifier.clearAndSetSemantics {},
@@ -836,8 +910,9 @@ private fun SaveCardSwitch(controller: HiPayCardEntryController, enabled: Boolea
  * reads as gap + reserve. The reserve grew when the label stopped landing on the border, so this
  * shrank to keep the form from spreading out. It cannot be dropped to zero in exchange: it also
  * separates the rows that carry no reserve, such as an inline error and the row below it.
+ *
+ * The default only: a style that sets `fieldSpacing` overrides it.
  */
-/** The gap when the style leaves `fieldSpacing` unset — this platform's historical value. */
 private val ROW_GAP = 6.dp
 
 /** A field + its error slot, carrying the relative traversal index so the error follows its field. */

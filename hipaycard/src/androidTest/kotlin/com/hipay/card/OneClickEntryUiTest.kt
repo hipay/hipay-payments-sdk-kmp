@@ -124,6 +124,9 @@ class OneClickEntryUiTest {
     fun withoutCards_noHeaders_fieldsAndSwitchOnly() {
         val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller) }
+        // The component holds its fields back until the store answers, so wait for that settle
+        // rather than asserting against the frame before it.
+        composeRule.waitUntil(timeoutMillis = 5_000) { countTag(HiPayCardEntryTags.HOLDER) == 1 }
         composeRule.onNodeWithTag(HiPayCardEntryTags.HOLDER).assertIsDisplayed()
         composeRule.onNodeWithTag(HiPayCardEntryTags.SAVE_SWITCH).assertIsDisplayed()
         composeRule.onNodeWithTag(HiPayCardEntryTags.CONSENT).assertIsDisplayed()
@@ -155,6 +158,34 @@ class OneClickEntryUiTest {
         // …and re-expanding shows the preserved value.
         composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD).performClick()
         composeRule.onNodeWithText("MARIE MARTIN").assertIsDisplayed()
+    }
+
+    /**
+     * The reported scenario: the payer opens "New card" and taps the SAME control to close it
+     * again. Guards the WIRING, not the controller — `selectNewCard()` is idempotent, so the second
+     * tap did nothing while `collapseNewCard()` itself worked. Every other test here closes the
+     * fields by picking the saved card from the list, which is exactly why this path went uncovered.
+     */
+    @Test
+    fun newCardHeader_togglesTheFieldsBothWays() {
+        seedCard()
+        val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
+        // Pin EN so the expanded/collapsed state description is deterministic.
+        composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
+        awaitSections()
+
+        composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD).performClick()
+        composeRule.onNodeWithTag(HiPayCardEntryTags.HOLDER).assertIsDisplayed()
+        composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "expanded"))
+
+        // The second tap on the same row must close them. Waited on rather than asserted at once:
+        // the collapse is animated, so a bare assert races it.
+        composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD).performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) { countTag(HiPayCardEntryTags.HOLDER) == 0 }
+        composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).assertIsSelected()
+        composeRule.onNodeWithTag(HiPayCardEntryTags.NEW_CARD)
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "collapsed"))
     }
 
     @Test

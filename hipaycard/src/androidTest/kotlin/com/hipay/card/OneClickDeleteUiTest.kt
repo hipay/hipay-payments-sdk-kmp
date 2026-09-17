@@ -148,20 +148,21 @@ class OneClickDeleteUiTest {
     }
 
     @Test
-    fun deletingTheSelectedCard_fallsBackToNewCardBranch() {
+    fun deletingTheSelectedCard_selectsTheMostRecentLeft() {
         seedCards()
         val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         composeRule.setContent { HiPayCardEntry(controller, localeOverride = "en") }
         awaitSections()
-        // savedCard(0) is the pre-selected MRU. Deleting it must drop the selection to new-card.
+        // savedCard(0) is the pre-selected MRU. Deleting it hands the selection to the next one —
+        // dropping to the entry fields while cards remain made the payer re-pick for nothing.
         composeRule.onNodeWithTag(HiPayCardEntryTags.savedCard(0)).performTouchInput { longClick() }
         composeRule.waitUntil(timeoutMillis = 5_000) {
             countTag(HiPayCardEntryTags.savedCardDelete(0)) == 1
         }
         composeRule.onNodeWithTag(HiPayCardEntryTags.savedCardDelete(0)).performClick()
         composeRule.waitUntil(timeoutMillis = 5_000) { controller.savedCards.size == 2 }
-        assertNull(controller.selectedSavedCard) // new-card branch, not the next card
-        composeRule.onNodeWithTag(HiPayCardEntryTags.HOLDER).assertIsDisplayed() // fields shown
+        assertEquals(controller.savedCards.first(), controller.selectedSavedCard)
+        assertEquals(0, countTag(HiPayCardEntryTags.HOLDER)) // fields stay collapsed
     }
 
     @Test

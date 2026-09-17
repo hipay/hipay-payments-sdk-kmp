@@ -64,6 +64,16 @@ expect class HiPayCardController(
     /** Select the new-card branch (expands the entry fields). */
     fun selectNewCard()
 
+    /** False until the first saved-cards load has settled. */
+    val savedCardsLoaded: Boolean
+
+    /** True while [collapseNewCard] has a card to go back to. */
+    val canCollapseNewCard: Boolean
+
+    /** Puts back the card shown before [selectNewCard], hiding the entry fields. Typed values are
+     *  hidden, not cleared. Falls back to the most recent card if the remembered one is gone. */
+    fun collapseNewCard()
+
     /** Save-switch handler. */
     fun onSaveCardOptInChange(optIn: Boolean)
 
@@ -85,6 +95,7 @@ expect class HiPayCardController(
      * `ASWebAuthenticationSession` (self-captures the callback, no host wiring);
      * [HiPayThreeDSMode.EXTERNAL_BROWSER] = external Safari (host forwards the return via
      * [resume3DS]). On Android both modes use Chrome Custom Tabs + [resume3DS] from `onNewIntent`.
+     * [options] carries the optional gateway parameters for this order — see [OrderOptions].
      */
     suspend fun pay(
         orderId: String,
@@ -99,7 +110,6 @@ expect class HiPayCardController(
         shipping: CustomerInfo? = null,
         threeDS: HiPayThreeDSMode = HiPayThreeDSMode.IN_APP_SESSION,
         saveCard: Boolean = false,
-        /** Optional gateway parameters for this order — see [OrderOptions]. */
         options: OrderOptions? = null,
     ): Transaction
 
@@ -113,6 +123,7 @@ expect class HiPayCardController(
      *
      * Android: requires the card component rendered (it binds the presentation context) or an
      * explicitly bound context; fails fast with `IllegalStateException` otherwise.
+     * [options] carries the optional gateway parameters for this order — see [OrderOptions].
      */
     suspend fun payWithSavedCard(
         card: SavedCard,
@@ -127,7 +138,6 @@ expect class HiPayCardController(
         customer: CustomerInfo? = null,
         shipping: CustomerInfo? = null,
         threeDS: HiPayThreeDSMode = HiPayThreeDSMode.IN_APP_SESSION,
-        /** Optional gateway parameters for this order — see [OrderOptions]. */
         options: OrderOptions? = null,
     ): Transaction
 
