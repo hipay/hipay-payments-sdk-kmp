@@ -8,6 +8,12 @@ import com.hipay.core.HiPayErrorCode
 import com.hipay.core.HiPayException
 import com.hipay.core.http.HipayHttpClient
 import com.hipay.core.http.defaultHttpClientEngine
+import com.hipay.core.monitoring.CheckoutData
+import com.hipay.core.monitoring.CheckoutDataSender
+import com.hipay.core.monitoring.CheckoutEvent
+import com.hipay.core.monitoring.CheckoutSession
+import com.hipay.core.monitoring.Monitoring
+import com.hipay.core.monitoring.utcTimestamp
 import io.ktor.client.engine.HttpClientEngine
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.serialization.json.Json
@@ -21,6 +27,7 @@ import kotlinx.serialization.json.Json
 public class CardTokenizer internal constructor(
     private val config: HiPayConfig,
     engine: HttpClientEngine,
+    private val monitoring: CheckoutDataSender = CheckoutDataSender(config.environment, engine),
 ) {
     public constructor(config: HiPayConfig) : this(config, defaultHttpClientEngine())
 
@@ -68,7 +75,25 @@ public class CardTokenizer internal constructor(
                 message = "Secure Vault returned an empty token (token/create)",
             )
         }
+        reportTokenization(token)
         return token
+    }
+
+    /**
+     * Reports the funnel's tokenization step, best effort. The card brand and its country are the
+     * only details carried; the token itself never leaves this class.
+     */
+    private fun reportTokenization(token: CardToken) {
+        val session = CheckoutSession.current()
+        monitoring.send(
+            CheckoutData(
+                event = CheckoutEvent.TOKENIZE,
+                id = session.id,
+                paymentMethod = token.brand?.lowercase(),
+                cardCountry = token.country,
+                monitoring = Monitoring(datePay = utcTimestamp()),
+            ),
+        )
     }
 
     /**

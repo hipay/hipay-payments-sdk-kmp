@@ -154,6 +154,7 @@ internal fun CmpCardEntry(
     // Account network ceiling: resolved on composition, so what may be offered at all is known before
     // the payer has typed a BIN — a brand icon must never be shown for a network the account refuses.
     LaunchedEffect(controller) { controller.loadAccountNetworksIfNeeded() }
+    LaunchedEffect(controller) { controller.reportDisplayed() }
 
     // One-click: load the saved card on composition (no-op unless opted in — fail-soft).
     if (controller.oneClickEnabled) {

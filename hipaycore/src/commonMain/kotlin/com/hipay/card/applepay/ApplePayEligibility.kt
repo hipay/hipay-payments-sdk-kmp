@@ -6,6 +6,8 @@ import com.hipay.card.validation.CardNetwork
 import com.hipay.core.HiPayConfig
 import com.hipay.core.HiPayException
 import com.hipay.core.gateway.GatewayClient
+import com.hipay.core.monitoring.CheckoutSession
+import com.hipay.core.monitoring.reportPaymentSurfaceDisplayed
 import kotlin.coroutines.cancellation.CancellationException
 
 /** Whether Apple Pay can be offered right now. */
@@ -99,8 +101,15 @@ public suspend fun resolveApplePayEligibility(
     currency: String,
     customerCountry: String? = null,
     allowedNetworks: List<CardNetwork> = emptyList(),
-): ApplePayEligibilityResult =
-    resolveApplePayEligibility(GatewayClient(config), device, currency, customerCountry, allowedNetworks)
+): ApplePayEligibilityResult {
+    // This call decides whether a button can be shown, so it is the wallet's card-field moment; the
+    // session opens before the account query so the reported delay covers it.
+    CheckoutSession.current()
+    val result =
+        resolveApplePayEligibility(GatewayClient(config), device, currency, customerCountry, allowedNetworks)
+    if (result.state == ApplePayEligibilityState.AVAILABLE) reportPaymentSurfaceDisplayed(config)
+    return result
+}
 
 @Throws(HiPayException::class, CancellationException::class)
 internal suspend fun resolveApplePayEligibility(

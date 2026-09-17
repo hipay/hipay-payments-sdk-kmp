@@ -12,14 +12,14 @@ import com.hipay.core.gateway.model.CustomerInfo
 import com.hipay.card.PaymentPhase
 import com.hipay.core.gateway.model.OrderOptions
 import com.hipay.core.gateway.model.Transaction
+import com.hipay.core.monitoring.HiPayIntegrationSurface
+import com.hipay.core.monitoring.HiPayInternalApi
 import com.hipay.card.HiPayCardEntry as NativeCardEntry
 import com.hipay.card.HiPayCardEntryController as NativeController
 
 /**
- * Android actual (story 10.1) — delegates to the native `:hipaycard` component, so the
- * Android UX/validation/accessibility/i18n are exactly the native ones (reused, not
- * reimplemented). Compose-Multiplatform unifies with Jetpack Compose on Android, so the
- * native `@Composable` is called directly.
+ * Android actual — delegates to the native `:hipaycard`, which Compose-Multiplatform lets us call
+ * directly, so the UX, validation, accessibility and i18n are the native ones rather than copies.
  */
 actual class HiPayCardController actual constructor(
     config: HiPayConfig,
@@ -29,10 +29,15 @@ actual class HiPayCardController actual constructor(
     confirmCardDeletion: Boolean,
     currency: String,
 ) {
+    init {
+        // The delegation below hides the surface, so it is declared before it is lost.
+        @OptIn(HiPayInternalApi::class)
+        HiPayIntegrationSurface.declareComposeMultiplatform()
+    }
+
     internal val delegate = NativeController(
         config = config,
-        // Public commonMain API uses the shared CardNetwork; map to the Android enum
-        // (UNKNOWN / unmappable → dropped).
+        // The shared CardNetwork mapped to the Android enum; unmappable values are dropped.
         allowedNetworks = allowedNetworks.mapNotNull { HiPayCardNetwork.from(it) },
         oneClickEnabled = oneClickEnabled,
         savedCardsDisplayCount = savedCardsDisplayCount,
@@ -80,8 +85,7 @@ actual class HiPayCardController actual constructor(
         signature = signature,
         customer = customer,
         shipping = shipping,
-        // Android presents 3DS in Chrome Custom Tabs for both modes (no external/in-app distinction,
-        // no soft-lock); the host forwards the return via resume3DS either way.
+        // Both modes present 3DS in Custom Tabs, and the host forwards the return via resume3DS.
         autoPresent3DS = true,
         saveCard = saveCard,
         options = options,
@@ -121,7 +125,7 @@ actual class HiPayCardController actual constructor(
 
     actual val lastSaveOutcome: SavedCardOutcome? get() = delegate.lastSaveOutcome
 
-    // Android 3DS = native :hipaycard Custom Tabs (story 11.13); the host forwards onNewIntent here.
+    // The host forwards onNewIntent here, whatever the mode.
     actual fun resume3DS(url: String) = delegate.resume3DS(url)
 
     actual fun dispose() = delegate.dispose()
@@ -135,8 +139,7 @@ actual fun HiPayCardEntry(
     localeOverride: String?,
     style: HiPayCardEntryStyle,
 ) {
-    // The native :hipaycard renderer applies the shared style directly — CMP-Android inherits the
-    // same styled look through this delegation (no CMP-side re-implementation).
+    // The native renderer applies the shared style, so this delegation inherits the styled look.
     NativeCardEntry(
         controller = controller.delegate,
         modifier = modifier,

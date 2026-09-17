@@ -7,6 +7,12 @@ import com.hipay.core.HiPayErrorCode
 import com.hipay.core.HiPayException
 import com.hipay.core.http.HipayHttpClient
 import com.hipay.core.http.defaultHttpClientEngine
+import com.hipay.core.monitoring.CheckoutData
+import com.hipay.core.monitoring.CheckoutDataSender
+import com.hipay.core.monitoring.CheckoutEvent
+import com.hipay.core.monitoring.CheckoutSession
+import com.hipay.core.monitoring.Monitoring
+import com.hipay.core.monitoring.utcTimestamp
 import io.ktor.client.engine.HttpClientEngine
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.serialization.json.Json
@@ -20,6 +26,7 @@ import kotlinx.serialization.json.Json
 public class ApplePayTokenizer internal constructor(
     private val config: HiPayConfig,
     engine: HttpClientEngine,
+    private val monitoring: CheckoutDataSender = CheckoutDataSender(config.environment, engine),
 ) {
     public constructor(config: HiPayConfig) : this(config, defaultHttpClientEngine())
 
@@ -57,7 +64,22 @@ public class ApplePayTokenizer internal constructor(
                 message = "Secure Vault returned an empty token (apple-pay/token)",
             )
         }
+        reportTokenization(token)
         return token
+    }
+
+    /** The wallet's tokenization step, reported exactly as the card one is. */
+    private fun reportTokenization(token: CardToken) {
+        val session = CheckoutSession.current()
+        monitoring.send(
+            CheckoutData(
+                event = CheckoutEvent.TOKENIZE,
+                id = session.id,
+                paymentMethod = token.brand?.lowercase(),
+                cardCountry = token.country,
+                monitoring = Monitoring(datePay = utcTimestamp()),
+            ),
+        )
     }
 }
 

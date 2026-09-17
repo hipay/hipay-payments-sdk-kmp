@@ -9,6 +9,12 @@ import com.hipay.core.gateway.model.OrderRequest
 import com.hipay.core.gateway.model.Transaction
 import com.hipay.core.http.HipayHttpClient
 import com.hipay.core.http.defaultHttpClientEngine
+import com.hipay.core.monitoring.CheckoutData
+import com.hipay.core.monitoring.CheckoutDataSender
+import com.hipay.core.monitoring.CheckoutEvent
+import com.hipay.core.monitoring.CheckoutSession
+import com.hipay.core.monitoring.Monitoring
+import com.hipay.core.monitoring.utcTimestamp
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.http.Parameters
 import io.ktor.http.formUrlEncode
@@ -30,20 +36,48 @@ import kotlinx.serialization.json.JsonPrimitive
 public class GatewayClient internal constructor(
     private val config: HiPayConfig,
     engine: HttpClientEngine,
+    private val monitoring: CheckoutDataSender,
 ) {
-    public constructor(config: HiPayConfig) : this(config, defaultHttpClientEngine())
+    public constructor(config: HiPayConfig) :
+        this(config, defaultHttpClientEngine(), CheckoutDataSender(config.environment))
+
+    // An injected engine also carries the analytics, so no integration path reports less than the
+    // default one does — and a test intercepts the event instead of reaching the network.
+    internal constructor(config: HiPayConfig, engine: HttpClientEngine) :
+        this(config, engine, CheckoutDataSender(config.environment, engine))
 
     private val http = HipayHttpClient(config, engine)
 
     /** Creates an order (POST `{gateway-v1}/order`) and returns the resulting transaction. */
     @Throws(HiPayException::class, CancellationException::class)
     public suspend fun requestNewOrder(order: OrderRequest, signature: String? = null): Transaction {
+        val requestedAt = utcTimestamp()
         val body = http.postForm(
             url = config.environment.gatewayV1Url + "order",
             fields = order.toFields(),
             signature = signature,
         )
-        return parseTransaction(body)
+        val transaction = parseTransaction(body)
+        reportOrder(order, transaction, requestedAt)
+        return transaction
+    }
+
+    /**
+     * Reports which SDK build produced this transaction, best effort and after the fact. A refused
+     * order is reported like any other; one that never reached the gateway has nothing to attribute.
+     */
+    private fun reportOrder(order: OrderRequest, transaction: Transaction, requestedAt: String) {
+        val session = CheckoutSession.current()
+        monitoring.send(
+            CheckoutData(
+                event = CheckoutEvent.REQUEST,
+                id = session.id,
+                status = transaction.status,
+                paymentMethod = transaction.paymentProduct ?: order.paymentProduct,
+                cardCountry = transaction.paymentMethod?.country,
+                monitoring = Monitoring(dateRequest = requestedAt, dateResponse = utcTimestamp()),
+            ),
+        )
     }
 
     /**
