@@ -55,5 +55,5 @@ nav:
       - Kotlin / Compose Multiplatform: integration/cmp.md
   - Apple Pay: integration/apple-pay.md
   - Accessibility: accessibility.md
-  - Good to know: good-to-know.md
+  - Privacy: privacy.md
   - Changelog: changelog.md
