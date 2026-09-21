@@ -323,7 +323,7 @@ for payment in try await recovery.unresolvedPayments() {            // reads the
     payment.lastState      // .pending while nothing final is known
     payment.referenceKnown // false ⇒ the order was never answered
 
-    let refreshed = try await recovery.refreshPayment(orderId: payment.orderId)
+    let refreshed = try await recovery.refreshPayment(orderId: payment.orderId, signature: signature)
     _ = try await recovery.acknowledge(orderId: payment.orderId)    // once you have recorded the outcome
 }
 ```
@@ -336,12 +336,16 @@ out — seven days for a payment left unanswered, forty-eight hours once final. 
 would lose the case this exists for: an app that dies between learning the outcome and recording it.
 Both lifetimes are arguments of `hiPayPaymentRecovery(...)`, so shorten them to test the flow.
 
+**Signing the read.** An account that signs its orders refuses an unsigned transaction read with
+`401`, so pass the HS signature your backend computed for that order. The snapshot carries the amount
+and the currency precisely so it can be recomputed from the entry alone.
+
 `refreshPayment` throws when the gateway cannot be reached. That says the question could not be asked,
 never that the payment failed — the entry is kept, so retry later.
 
-> **`referenceKnown == false` is observable, not recoverable.** The HiPay reference only exists once
-> the order has been answered, so an order whose response was lost has nothing to query yet. Reconcile
-> it from your backend, on the webhook keyed on that same order id.
+> **`referenceKnown == false` is still recoverable.** The HiPay reference only exists once the order
+> has been answered, so an order whose response was lost has none — the SDK then finds the transaction
+> from your own order id instead, and keeps the reference it gets back.
 
 > **This is a convenience, not the source of truth.** Payment finality remains the server-to-server
 > webhook. This API exists so your app can re-open the right screen and never conclude "failed" from

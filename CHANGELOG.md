@@ -13,6 +13,7 @@ the iOS XCFramework/SPM package.
 
 - **An interrupted payment can be found again.** The SDK remembers what it launched, keyed on your own
   order id, and tells you at launch what is still unresolved — after a background, a crash, or a kill.
+  Even an order whose response was lost: the gateway finds it back from that same order id.
 - **Lifetimes for those entries are settable** where you read them: seven days for a payment left
   unanswered, forty-eight hours after a final state. Shorten them to test the flow without waiting.
 - **Optional gateway parameters on an order**, for the fields the SDK does not model as its own: a
