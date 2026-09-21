@@ -10,6 +10,16 @@ import kotlinx.serialization.json.Json
 internal const val PENDING_PAYMENTS_VERSION = 1
 
 /**
+ * How many entries are kept at most, oldest evicted first.
+ *
+ * The whole envelope is read, rewritten and re-encrypted on every payment, so an unbounded list would
+ * put a growing cost on the payment path — and a host free to lengthen the lifetimes is free to make
+ * that list large. Fifty leaves ample room for anything a payer does in one lifetime while keeping the
+ * blob small; the saved-card store caps itself for the same reason.
+ */
+internal const val MAX_PENDING_PAYMENTS = 50
+
+/**
  * What a launched payment leaves behind. No PAN, no CVV, no card token, and no HS signature: the
  * absence of a token is not only data minimisation, it makes replaying the payment structurally
  * impossible from this store.
@@ -91,6 +101,9 @@ public class PendingPaymentStore(
      *
      * The SDK's own payment paths call this; a host only needs it when it builds and submits orders
      * itself rather than through a [com.hipay.core.gateway.GatewayClient] given this store.
+     *
+     * Past [MAX_PENDING_PAYMENTS] the oldest entry goes: a payment the host never came back for is
+     * worth less than the one being made now.
      */
     public fun record(orderId: String, amount: String, currency: String): Boolean {
         val env = load()
@@ -101,7 +114,10 @@ public class PendingPaymentStore(
             state = TransactionState.PENDING.name,
             createdAt = now(),
         )
-        return persist(PendingPaymentsEnvelope(payments = env.payments.filterNot { it.orderId == orderId } + entry))
+        val kept = (env.payments.filterNot { it.orderId == orderId } + entry)
+            .sortedByDescending { it.createdAt }
+            .take(MAX_PENDING_PAYMENTS)
+        return persist(PendingPaymentsEnvelope(payments = kept))
     }
 
     /**

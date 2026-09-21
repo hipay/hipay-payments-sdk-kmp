@@ -118,6 +118,22 @@ class PendingPaymentStoreTest {
     }
 
     @Test
+    fun theOldestEntryGoesOnceTheStoreIsFull() {
+        val store = store()
+        repeat(MAX_PENDING_PAYMENTS + 5) { i ->
+            clock += 1000
+            store.record("ORDER-$i", "10.00", "EUR")
+        }
+
+        // The whole envelope is rewritten on every payment, so the list cannot be allowed to grow
+        // without bound — a host free to lengthen the lifetimes would otherwise pay for it here.
+        val kept = store.unresolvedPayments()
+        assertEquals(MAX_PENDING_PAYMENTS, kept.size)
+        assertEquals("ORDER-${MAX_PENDING_PAYMENTS + 4}", kept.first().orderId, "newest first")
+        assertTrue(kept.none { it.orderId == "ORDER-0" }, "the oldest went")
+    }
+
+    @Test
     fun theStoredPayloadCarriesNoCardData() {
         val raw = FakeRawSecureStore()
         val store = store(raw)
