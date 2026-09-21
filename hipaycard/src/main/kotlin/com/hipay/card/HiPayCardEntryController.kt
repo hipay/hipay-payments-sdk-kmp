@@ -28,6 +28,11 @@ import com.hipay.card.store.OneClickError
 import com.hipay.card.store.OneClickErrorReason
 import com.hipay.card.store.SavedCard
 import com.hipay.card.store.SavedCardOutcome
+import com.hipay.card.recovery.DEFAULT_PENDING_PAYMENT_TTL_MILLIS
+import com.hipay.card.recovery.DEFAULT_RESOLVED_PAYMENT_TTL_MILLIS
+import com.hipay.card.recovery.PendingPaymentStore
+import com.hipay.card.recovery.indeterminateOrRethrow
+import com.hipay.card.recovery.createPendingPaymentStore
 import com.hipay.card.store.SecureCardStore
 import com.hipay.card.store.cardNoLongerValidOrNull
 import com.hipay.card.store.coerceSavedCardsDisplayCount
@@ -121,10 +126,10 @@ public class HiPayCardEntryController(
     private val scope: CoroutineScope =
         scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    // ---- SDK-managed 3DS presentation (story 11.13) ----
-    // Custom Tabs needs a Context; unlike iOS (global key window) Android can't grab one. The
-    // HiPayCardEntry composable binds the host Activity context for the duration it is on screen
-    // (DisposableEffect) so pay() stays turnkey — no Context parameter on the public API.
+    // ---- SDK-managed 3DS presentation ----
+    // Custom Tabs needs a Context and, unlike iOS with its global key window, Android cannot grab one.
+    // The HiPayCardEntry composable binds the host Activity for as long as it is on screen, so pay()
+    // stays turnkey and the public API carries no Context.
     private var presentationContext: Context? = null
     private class Pending3DS(
         val deferred: CompletableDeferred<Transaction>,
@@ -132,8 +137,8 @@ public class HiPayCardEntryController(
         val signature: String?,
     )
     private var pending3DS: Pending3DS? = null
-    // Cancellation watcher (story 11.15): Custom Tabs gives no dismiss callback, so we detect the
-    // user returning to the host Activity without a deep-link return = cancellation.
+    // Custom Tabs gives no dismiss callback, so a return to the host Activity with no deep-link is
+    // what stands in for one — reconciled with the server rather than assumed to be an abort.
     private var lifecycleApp: Application? = null
     private var lifecycleCallback: Application.ActivityLifecycleCallbacks? = null
 
@@ -153,6 +158,48 @@ public class HiPayCardEntryController(
     /** Only call from [storeDispatcher]. */
     private fun obtainStore(applicationContext: Context): SecureCardStore =
         store ?: createSecureCardStore(applicationContext, config).also { store = it }
+
+    private var recoveryStore: PendingPaymentStore? = null
+
+    /** Only call from [storeDispatcher]. */
+    private fun obtainRecovery(applicationContext: Context): PendingPaymentStore =
+        // Lifetimes are the reader's business — this one only writes.
+        recoveryStore ?: createPendingPaymentStore(applicationContext, config).also { recoveryStore = it }
+
+    /**
+     * Submits the order, leaving a trace a crash cannot take away: recorded before the round-trip,
+     * completed by the answer. Without a bound context there is no store to write to, and the payment
+     * runs exactly as it did before.
+     */
+    private suspend fun submitOrder(
+        storeContext: Context?,
+        order: OrderRequest,
+        signature: String?,
+    ): Transaction {
+        withRecovery(storeContext) { it.record(order.orderId, order.amount, order.currency) }
+        val transaction = try {
+            orderResolver?.invoke(order, signature) ?: gateway.requestNewOrder(order, signature)
+        } catch (e: HiPayException) {
+            indeterminateOrRethrow(e)
+        }
+        recordOutcome(storeContext, order.orderId, transaction)
+        return transaction
+    }
+
+    /** Recovery is a convenience: a store that cannot be opened or written must never fail a payment. */
+    private suspend fun withRecovery(storeContext: Context?, block: (PendingPaymentStore) -> Unit) {
+        val ctx = storeContext ?: return
+        runCatching { withContext(storeDispatcher) { block(obtainRecovery(ctx)) } }
+    }
+
+    /**
+     * Writes back the outcome the live instance observed, once 3DS has resolved. Without it the store
+     * would keep the order's own answer — `forwarding` for a challenge — and a later list would report
+     * a payment as unfinished when this instance already saw it settle.
+     */
+    private suspend fun recordOutcome(storeContext: Context?, orderId: String, transaction: Transaction) {
+        withRecovery(storeContext) { it.complete(orderId, transaction.transactionReference, transaction.state) }
+    }
 
     private fun requireOneClickContext(): Context =
         checkNotNull(presentationContext?.applicationContext) {
@@ -775,7 +822,7 @@ public class HiPayCardEntryController(
      * consumed here — it is NEVER stored on this controller or returned to the
      * host (mirrors iOS `pay()`). Card fields are cleared after tokenizing.
      *
-     * 3DS (story 11.13): when [autoPresent3DS] is `true` (default) and the order
+     * 3DS: when [autoPresent3DS] is `true` (default) and the order
      * returns `FORWARDING`, the SDK presents the challenge in Chrome Custom Tabs
      * and **suspends until the host forwards the return URL via [resume3DS]**,
      * then returns the FINAL, server-confirmed [Transaction] (FR9 — confirmed via
@@ -888,8 +935,9 @@ public class HiPayCardEntryController(
             oneClick = effectiveSave,
         )
         options?.let { order.withOptions(it) }
-        val transaction = (orderResolver?.invoke(order, signature) ?: gateway.requestNewOrder(order, signature))
+        val transaction = submitOrder(storeContext, order, signature)
         val final = present3DSAndAwait(transaction, signature, autoPresent3DS)
+        recordOutcome(storeContext, order.orderId, final)
         if (storeContext != null) {
             persistSavedCard(storeContext, token, final, product)
             if (final.state == TransactionState.COMPLETED) {
@@ -1005,7 +1053,7 @@ public class HiPayCardEntryController(
             )
             val transaction = try {
                 options?.let { order.withOptions(it) }
-                (orderResolver?.invoke(order, signature) ?: gateway.requestNewOrder(order, signature))
+                submitOrder(storeContext, order, signature)
             } catch (e: HiPayException) {
                 val cnlv = cardNoLongerValidOrNull(e)
                 if (cnlv != null) {
@@ -1034,6 +1082,7 @@ public class HiPayCardEntryController(
                 lastOneClickError = OneClickError(card, OneClickErrorReason.GENERIC)
                 throw e
             }
+            recordOutcome(storeContext, order.orderId, final)
             oneClickReasonForOutcome(
                 finalState = final.state,
                 challenged = challenged,

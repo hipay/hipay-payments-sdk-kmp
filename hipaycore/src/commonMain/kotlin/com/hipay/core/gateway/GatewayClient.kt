@@ -1,5 +1,6 @@
 package com.hipay.core.gateway
 
+import com.hipay.card.recovery.PendingPaymentStore
 import com.hipay.card.validation.CardNetwork
 import com.hipay.card.validation.CardNetworks
 import com.hipay.core.HiPayConfig
@@ -30,20 +31,34 @@ import kotlinx.serialization.json.JsonPrimitive
 public class GatewayClient internal constructor(
     private val config: HiPayConfig,
     engine: HttpClientEngine,
+    private val recovery: PendingPaymentStore? = null,
 ) {
-    public constructor(config: HiPayConfig) : this(config, defaultHttpClientEngine())
+    public constructor(config: HiPayConfig) : this(config, defaultHttpClientEngine(), null)
+
+    /**
+     * With a [recovery] store, every order this client submits leaves a trace keyed on its order id,
+     * so an interrupted payment can be found again. The store never holds a card token, so it can
+     * only ever be read from — no path re-submits an order.
+     */
+    public constructor(config: HiPayConfig, recovery: PendingPaymentStore) :
+        this(config, defaultHttpClientEngine(), recovery)
 
     private val http = HipayHttpClient(config, engine)
 
     /** Creates an order (POST `{gateway-v1}/order`) and returns the resulting transaction. */
     @Throws(HiPayException::class, CancellationException::class)
     public suspend fun requestNewOrder(order: OrderRequest, signature: String? = null): Transaction {
+        // Recorded BEFORE the round-trip: an interruption in this window is precisely the case where
+        // nothing else would be left, since the HiPay reference does not exist yet.
+        recovery?.record(order.orderId, order.amount, order.currency)
         val body = http.postForm(
             url = config.environment.gatewayV1Url + "order",
             fields = order.toFields(),
             signature = signature,
         )
-        return parseTransaction(body)
+        val transaction = parseTransaction(body)
+        recovery?.complete(order.orderId, transaction.transactionReference, transaction.state)
+        return transaction
     }
 
     /**
