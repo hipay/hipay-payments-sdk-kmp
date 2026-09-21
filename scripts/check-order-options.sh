@@ -18,24 +18,37 @@ cd "$(dirname "$0")/.."
 fail=0
 
 # --- Kotlin: every order send must be preceded, within 3 lines, by the options attachment ---------
+# The payment paths do not call the gateway directly: they go through the controller's own
+# `submitOrder`, which also records the payment for recovery. So a "send" is a call to that helper,
+# and the single gateway call inside it is the shared implementation — asserted below, so a second
+# direct send cannot slip in unchecked.
 check_kotlin() {
     local file="$1"
-    local sends attaches
-    sends=$(grep -c 'gateway\.requestNewOrder(order, signature)' "$file" || true)
+    local sends attaches shared
+    shared=$(grep -c 'gateway\.requestNewOrder(order, signature)' "$file" || true)
+    if [ "$shared" -ne 1 ]; then
+        echo "ERROR: $file — expected exactly one gateway send inside submitOrder, found $shared." >&2
+        echo "       This check no longer understands the file; update it rather than deleting it." >&2
+        fail=1
+        return
+    fi
+    read -r sends attaches <<EOF
+$(awk '
+        /private suspend fun submitOrder\(/ { next }
+        /order\.withOptions\(/ { seen = NR }
+        /submitOrder\(/ {
+            sends++
+            if (seen && NR - seen <= 3) ok++
+        }
+        END { print sends + 0, ok + 0 }
+    ' "$file")
+EOF
     if [ "$sends" -eq 0 ]; then
         echo "ERROR: $file — no order send found. Did the call shape change?" >&2
         echo "       This check no longer understands the file; update it rather than deleting it." >&2
         fail=1
         return
     fi
-    # Look back 3 lines from each send for `order.withOptions(`.
-    attaches=$(awk '
-        /order\.withOptions\(/ { seen = NR }
-        /gateway\.requestNewOrder\(order, signature\)/ {
-            if (seen && NR - seen <= 3) ok++
-        }
-        END { print ok + 0 }
-    ' "$file")
     if [ "$attaches" -ne "$sends" ]; then
         echo "ERROR: $file — $sends order send(s), but only $attaches attach the options." >&2
         echo "       Every order must carry the caller's OrderOptions: add" >&2
