@@ -171,24 +171,27 @@ public class HiPayCardEntryController(
      * completed by the answer. Without a bound context there is no store to write to, and the payment
      * runs exactly as it did before.
      */
-    private suspend fun submitOrder(
-        storeContext: Context?,
-        order: OrderRequest,
-        signature: String?,
-    ): Transaction {
-        withRecovery(storeContext) { it.record(order.orderId, order.amount, order.currency) }
+    private suspend fun submitOrder(order: OrderRequest, signature: String?): Transaction {
+        withRecovery { it.record(order.orderId, order.amount, order.currency) }
         val transaction = try {
             orderResolver?.invoke(order, signature) ?: gateway.requestNewOrder(order, signature)
         } catch (e: HiPayException) {
             indeterminateOrRethrow(e)
         }
-        recordOutcome(storeContext, order.orderId, transaction)
+        recordOutcome(order.orderId, transaction)
         return transaction
     }
 
-    /** Recovery is a convenience: a store that cannot be opened or written must never fail a payment. */
-    private suspend fun withRecovery(storeContext: Context?, block: (PendingPaymentStore) -> Unit) {
-        val ctx = storeContext ?: return
+    /**
+     * Recovery covers EVERY payment, so it takes the bound presentation context rather than the
+     * one-click one — that one is null unless the payer asked for the card to be saved, and a payment
+     * that records nothing is a payment that cannot be found again.
+     *
+     * A convenience, so it is fail-soft: no bound context, or a store that cannot be opened or
+     * written, must never fail a payment.
+     */
+    private suspend fun withRecovery(block: (PendingPaymentStore) -> Unit) {
+        val ctx = presentationContext?.applicationContext ?: return
         runCatching { withContext(storeDispatcher) { block(obtainRecovery(ctx)) } }
     }
 
@@ -197,8 +200,8 @@ public class HiPayCardEntryController(
      * would keep the order's own answer — `forwarding` for a challenge — and a later list would report
      * a payment as unfinished when this instance already saw it settle.
      */
-    private suspend fun recordOutcome(storeContext: Context?, orderId: String, transaction: Transaction) {
-        withRecovery(storeContext) { it.complete(orderId, transaction.transactionReference, transaction.state) }
+    private suspend fun recordOutcome(orderId: String, transaction: Transaction) {
+        withRecovery { it.complete(orderId, transaction.transactionReference, transaction.state) }
     }
 
     private fun requireOneClickContext(): Context =
@@ -935,9 +938,9 @@ public class HiPayCardEntryController(
             oneClick = effectiveSave,
         )
         options?.let { order.withOptions(it) }
-        val transaction = submitOrder(storeContext, order, signature)
+        val transaction = submitOrder(order, signature)
         val final = present3DSAndAwait(transaction, signature, autoPresent3DS)
-        recordOutcome(storeContext, order.orderId, final)
+        recordOutcome(order.orderId, final)
         if (storeContext != null) {
             persistSavedCard(storeContext, token, final, product)
             if (final.state == TransactionState.COMPLETED) {
@@ -1053,7 +1056,7 @@ public class HiPayCardEntryController(
             )
             val transaction = try {
                 options?.let { order.withOptions(it) }
-                submitOrder(storeContext, order, signature)
+                submitOrder(order, signature)
             } catch (e: HiPayException) {
                 val cnlv = cardNoLongerValidOrNull(e)
                 if (cnlv != null) {
@@ -1082,7 +1085,7 @@ public class HiPayCardEntryController(
                 lastOneClickError = OneClickError(card, OneClickErrorReason.GENERIC)
                 throw e
             }
-            recordOutcome(storeContext, order.orderId, final)
+            recordOutcome(order.orderId, final)
             oneClickReasonForOutcome(
                 finalState = final.state,
                 challenged = challenged,

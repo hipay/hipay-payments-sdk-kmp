@@ -24,6 +24,9 @@ import org.junit.runner.RunWith
  * What a payment leaves behind, against the real Keystore-backed store — the layer the commonTest
  * fakes cannot reach. The gateway is replaced by [HiPayCardEntryController.orderResolver]: none of
  * these paths goes to the network.
+ *
+ * All of them pay from a saved card. The new-card path cannot be covered here: `pay()` tokenizes
+ * first, and `CardTokenizer` has no injection seam, so it would reach the real vault.
  */
 @RunWith(AndroidJUnit4::class)
 class PendingPaymentRecoveryTest {
