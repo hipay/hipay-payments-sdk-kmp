@@ -89,18 +89,29 @@ class PendingPaymentResolverTest {
     }
 
     @Test
-    fun anOrderThatWasNeverAnsweredIsReportedWithoutAskingTheGateway() = runTest {
+    fun anOrderWhoseResponseWasLostIsFoundFromTheOrderIdItself() = runTest {
         val lost = MockEngine { throw IllegalStateException("connection lost") }
         assertFailsWith<HiPayException> { GatewayClient(config, lost, store).requestNewOrder(order()) }
-        var calls = 0
-        val counting = MockEngine { calls++; respond("", HttpStatusCode.OK) }
+        assertFalse(store.unresolvedPayments().single().referenceKnown, "no reference was ever stored")
 
-        val snapshot = resolver(counting).refreshPayment("ORDER-1")
+        val seen = mutableListOf<HttpRequestData>()
+        val byOrderId = MockEngine { request ->
+            seen += request
+            respond(
+                """{"transaction":{"state":"completed","status":"118","transactionReference":"800000000001"}}""",
+                HttpStatusCode.OK,
+                headersOf(HttpHeaders.ContentType, "application/json"),
+            )
+        }
 
-        // No reference means nothing to ask about — the window is observable, not recoverable.
-        assertEquals(TransactionState.PENDING, snapshot?.lastState)
-        assertFalse(snapshot!!.referenceKnown)
-        assertEquals(0, calls, "the gateway must not be asked without a reference")
+        val refreshed = resolver(byOrderId).refreshPayment("ORDER-1", signature = "sig")
+
+        // The window between sending an order and losing its response is recoverable: the gateway
+        // finds the transaction from the merchant's own id.
+        assertEquals(TransactionState.COMPLETED, refreshed?.lastState)
+        assertTrue(seen.single().url.encodedQuery.contains("orderid=ORDER-1"), seen.single().url.toString())
+        // And the reference it answered is kept, so the next read goes direct.
+        assertTrue(store.unresolvedPayments().single().referenceKnown)
     }
 
     @Test

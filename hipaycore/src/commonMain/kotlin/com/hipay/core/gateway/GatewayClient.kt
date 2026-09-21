@@ -76,6 +76,25 @@ public class GatewayClient internal constructor(
     }
 
     /**
+     * The same transaction, found from the merchant's own order id (GET `{gateway-v1}/transaction`
+     * with `orderid`) — the only way back when the order's response was lost before its reference
+     * arrived.
+     *
+     * Measured on stage: the account refuses this read unsigned, so [signature] is the one the
+     * merchant backend computed for that order. Several attempts on one order id answer as a list;
+     * the first is taken, as on the reference read.
+     */
+    @Throws(HiPayException::class, CancellationException::class)
+    public suspend fun getTransactionByOrderId(orderId: String, signature: String? = null): Transaction {
+        val query = Parameters.build { append("orderid", orderId) }.formUrlEncode()
+        val body = http.get(
+            url = config.environment.gatewayV1Url + "transaction?" + query,
+            signature = signature,
+        )
+        return parseTransaction(body, unwrap = true)
+    }
+
+    /**
      * The card networks this ACCOUNT is contracted for (GET `{gateway-v2}/available-payment-products.json`).
      *
      * This is the authoritative ceiling for what a card component may offer: what the merchant

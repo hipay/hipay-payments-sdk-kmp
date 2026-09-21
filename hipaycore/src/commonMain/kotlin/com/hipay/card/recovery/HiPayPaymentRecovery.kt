@@ -43,11 +43,15 @@ public class HiPayPaymentRecovery internal constructor(
      * Where [orderId] stands, or null if this device never launched it. An order that was never
      * answered comes back unchanged and without a network call — nothing links it to a transaction.
      *
+     * Pass the [signature] your backend computed for that order when your account signs its orders:
+     * such an account refuses an unsigned read. The snapshot carries the amount and currency so the
+     * signature can be recomputed from it.
+     *
      * Throws rather than invent an outcome; the entry is kept, so the call can be retried.
      */
     @Throws(HiPayException::class, CancellationException::class)
-    public suspend fun refreshPayment(orderId: String): HiPayPendingPayment? =
-        withContext(storeDispatcher) { resolver().refreshPayment(orderId) }
+    public suspend fun refreshPayment(orderId: String, signature: String? = null): HiPayPendingPayment? =
+        withContext(storeDispatcher) { resolver().refreshPayment(orderId, signature) }
 
     /**
      * Drops the entry for [orderId], once the host has recorded the outcome. Nothing else removes one

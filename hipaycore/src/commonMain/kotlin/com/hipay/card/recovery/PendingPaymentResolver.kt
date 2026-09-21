@@ -32,10 +32,13 @@ public class PendingPaymentResolver internal constructor(
      * Asks the gateway where [orderId] stands and returns its refreshed snapshot, or null if this
      * device never launched it.
      *
-     * A payment whose order was never answered carries no reference, so there is nothing to ask about:
-     * its snapshot comes back unchanged, without a network call. That window is observable, not
-     * recoverable — the bridge from an order id to a transaction exists on the merchant's backend, in
-     * the webhook keyed on that same id.
+     * [signature] is the same HS signature your backend computed for that order — measured on stage:
+     * an account whose orders are signed refuses an unsigned read with `401`. The snapshot carries the
+     * amount and currency precisely so the signature can be recomputed from it.
+     *
+     * A payment whose order was never answered carries no reference — and is still recoverable: the
+     * gateway finds it from the order id, so the window between sending an order and losing its
+     * response is not a dead end. The reference it returns is kept, so the next read goes direct.
      *
      * A terminal answer does NOT delete the entry: only [acknowledge] or its lifetime does, so a host
      * that dies between this call and its own bookkeeping can ask again.
@@ -45,11 +48,15 @@ public class PendingPaymentResolver internal constructor(
      * the payment failed.
      */
     @Throws(HiPayException::class, CancellationException::class)
-    public suspend fun refreshPayment(orderId: String): HiPayPendingPayment? {
-        val known = store.unresolvedPayments().firstOrNull { it.orderId == orderId } ?: return null
-        val reference = store.referenceFor(orderId) ?: return known
-        val transaction = gateway.getTransaction(reference)
-        store.complete(orderId, reference, transaction.state)
+    public suspend fun refreshPayment(orderId: String, signature: String? = null): HiPayPendingPayment? {
+        store.unresolvedPayments().firstOrNull { it.orderId == orderId } ?: return null
+        val reference = store.referenceFor(orderId)
+        val transaction = if (reference != null) {
+            gateway.getTransaction(reference, signature)
+        } else {
+            gateway.getTransactionByOrderId(orderId, signature)
+        }
+        store.complete(orderId, transaction.transactionReference ?: reference, transaction.state)
         return store.unresolvedPayments().firstOrNull { it.orderId == orderId }
     }
 }
