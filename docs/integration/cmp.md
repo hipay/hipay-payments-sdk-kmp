@@ -324,7 +324,8 @@ correspondence. Nothing here re-submits an order — the stored entry holds no c
 
 **An entry survives its own resolution.** Only `acknowledge(...)` removes it, or its lifetime running
 out — seven days for a payment left unanswered, forty-eight hours once final. Deleting on resolution
-would lose the case this exists for: an app that dies between learning the outcome and recording it.
+would lose the case this exists for: an app that dies between learning the outcome and recording it. At most fifty entries are kept, oldest first out, so a longer lifetime
+cannot grow the cost of the payment path.
 Both lifetimes are arguments of `rememberHiPayPaymentRecovery(...)`, so shorten them to test the flow.
 
 **Signing the read.** An account that signs its orders refuses an unsigned transaction read with
