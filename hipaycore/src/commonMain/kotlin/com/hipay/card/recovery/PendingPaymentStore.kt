@@ -59,8 +59,9 @@ private inline val storeJson: Json get() = Json { encodeDefaults = true }
  * Fail-soft throughout, like the saved-card store: a storage or parse failure reads as "nothing
  * pending" and never throws, because a recovery convenience must not be able to break a payment.
  *
- * NOT thread-safe: every mutator is a read-modify-write with no locking, and platform stores may do
- * blocking I/O. Confine it to a single background thread.
+ * Safe to use from several instances at once: every entry point takes [withPendingPaymentLock], so a
+ * payment writing its outcome and a host reading the list cannot lose each other's update. Still call
+ * it off the main thread — platform secure storage does blocking I/O.
  *
  * @param raw the platform secure-storage primitive, the same one the saved-card store uses.
  * @param now epoch milliseconds, injected so the core carries no date dependency.
@@ -79,20 +80,23 @@ public class PendingPaymentStore(
      * entries already dropped. A terminal payment is still listed — that is the point: after a
      * process death the host has no other way to learn the outcome it missed.
      */
-    public fun unresolvedPayments(): List<HiPayPendingPayment> =
+    public fun unresolvedPayments(): List<HiPayPendingPayment> = withPendingPaymentLock {
+        // Under the lock like the mutators: reading prunes expired entries, which writes.
         load().payments.sortedByDescending { it.createdAt }.map { it.toPublic() }
+    }
 
     /** Drops the entry for [orderId]. Returns whether anything was removed. */
-    public fun acknowledge(orderId: String): Boolean {
+    public fun acknowledge(orderId: String): Boolean = withPendingPaymentLock {
         val env = load()
         val kept = env.payments.filterNot { it.orderId == orderId }
-        if (kept.size == env.payments.size) return false
-        return persist(PendingPaymentsEnvelope(payments = kept))
+        if (kept.size == env.payments.size) return@withPendingPaymentLock false
+        persist(PendingPaymentsEnvelope(payments = kept))
     }
 
     /** The stored reference for [orderId], or null when the order was never answered. */
-    internal fun referenceFor(orderId: String): String? =
+    internal fun referenceFor(orderId: String): String? = withPendingPaymentLock {
         load().payments.firstOrNull { it.orderId == orderId }?.reference
+    }
 
     /**
      * Records a payment about to be submitted, before the order leaves the device — the window where
@@ -105,7 +109,7 @@ public class PendingPaymentStore(
      * Past [MAX_PENDING_PAYMENTS] the oldest entry goes: a payment the host never came back for is
      * worth less than the one being made now.
      */
-    public fun record(orderId: String, amount: String, currency: String): Boolean {
+    public fun record(orderId: String, amount: String, currency: String): Boolean = withPendingPaymentLock {
         val env = load()
         val entry = StoredPendingPayment(
             orderId = orderId,
@@ -117,7 +121,7 @@ public class PendingPaymentStore(
         val kept = (env.payments.filterNot { it.orderId == orderId } + entry)
             .sortedByDescending { it.createdAt }
             .take(MAX_PENDING_PAYMENTS)
-        return persist(PendingPaymentsEnvelope(payments = kept))
+        persist(PendingPaymentsEnvelope(payments = kept))
     }
 
     /**
@@ -125,9 +129,10 @@ public class PendingPaymentStore(
      * else. Silently does nothing for an unknown [orderId] — a payment the store never saw is not an
      * error, only one it cannot help with.
      */
-    public fun complete(orderId: String, reference: String?, state: TransactionState): Boolean {
+    public fun complete(orderId: String, reference: String?, state: TransactionState): Boolean = withPendingPaymentLock {
         val env = load()
-        val existing = env.payments.firstOrNull { it.orderId == orderId } ?: return false
+        val existing = env.payments.firstOrNull { it.orderId == orderId }
+            ?: return@withPendingPaymentLock false
         val updated = StoredPendingPayment(
             orderId = existing.orderId,
             reference = reference ?: existing.reference,
@@ -137,7 +142,7 @@ public class PendingPaymentStore(
             createdAt = existing.createdAt,
             resolvedAt = if (state.isTerminal()) now() else null,
         )
-        return persist(
+        persist(
             PendingPaymentsEnvelope(payments = env.payments.filterNot { it.orderId == orderId } + updated),
         )
     }

@@ -18,14 +18,15 @@ import kotlin.coroutines.cancellation.CancellationException
  * **Payment finality still belongs to the webhook.** This exists so an app can re-open the right
  * screen and never conclude "failed" from an interruption.
  *
- * Every call suspends and runs on one background thread: platform secure storage blocks and the store
- * is not thread-safe. Expiry is evaluated on read, which is why the lifetimes are set here.
+ * Every call suspends and runs on one background thread, because platform secure storage blocks.
+ * Expiry is evaluated on read, which is why the lifetimes are set here.
  */
 public class HiPayPaymentRecovery internal constructor(
     // Built on first use, on the dispatcher: platform secure storage opens blocking, and a host may
     // construct this from the main thread at launch.
     private val openResolver: () -> PendingPaymentResolver,
-    // Serial on purpose: the store is a read-modify-write with no locking of its own.
+    // Serial on purpose: keeps this instance's blocking I/O off every other thread. Correctness
+    // across instances is the store's shared lock, not this.
     private val storeDispatcher: CoroutineDispatcher,
 ) {
     private var resolver: PendingPaymentResolver? = null
@@ -40,8 +41,9 @@ public class HiPayPaymentRecovery internal constructor(
         withContext(storeDispatcher) { resolver().unresolvedPayments() }
 
     /**
-     * Where [orderId] stands, or null if this device never launched it. An order that was never
-     * answered comes back unchanged and without a network call — nothing links it to a transaction.
+     * Where [orderId] stands, or null if this device never launched it — that answer comes from the
+     * store alone, with no network call. An order that was never answered carries no reference, and is
+     * looked up from [orderId] itself.
      *
      * Pass the [signature] your backend computed for that order when your account signs its orders:
      * such an account refuses an unsigned read. The snapshot carries the amount and currency so the

@@ -54,7 +54,10 @@ class PendingPaymentRecoveryTest {
     }
 
     /** A controller holding one saved card, so paying skips tokenization and goes straight to the order. */
-    private fun controllerWithACard(of: HiPayConfig = config): Pair<HiPayCardEntryController, SavedCard> {
+    private fun controllerWithACard(
+        of: HiPayConfig = config,
+        bindContext: Boolean = true,
+    ): Pair<HiPayCardEntryController, SavedCard> {
         val card = SavedCard(
             token = "t".repeat(64), maskedPan = "411111xxxxxx1111", network = "VISA",
             holder = "JANE DOE", expiryMonth = "12", expiryYear = "2031",
@@ -63,7 +66,7 @@ class PendingPaymentRecoveryTest {
             assertTrue(createSecureCardStore(context, of).save(card, consentGiven = true))
         }
         val controller = HiPayCardEntryController(of, oneClickEnabled = true).withOfflineCeiling()
-        controller.bindPresentationContext(context)
+        if (bindContext) controller.bindPresentationContext(context)
         runBlocking { controller.refreshSavedCards() }
         return controller to controller.savedCards.first()
     }
@@ -166,7 +169,7 @@ class PendingPaymentRecoveryTest {
     }
 
     @Test
-    fun refreshingAnOrderWithNoReferenceReportsItWithoutCallingTheGateway() {
+    fun anOrderLeftWithoutAReferenceIsListedAsSuch() {
         val (controller, stored) = controllerWithACard()
         try {
             // No reference: the answer carries none, as a lost order response would leave it.
@@ -178,11 +181,46 @@ class PendingPaymentRecoveryTest {
                 )
             }
 
-            // No reference means nothing to ask about: the call answers from the store alone, which is
-            // why it works with no network in this test.
-            val snapshot = runBlocking { recovery().refreshPayment("REC-7") }
-            assertEquals(TransactionState.PENDING, snapshot?.lastState)
+            // Writing the outcome must not invent a reference: the host has to be able to tell that
+            // nothing links this order to a transaction yet. Refreshing it is what asks the gateway
+            // from the order id, and this test has no seam for that call.
+            val listed = runBlocking { recovery().unresolvedPayments() }.single { it.orderId == "REC-7" }
+            assertEquals(TransactionState.PENDING, listed.lastState)
+            assertFalse(listed.referenceKnown)
+
+            // An order this device never launched is answered from the store alone, with no network.
             assertNull(runBlocking { recovery().refreshPayment("NEVER-LAUNCHED") })
+        } finally {
+            controller.dispose()
+        }
+    }
+
+    @Test
+    fun theInitProviderIsDeclaredInTheMergedManifest() {
+        // The provider is what gives storage an application context without the component. Asserted
+        // from the host's merged manifest, because that is where a missing declaration would hide.
+        val declared = context.packageManager
+            .resolveContentProvider("${context.packageName}.hipaycardinit", 0)
+        assertEquals("com.hipay.card.HiPayInitProvider", declared?.name)
+    }
+
+    @Test
+    fun aPaymentIsRecordedWithTheComponentNeverOnScreen() {
+        // Nothing binds a context here: a headless host renders no component, and recovery must not
+        // depend on one. This is the case a real payment on stage found missing.
+        val (controller, stored) = controllerWithACard(bindContext = false)
+        try {
+            controller.orderResolver = { _, _ -> Transaction("completed", transactionReference = "800000000002") }
+            runBlocking {
+                controller.payWithSavedCard(
+                    card = stored, orderId = "REC-8", amount = "12.00",
+                    description = "d", redirectScheme = "hipaydemo",
+                )
+            }
+
+            val recorded = runBlocking { recovery().unresolvedPayments() }.single { it.orderId == "REC-8" }
+            assertEquals(TransactionState.COMPLETED, recorded.lastState)
+            assertTrue(recorded.referenceKnown)
         } finally {
             controller.dispose()
         }

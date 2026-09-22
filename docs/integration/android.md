@@ -436,6 +436,15 @@ Behaviour to expect: opening the new-card form no longer collapses the saved-car
 - **Localization**: FR/EN/IT (default EN) ship in the card module's `strings.xml`; device locale by default, overridable SDK-wide via `HiPaySettings` on the config or per component via `HiPayCardEntry(..., localeOverride = "fr")` (which wins).
 - **Accessibility**: TalkBack labels/state, relative traversal order (opt-out `setsAccessibilityOrder = false`), inline errors announced politely.
 - **PCI**: the raw PAN and the vault token never leave the controller; never log card data.
+- **Merged manifest**: the card module declares one `ContentProvider`, `com.hipay.card.HiPayInitProvider` (authority `${applicationId}.hipaycardinit`, not exported). It captures the application context the secure stores need and does nothing else — no work, no I/O, never queried. The authority comes from your `applicationId`, so build variants and other apps never collide, and R8 keeps the class from the merged manifest with no rule of yours.
+  You can drop it if your startup budget demands it:
+  ```xml
+  <provider android:name="com.hipay.card.HiPayInitProvider"
+            android:authorities="${applicationId}.hipaycardinit"
+            tools:node="remove" />
+  ```
+  What you lose: nothing is recorded for recovery until `HiPayCardEntry` has been rendered once, and a payment saving a card throws until then. Call `controller.bindPresentationContext(context)` yourself to restore both.
+- **Multi-process apps**: the provider lives in your default process, so a payment screen running in another process has no application context until `HiPayCardEntry` renders there. The saved-card store is single-process anyway — a Preferences DataStore must not be opened from two processes.
 - **Testing**: instrumented Compose UI tests must run on an **API ≤ 35** emulator (Compose ui-test 1.8.3 does not attach on API 37); your own app runs on any supported API.
 
 ---
