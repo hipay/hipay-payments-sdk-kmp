@@ -37,3 +37,7 @@ internal actual fun utcTimestamp(): String = NSDateFormatter().apply {
 internal actual fun randomUuid(): String = NSUUID().UUIDString
 
 private const val TIMESTAMP_FORMAT = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+
+/** The host application's bundle identifier. */
+internal actual fun hostDomain(): String? =
+    platform.Foundation.NSBundle.mainBundle.bundleIdentifier

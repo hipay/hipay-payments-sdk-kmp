@@ -75,6 +75,13 @@ public class GatewayClient internal constructor(
                 status = transaction.status,
                 paymentMethod = transaction.paymentProduct ?: order.paymentProduct,
                 cardCountry = transaction.paymentMethod?.country,
+                // The merchant's own order id and HiPay's reference: this is the one event that can
+                // tie the journey to the transaction it produced.
+                orderId = order.orderId,
+                transactionId = transaction.transactionReference,
+                // A JSON number, as the ingestion expects; an unparseable amount is simply omitted.
+                amount = order.amount.toDoubleOrNull(),
+                currency = order.currency,
                 monitoring = Monitoring(dateRequest = requestedAt, dateResponse = utcTimestamp()),
             ),
         )

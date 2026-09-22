@@ -8,8 +8,13 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
 /**
- * One `checkout-data` event. Nothing here identifies a payer or a merchant: no card data, no
- * transaction reference, no host application. Nulls are omitted, not serialized.
+ * One `checkout-data` event. No card data and no payer identity ever — but the merchant's order id
+ * and HiPay's transaction reference do travel, on the `request` event, so a journey can be tied to
+ * the transaction it produced. Nulls are omitted, not serialized.
+ *
+ * [domain] identifies the host application and is filled for every event; the order fields only
+ * exist once the order has been answered, so the correlation [id] is what carries the earlier events
+ * back to it.
  */
 @Serializable
 internal class CheckoutData(
@@ -18,6 +23,11 @@ internal class CheckoutData(
     val status: String? = null,
     @SerialName("payment_method") val paymentMethod: String? = null,
     @SerialName("card_country") val cardCountry: String? = null,
+    val domain: String? = hostDomain(),
+    @SerialName("order_id") val orderId: String? = null,
+    @SerialName("transaction_id") val transactionId: String? = null,
+    val amount: Double? = null,
+    val currency: String? = null,
     val monitoring: Monitoring? = null,
     val components: Components = Components(),
 )
@@ -50,8 +60,11 @@ internal object CheckoutEvent {
     const val REQUEST = "request"
 }
 
-/** A random UUID, hashed. Kept nowhere: it ties one journey's events together and nothing else. */
-internal fun checkoutEventId(): String = sha256Hex(randomUuid())
+/**
+ * A random UUID hashed with the host application, as the legacy SDKs composed it. Kept nowhere: it
+ * ties one journey's events together and nothing else, and carries no payer identity either way.
+ */
+internal fun checkoutEventId(): String = sha256Hex(randomUuid() + ":" + (hostDomain() ?: ""))
 
 internal val checkoutDataJson: Json = Json {
     explicitNulls = false

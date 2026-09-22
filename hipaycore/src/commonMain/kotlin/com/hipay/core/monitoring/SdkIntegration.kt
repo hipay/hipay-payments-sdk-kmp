@@ -47,3 +47,10 @@ internal expect fun utcTimestamp(): String
 
 /** A random UUID v4, the seed of the correlation id. */
 internal expect fun randomUuid(): String
+
+/**
+ * The host application's identifier — its bundle id on iOS, its process name on Android, which is the
+ * application id for the main process. Null when it cannot be read: reporting nothing beats reporting
+ * a wrong attribution, and the ingestion treats an absent value as unknown.
+ */
+internal expect fun hostDomain(): String?

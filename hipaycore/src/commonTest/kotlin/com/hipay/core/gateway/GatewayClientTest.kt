@@ -107,9 +107,11 @@ class GatewayClientTest {
         val body = analytics.await()
         assertTrue(body.contains("\"cms\":\"sdk_kmp_"), body)
         assertTrue(body.contains("\"status\":\"118\""), body)
-        // Nothing that could name the transaction or the merchant it belongs to.
-        listOf("order_id", "transaction_id", "domain", "amount").forEach { field ->
-            assertTrue(!body.contains(field), "$field reached checkout-data: $body")
+        // The order event names the transaction it reports, on both sides of the reconciliation.
+        // `domain` is not asserted here: it resolves from the host application, and a unit-test
+        // process has none — it is emitted on a device and omitted when it cannot be read.
+        listOf("order_id", "transaction_id", "amount", "currency").forEach { field ->
+            assertTrue(body.contains(field), "$field missing from checkout-data: $body")
         }
         assertTrue(body.contains("\"card_country\":\"PL\""), body)
         // The golden response carries a token, a PAN and a holder name; none may follow it here.

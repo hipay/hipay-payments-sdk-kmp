@@ -141,6 +141,52 @@ class CheckoutFunnelTest {
     }
 
     @Test
+    fun theOrderEventTiesTheJourneyToItsTransaction() = runTest {
+        val captured = CompletableDeferred<String>()
+        GatewayClient(config, engine(captured, GOLDEN_ORDER_RESPONSE)).requestNewOrder(order())
+
+        // The merchant reconciles on its own order id; the reference is what HiPay answered with.
+        val body = captured.await()
+        assertTrue(body.contains("\"order_id\":\"TEST-1\""), body)
+        assertTrue(body.contains("\"transaction_id\":\""), body)
+        assertTrue(body.contains("\"amount\":1.0"), body)
+        assertTrue(body.contains("\"currency\":\"EUR\""), body)
+    }
+
+    @Test
+    fun theStepsBeforeTheOrderCarryNoOrderFields() = runTest {
+        val captured = CompletableDeferred<String>()
+        val vault = engine(captured, GOLDEN_TOKEN_CREATE_RESPONSE)
+        CardTokenizer(config, vault, CheckoutDataSender(Environment.STAGE, vault))
+            .generateToken("4111111111111111", "12", "2030", "Test", "123", multiUse = false)
+
+        // Nothing links tokenization to an order yet — the correlation id is what will.
+        val body = captured.await()
+        listOf("order_id", "transaction_id", "amount", "currency").forEach {
+            assertFalse(body.contains(it), "$it must not be on the tokenize event: $body")
+        }
+    }
+
+    @Test
+    fun noEventEverCarriesCardData() = runTest {
+        val captured = CompletableDeferred<String>()
+        val vault = engine(captured, GOLDEN_TOKEN_CREATE_RESPONSE)
+        CardTokenizer(config, vault, CheckoutDataSender(Environment.STAGE, vault))
+            .generateToken("4111111111111111", "12", "2030", "Jane Doe", "123", multiUse = false)
+
+        // The PAN the payer typed, the holder name, and the vault token the response carried. A CVV
+        // is deliberately not asserted here: three digits match any timestamp by chance.
+        val body = captured.await()
+        listOf(
+            "4111111111111111",
+            "Jane Doe",
+            "f0e1d2c3b4a5968778695a4b3c2d1e0ff0e1d2c3b4a5968778695a4b3c2d1e0f",
+        ).forEach {
+            assertFalse(body.contains(it, ignoreCase = true), "$it reached the payload: $body")
+        }
+    }
+
+    @Test
     fun creatingACardEntryOpensAFreshSession() {
         val first = CheckoutSession.start()
         val second = CheckoutSession.start()
