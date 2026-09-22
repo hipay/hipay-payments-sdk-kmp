@@ -15,8 +15,9 @@ import com.hipay.core.gateway.model.TransactionState
  * survives a lost response, and it is what the host already reconciles on.
  *
  * @property lastState the last state observed, `PENDING` while the order has not been answered.
- * @property referenceKnown whether HiPay answered with a transaction reference. When false the
- *   payment can be listed but not queried: nothing links this order to a transaction yet.
+ * @property referenceKnown whether HiPay answered with a transaction reference. False means the
+ *   order's response was lost before one arrived — the payment is still recoverable, the gateway
+ *   finding it from [orderId] itself.
  */
 public class HiPayPendingPayment(
     public val orderId: String,
