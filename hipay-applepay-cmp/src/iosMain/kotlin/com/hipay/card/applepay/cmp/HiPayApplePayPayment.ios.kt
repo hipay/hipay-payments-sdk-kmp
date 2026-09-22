@@ -50,13 +50,19 @@ public actual suspend fun resolveHiPayApplePayAvailability(
     currency: String,
     customerCountry: String?,
     allowedNetworks: List<CardNetwork>,
-): ApplePayEligibilityResult =
-    resolveApplePayEligibility(
+): ApplePayEligibilityResult {
+    // Declared HERE too, not only on the payment path: a favourable answer raises the funnel's first
+    // event, and a host asks this before showing the button — so without it a wallet-only CMP host
+    // reports that event as native and its own journey disagrees with itself.
+    @OptIn(HiPayInternalApi::class)
+    HiPayIntegrationSurface.declareComposeMultiplatform()
+    return resolveApplePayEligibility(
         config = config,
         device = defaultApplePayDeviceCapability(),
         currency = currency,
         customerCountry = customerCountry,
         allowedNetworks = allowedNetworks,
     )
+}
 
 public actual fun hiPayApplePaySupported(): Boolean = true

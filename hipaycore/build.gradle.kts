@@ -147,6 +147,16 @@ val checkOrderOptions = tasks.register<Exec>("checkOrderOptions") {
 }
 tasks.named("check") { dependsOn(checkOrderOptions) }
 
+// CMP surface gate: a public entry point of a Compose-Multiplatform module must declare its surface
+// before it can report, or the funnel attributes that event to the native integration. Found the hard
+// way, by reading BigQuery: one Apple Pay journey reported `init` as native and the rest as CMP.
+val checkCmpSurface = tasks.register<Exec>("checkCmpSurface") {
+    group = "verification"
+    description = "Asserts every CMP entry point declares its surface before reporting"
+    commandLine("bash", rootDir.resolve("scripts/check-cmp-surface.sh").absolutePath)
+}
+tasks.named("check") { dependsOn(checkCmpSurface) }
+
 mavenPublishing {
     publishToMavenCentral()
 
