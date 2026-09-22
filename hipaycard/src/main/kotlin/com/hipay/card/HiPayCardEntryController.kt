@@ -28,6 +28,11 @@ import com.hipay.card.store.OneClickError
 import com.hipay.card.store.OneClickErrorReason
 import com.hipay.card.store.SavedCard
 import com.hipay.card.store.SavedCardOutcome
+import com.hipay.card.recovery.DEFAULT_PENDING_PAYMENT_TTL_MILLIS
+import com.hipay.card.recovery.DEFAULT_RESOLVED_PAYMENT_TTL_MILLIS
+import com.hipay.card.recovery.PendingPaymentStore
+import com.hipay.card.recovery.indeterminateOrRethrow
+import com.hipay.card.recovery.createPendingPaymentStore
 import com.hipay.card.store.SecureCardStore
 import com.hipay.card.store.cardNoLongerValidOrNull
 import com.hipay.card.store.coerceSavedCardsDisplayCount
@@ -121,10 +126,10 @@ public class HiPayCardEntryController(
     private val scope: CoroutineScope =
         scope ?: CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    // ---- SDK-managed 3DS presentation (story 11.13) ----
-    // Custom Tabs needs a Context; unlike iOS (global key window) Android can't grab one. The
-    // HiPayCardEntry composable binds the host Activity context for the duration it is on screen
-    // (DisposableEffect) so pay() stays turnkey — no Context parameter on the public API.
+    // ---- SDK-managed 3DS presentation ----
+    // Custom Tabs needs a Context and, unlike iOS with its global key window, Android cannot grab one.
+    // The HiPayCardEntry composable binds the host Activity for as long as it is on screen, so pay()
+    // stays turnkey and the public API carries no Context.
     private var presentationContext: Context? = null
     private class Pending3DS(
         val deferred: CompletableDeferred<Transaction>,
@@ -132,15 +137,21 @@ public class HiPayCardEntryController(
         val signature: String?,
     )
     private var pending3DS: Pending3DS? = null
-    // Cancellation watcher (story 11.15): Custom Tabs gives no dismiss callback, so we detect the
-    // user returning to the host Activity without a deep-link return = cancellation.
+    // Custom Tabs gives no dismiss callback, so a return to the host Activity with no deep-link is
+    // what stands in for one — reconciled with the server rather than assumed to be an abort.
     private var lifecycleApp: Application? = null
     private var lifecycleCallback: Application.ActivityLifecycleCallbacks? = null
 
-    /** Bound by [HiPayCardEntry] from `LocalContext`; do not call from app code — exception: a
-     *  headless host using the one-click APIs without rendering the component binds its context here. */
+    /**
+     * Bound by [HiPayCardEntry] from `LocalContext`, and cleared when the component leaves the
+     * screen; do not call from app code. What is bound here is the Activity the SDK presents a 3DS
+     * challenge on — the stores take the application context from [HiPayAppContext] instead, so a
+     * host that never renders the component loses nothing but the SDK-managed 3DS presentation.
+     */
     public fun bindPresentationContext(context: Context?) {
         presentationContext = context
+        // Sticky, so a store still works once the component has left the screen.
+        HiPayAppContext.offer(context)
     }
 
     // ---- Saved cards (one-click) ----
@@ -154,9 +165,56 @@ public class HiPayCardEntryController(
     private fun obtainStore(applicationContext: Context): SecureCardStore =
         store ?: createSecureCardStore(applicationContext, config).also { store = it }
 
-    private fun requireOneClickContext(): Context =
-        checkNotNull(presentationContext?.applicationContext) {
-            "one-click requires a presentation context: render HiPayCardEntry, " +
+    private var recoveryStore: PendingPaymentStore? = null
+
+    /** Only call from [storeDispatcher]. */
+    private fun obtainRecovery(applicationContext: Context): PendingPaymentStore =
+        // Lifetimes are the reader's business — this one only writes.
+        recoveryStore ?: createPendingPaymentStore(applicationContext, config).also { recoveryStore = it }
+
+    /**
+     * Submits the order, leaving a trace a crash cannot take away: recorded before the round-trip,
+     * completed by the answer. With no store to write to, the payment runs exactly as it did before.
+     */
+    private suspend fun submitOrder(order: OrderRequest, signature: String?): Transaction {
+        withRecovery { it.record(order.orderId, order.amount, order.currency) }
+        val transaction = try {
+            orderResolver?.invoke(order, signature) ?: gateway.requestNewOrder(order, signature)
+        } catch (e: HiPayException) {
+            indeterminateOrRethrow(e)
+        }
+        recordOutcome(order.orderId, transaction)
+        return transaction
+    }
+
+    /**
+     * Recovery covers EVERY payment, whether or not the component is on screen and whether or not the
+     * payer asked for the card to be saved: a payment that records nothing is a payment that cannot
+     * be found again.
+     *
+     * A convenience, so it is fail-soft: a store that cannot be opened or written must never fail a
+     * payment.
+     */
+    private suspend fun withRecovery(block: (PendingPaymentStore) -> Unit) {
+        val ctx = HiPayAppContext.get() ?: return
+        runCatching { withContext(storeDispatcher) { block(obtainRecovery(ctx)) } }
+    }
+
+    /**
+     * Writes back the outcome the live instance observed, once 3DS has resolved. Without it the store
+     * would keep the order's own answer — `forwarding` for a challenge — and a later list would report
+     * a payment as unfinished when this instance already saw it settle.
+     */
+    private suspend fun recordOutcome(orderId: String, transaction: Transaction) {
+        withRecovery { it.complete(orderId, transaction.transactionReference, transaction.state) }
+    }
+
+    // The application context, which HiPayInitProvider captures at process start. Absent only if the
+    // library manifest was stripped of that provider, so it still fails loudly rather than silently
+    // dropping a saved card.
+    private fun requireStoreContext(): Context =
+        checkNotNull(HiPayAppContext.get()) {
+            "no application context: the SDK's init provider is missing from the merged manifest, " +
                 "or call bindPresentationContext(context) first"
         }
 
@@ -267,7 +325,7 @@ public class HiPayCardEntryController(
      * (Re)loads [savedCards]; called after composition and on each re-appearance. A selection that
      * still resolves is PRESERVED — a re-appearance must never switch the payer back to a stored
      * card after they picked "new card". Only the first load pre-selects the most recent one.
-     * Fail-soft: a no-op, and no store created, unless [oneClickEnabled] with a bound context.
+     * Fail-soft: a no-op, and no store created, unless [oneClickEnabled].
      *
      * Headless hosts: that pre-selection makes a plain [pay] route to the stored token — call
      * [selectNewCard] to opt back into card entry.
@@ -291,7 +349,7 @@ public class HiPayCardEntryController(
         // Fail-open: the flag means "nothing more is coming". Left false on an early exit, the
         // component would hide its entry fields for good.
         if (!oneClickEnabled) { savedCardsLoaded = true; return }
-        val context = presentationContext?.applicationContext
+        val context = HiPayAppContext.get()
             ?: run { savedCardsLoaded = true; return }
         val cards = try {
             withContext(storeDispatcher) { obtainStore(context).list() }.allowedByMerchant()
@@ -330,11 +388,11 @@ public class HiPayCardEntryController(
      * confirmation), then refreshes: a deleted **selected** card hands the selection to the most
      * recent card left, a **non-selected** one is preserved, and only the **last** one yields the
      * no-card state. Fail-visible — if the store delete does not take effect the refreshed list still
-     * shows the card. No-op unless [oneClickEnabled] with a bound presentation context.
+     * shows the card. No-op unless [oneClickEnabled].
      */
     public suspend fun deleteSavedCard(card: SavedCard) {
         if (!oneClickEnabled) return
-        val context = presentationContext?.applicationContext ?: return
+        val context = HiPayAppContext.get() ?: return
         val wasSelected = selectedSavedCard == card
         try {
             withContext(storeDispatcher) { obtainStore(context).delete(card) }
@@ -775,7 +833,7 @@ public class HiPayCardEntryController(
      * consumed here — it is NEVER stored on this controller or returned to the
      * host (mirrors iOS `pay()`). Card fields are cleared after tokenizing.
      *
-     * 3DS (story 11.13): when [autoPresent3DS] is `true` (default) and the order
+     * 3DS: when [autoPresent3DS] is `true` (default) and the order
      * returns `FORWARDING`, the SDK presents the challenge in Chrome Custom Tabs
      * and **suspends until the host forwards the return URL via [resume3DS]**,
      * then returns the FINAL, server-confirmed [Transaction] (FR9 — confirmed via
@@ -837,7 +895,7 @@ public class HiPayCardEntryController(
         val effectiveSave = saveCard || (oneClickEnabled && saveCardOptIn)
         // Capture the store context up front (fail fast BEFORE any money moves, and pin it so a
         // component leaving composition during the 3DS window can't null it and drop the save).
-        val storeContext = if (effectiveSave) requireOneClickContext() else null
+        val storeContext = if (effectiveSave) requireStoreContext() else null
         if (effectiveSave) lastSaveOutcome = null
         // Lock the fields for the whole flow (incl. the suspended 3DS); reset on every exit (11.14).
         isProcessing = true
@@ -888,8 +946,9 @@ public class HiPayCardEntryController(
             oneClick = effectiveSave,
         )
         options?.let { order.withOptions(it) }
-        val transaction = (orderResolver?.invoke(order, signature) ?: gateway.requestNewOrder(order, signature))
+        val transaction = submitOrder(order, signature)
         val final = present3DSAndAwait(transaction, signature, autoPresent3DS)
+        recordOutcome(order.orderId, final)
         if (storeContext != null) {
             persistSavedCard(storeContext, token, final, product)
             if (final.state == TransactionState.COMPLETED) {
@@ -946,7 +1005,8 @@ public class HiPayCardEntryController(
      * One-click payment with a previously saved card: the order is created directly
      * from the stored reusable token — no card re-entry, no CVV, no tokenization
      * round-trip. 3DS behaves exactly as in [pay] (a challenge still fires when the
-     * bank requires it). Requires a bound presentation context.
+     * bank requires it). A 3DS challenge is only presented by the SDK while the component is on
+     * screen; headless, opt out with `autoPresent3DS = false` and handle the redirect yourself.
      *
      * On a final `COMPLETED` the card's recency is bumped (most-recently-used). If
      * the gateway reports the stored token as no longer usable, the card is purged
@@ -974,7 +1034,7 @@ public class HiPayCardEntryController(
         autoPresent3DS: Boolean = true,
         options: OrderOptions? = null,
     ): Transaction {
-        val storeContext = requireOneClickContext()
+        val storeContext = requireStoreContext()
         lastOneClickError = null // a fresh attempt supersedes the previous outcome
         // Sampled before the (possibly long) 3DS round-trip: the reason must reflect the
         // card as it was when the payer tapped Pay.
@@ -1005,7 +1065,7 @@ public class HiPayCardEntryController(
             )
             val transaction = try {
                 options?.let { order.withOptions(it) }
-                (orderResolver?.invoke(order, signature) ?: gateway.requestNewOrder(order, signature))
+                submitOrder(order, signature)
             } catch (e: HiPayException) {
                 val cnlv = cardNoLongerValidOrNull(e)
                 if (cnlv != null) {
@@ -1034,6 +1094,7 @@ public class HiPayCardEntryController(
                 lastOneClickError = OneClickError(card, OneClickErrorReason.GENERIC)
                 throw e
             }
+            recordOutcome(order.orderId, final)
             oneClickReasonForOutcome(
                 finalState = final.state,
                 challenged = challenged,

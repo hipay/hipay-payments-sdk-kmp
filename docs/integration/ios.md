@@ -303,6 +303,55 @@ trusted). For full manual control, use the headless `HiPayCore` path instead (se
 > **unreachable** during that check, `pay()` returns an indeterminate **`.pending`** ("verification
 > required") rather than a false abort or a thrown error — re-query `getTransaction` later to resolve it.
 
+> **A lost connection during the order is indeterminate too.** If the connection drops while the order
+> is in flight — an OS suspension during a long background does exactly that — the SDK cannot know
+> whether the gateway took the payment, so `pay(...)` returns **`.pending`** instead of throwing. Treat it
+> as "to be verified", never as a failure: the payment may well have been captured. It stays listed by
+> the recovery API below.
+
+## Interrupted payments
+
+A payment can be interrupted in ways a callback cannot survive: the OS suspends your app during a 3DS
+challenge and drops the connection, or the process is killed outright. The SDK records what it
+launched, keyed on **your own order id**, so you can catch up afterwards.
+
+```swift
+let recovery = hiPayPaymentRecovery(configuration: configuration)   // build it at launch — it is cheap
+
+for payment in try await recovery.unresolvedPayments() {            // reads the device, not the network
+    payment.orderId        // the id YOU passed to pay()
+    payment.lastState      // .pending while nothing final is known
+    payment.referenceKnown // false ⇒ the order was never answered
+
+    let refreshed = try await recovery.refreshPayment(orderId: payment.orderId, signature: signature)
+    _ = try await recovery.acknowledge(orderId: payment.orderId)    // once you have recorded the outcome
+}
+```
+
+You never handle a HiPay transaction reference: you ask with the id you created, and the SDK keeps the
+correspondence. Nothing here re-submits an order — the stored entry holds no card token, so it cannot.
+
+**An entry survives its own resolution.** Only `acknowledge(...)` removes it, or its lifetime running
+out — seven days for a payment left unanswered, forty-eight hours once final. Deleting on resolution
+would lose the case this exists for: an app that dies between learning the outcome and recording it. At most fifty entries are kept, oldest first out, so a longer lifetime
+cannot grow the cost of the payment path.
+Both lifetimes are arguments of `hiPayPaymentRecovery(...)`, so shorten them to test the flow.
+
+**Signing the read.** An account that signs its orders refuses an unsigned transaction read with
+`401`, so pass the HS signature your backend computed for that order. The snapshot carries the amount
+and the currency precisely so it can be recomputed from the entry alone.
+
+`refreshPayment` throws when the gateway cannot be reached. That says the question could not be asked,
+never that the payment failed — the entry is kept, so retry later.
+
+> **`referenceKnown == false` is still recoverable.** The HiPay reference only exists once the order
+> has been answered, so an order whose response was lost has none — the SDK then finds the transaction
+> from your own order id instead, and keeps the reference it gets back.
+
+> **This is a convenience, not the source of truth.** Payment finality remains the server-to-server
+> webhook. This API exists so your app can re-open the right screen and never conclude "failed" from
+> an interruption.
+
 ## First stage test — local signature (⚠️ STAGE / TEST ONLY)
 
 > **The HS signature MUST be computed on your backend in production.** Never ship the stage
