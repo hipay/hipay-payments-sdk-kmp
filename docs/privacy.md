@@ -4,6 +4,9 @@ What the SDK sends on your behalf, and what you have to declare when you publish
 configurable, and none of it changes your integration — but you will be asked about it, by your
 security review, your DPO, or a submission form.
 
+The two forms live in App Store Connect, under **App Privacy**, and in the Play Console, under **Data
+safety**.
+
 ## What leaves the device
 
 **On every card payment.** The card number, expiry date, holder name and CVV go to HiPay's Secure
@@ -53,31 +56,71 @@ though your own code never sees the number.
 | Personal info → Name, Email address, Phone number, Address | only if you pass customer or shipping details |
 | Personal info → User IDs | only if you pass a customer id |
 
-Collected: **yes**. Shared: **no** — HiPay processes these data as your payment provider, which the
-form does not count as sharing. Encrypted in transit: **yes**. Whether a user can request deletion
-is your own answer, not ours.
+Collected: **yes**. Shared: **no** for everything above — HiPay processes these data as your payment
+provider, which the form does not count as sharing; the telemetry below is the one exception.
+Encrypted in transit: **yes**. Whether a user can request deletion is your own answer, not ours.
 
 Store taxonomies are revised regularly. The categories above are the right ones; find their current
 labels on the form rather than copying these words.
 
 ## In your `PrivacyInfo.xcprivacy` (iOS)
 
-Under `NSPrivacyAccessedAPITypes`: the saved-card store reads and writes one boolean in
-`UserDefaults`, which Apple lists as a required-reason API. The reason to declare is **`CA92.1`** —
-access to information from the app itself only, shared with nothing else. No card data is involved:
-the boolean only tells a fresh install from a reinstall, since the Keychain survives an uninstall
-and the saved cards have to be purged when the app comes back.
+The saved-card store reads and writes one boolean in `UserDefaults`, which Apple lists as a
+required-reason API. The SDK ships no privacy manifest of its own — Apple requires one only from the
+SDKs on its own list, and this one is not on it — so the reason goes in yours:
+
+```xml
+<key>NSPrivacyAccessedAPITypes</key>
+<array>
+    <dict>
+        <key>NSPrivacyAccessedAPIType</key>
+        <string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+        <key>NSPrivacyAccessedAPITypeReasons</key>
+        <array>
+            <string>CA92.1</string>
+        </array>
+    </dict>
+</array>
+```
+
+**`CA92.1`** is access to information from the app itself only, shared with nothing else. No card data
+is involved: the boolean only tells a fresh install from a reinstall, since the Keychain survives an
+uninstall and the saved cards have to be purged when the app comes back.
+
+If you already declare that category for your own code, add the reason to the existing array rather
+than a second entry.
 
 ## Telemetry
 
-The SDK reports which integration and which SDK version produced a payment, so HiPay knows which
-releases are deployed in the field. Three events per payment journey, carrying the SDK's identity
-and version, the platform and its OS version, the payment's status, the card network and country of
-issue, the timing of each step, and a random id tying one journey's events together.
+The SDK reports every payment journey to HiPay, so HiPay knows which releases are deployed and how
+they perform. Three events per journey, carrying:
 
-**Nothing in them identifies anyone** — no card data, no payer identity, no device identifier, no
-order id, no transaction reference, no amount, not even your application's identifier. Declare it as
-usage data collected for analytics, **not linked to the user** and **not used for tracking**.
+- the SDK's identity and version, the platform and its OS version;
+- your application's identifier, the order id you passed, the transaction reference HiPay returned,
+  and the amount and currency of the order;
+- the payment's status, the card network and country of issue, the timing of each step, and a random
+  id tying one journey's events together.
+
+No card data, no payer identity, no device identifier.
+
+**Declare it separately from the payment**, because HiPay uses it for its own account rather than
+processing it on your behalf:
+
+| Store | What the telemetry adds |
+|---|---|
+| App Store | Usage Data → Product Interaction, plus Diagnostics for the versions and timings. Purpose **Analytics**, **linked to the user**, tracking **no** |
+| Play Store | App activity → Other actions, plus App info and performance. Purpose **Analytics**, **Shared: yes** |
+
+**It is not purchase history.** No basket, no item, nothing about what was bought: what travels is
+the sequence of steps, their timings, the versions that produced them, and the order's total. The card
+network is already covered by the payment information you declare for the card field.
+
+What the order id and the transaction reference change is not the category but the linkability: they
+tie a journey to a real transaction, and so to your customer record, which is why **not linked to the
+user** is not an available answer.
+
+Play counts a transfer as sharing when the recipient uses the data for its own purposes, which is the
+case here and is not the case for the payment itself.
 
 Each call is best effort: a short deadline, no retry, the response ignored, every failure silent. It
 runs after the step it reports and can neither delay a payment nor cause one to fail.
