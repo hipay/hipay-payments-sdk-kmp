@@ -7,6 +7,7 @@ import com.hipay.card.store.createSecureCardStore
 import com.hipay.card.store.secureCardStoreNamespace
 import com.hipay.core.Environment
 import com.hipay.core.HiPayConfig
+import com.hipay.core.HiPayException
 import com.hipay.core.gateway.model.OrderRequest
 import com.hipay.core.gateway.model.Transaction
 import kotlinx.coroutines.Dispatchers
@@ -34,10 +35,10 @@ class OneClickControllerTest {
     }
 
     @Test
-    fun refresh_withoutBoundContext_isFailSoftAndLoadsNothing() {
-        // refreshSavedCards is fail-soft by design (the component may call it before the
-        // context binds); the STRICT precondition (clear IllegalStateException) stays on the
-        // paying APIs — covered by paySaveCard_withoutBoundContext below.
+    fun refresh_isFailSoftAndLoadsNothingFromAnEmptyStore() {
+        // refreshSavedCards never throws, whatever the store's state. Reading no longer depends on a
+        // bound context, so the namespace is cleared to keep this independent of what ran before.
+        clearNamespace()
         val controller = HiPayCardEntryController(config, oneClickEnabled = true).withOfflineCeiling()
         runBlocking { controller.refreshSavedCards() } // must not throw
         assertTrue(controller.savedCards.isEmpty())
@@ -45,7 +46,11 @@ class OneClickControllerTest {
     }
 
     @Test
-    fun paySaveCard_withoutBoundContext_failsBeforeAnyNetworkCall() {
+    fun paySaveCard_doesNotNeedTheComponentOnScreen() {
+        // Saving a card used to be rejected outright without a bound context. The store now takes the
+        // application context the SDK captures at process start, so a headless host gets past that
+        // precondition: what comes back here is the card's own validation failure, never an
+        // IllegalStateException. That one is left for a merged manifest missing the SDK's provider.
         val controller = HiPayCardEntryController(config).withOfflineCeiling()
         val ex = runCatching {
             runBlocking {
@@ -55,8 +60,7 @@ class OneClickControllerTest {
                 )
             }
         }.exceptionOrNull()
-        // IllegalStateException (not a network HiPayException): nothing was sent.
-        assertTrue(ex is IllegalStateException)
+        assertTrue("got $ex", ex is HiPayException)
     }
 
     @Test

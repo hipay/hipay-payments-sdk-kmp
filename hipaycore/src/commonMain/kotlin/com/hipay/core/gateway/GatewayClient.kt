@@ -1,5 +1,6 @@
 package com.hipay.core.gateway
 
+import com.hipay.card.recovery.PendingPaymentStore
 import com.hipay.card.validation.CardNetwork
 import com.hipay.card.validation.CardNetworks
 import com.hipay.core.HiPayConfig
@@ -37,14 +38,27 @@ public class GatewayClient internal constructor(
     private val config: HiPayConfig,
     engine: HttpClientEngine,
     private val monitoring: CheckoutDataSender,
+    private val recovery: PendingPaymentStore? = null,
 ) {
     public constructor(config: HiPayConfig) :
         this(config, defaultHttpClientEngine(), CheckoutDataSender(config.environment))
+
+    /**
+     * With a [recovery] store, every order this client submits leaves a trace keyed on its order id,
+     * so an interrupted payment can be found again. The store never holds a card token, so it can
+     * only ever be read from — no path re-submits an order.
+     */
+    public constructor(config: HiPayConfig, recovery: PendingPaymentStore) :
+        this(config, defaultHttpClientEngine(), CheckoutDataSender(config.environment), recovery)
 
     // An injected engine also carries the analytics, so no integration path reports less than the
     // default one does — and a test intercepts the event instead of reaching the network.
     internal constructor(config: HiPayConfig, engine: HttpClientEngine) :
         this(config, engine, CheckoutDataSender(config.environment, engine))
+
+    // The recovery store with an injected engine: what the resolver's tests drive.
+    internal constructor(config: HiPayConfig, engine: HttpClientEngine, recovery: PendingPaymentStore) :
+        this(config, engine, CheckoutDataSender(config.environment, engine), recovery)
 
     private val http = HipayHttpClient(config, engine)
 
@@ -52,12 +66,17 @@ public class GatewayClient internal constructor(
     @Throws(HiPayException::class, CancellationException::class)
     public suspend fun requestNewOrder(order: OrderRequest, signature: String? = null): Transaction {
         val requestedAt = utcTimestamp()
+        // Recorded BEFORE the round-trip: an interruption in this window is precisely the case where
+        // nothing else would be left, since the HiPay reference does not exist yet.
+        recovery?.record(order.orderId, order.amount, order.currency)
         val body = http.postForm(
             url = config.environment.gatewayV1Url + "order",
             fields = order.toFields(),
             signature = signature,
         )
         val transaction = parseTransaction(body)
+        // The store write first: it is the payment-critical one. Reporting is best effort.
+        recovery?.complete(order.orderId, transaction.transactionReference, transaction.state)
         reportOrder(order, transaction, requestedAt)
         return transaction
     }
@@ -96,6 +115,25 @@ public class GatewayClient internal constructor(
     public suspend fun getTransaction(reference: String, signature: String? = null): Transaction {
         val body = http.get(
             url = config.environment.gatewayV1Url + "transaction/" + reference,
+            signature = signature,
+        )
+        return parseTransaction(body, unwrap = true)
+    }
+
+    /**
+     * The same transaction, found from the merchant's own order id (GET `{gateway-v1}/transaction`
+     * with `orderid`) — the only way back when the order's response was lost before its reference
+     * arrived.
+     *
+     * Measured on stage: the account refuses this read unsigned, so [signature] is the one the
+     * merchant backend computed for that order. Several attempts on one order id answer as a list;
+     * the first is taken, as on the reference read.
+     */
+    @Throws(HiPayException::class, CancellationException::class)
+    public suspend fun getTransactionByOrderId(orderId: String, signature: String? = null): Transaction {
+        val query = Parameters.build { append("orderid", orderId) }.formUrlEncode()
+        val body = http.get(
+            url = config.environment.gatewayV1Url + "transaction?" + query,
             signature = signature,
         )
         return parseTransaction(body, unwrap = true)

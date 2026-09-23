@@ -1,3 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Minimal library manifest; the package/namespace comes from build.gradle.kts. -->
-<manifest />
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Captures the application context at process start, so storing a payment for recovery
+             never depends on the card component being on screen. Does nothing else, and is never
+             queried; the authority is derived from the host's applicationId to stay unique. -->
+        <provider
+            android:name="com.hipay.card.HiPayInitProvider"
+            android:authorities="${applicationId}.hipaycardinit"
+            android:enabled="true"
+            android:exported="false" />
+    </application>
+</manifest>

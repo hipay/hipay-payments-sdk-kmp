@@ -14,6 +14,8 @@ import com.hipay.card.store.OneClickError
 import com.hipay.card.store.OneClickErrorReason
 import com.hipay.card.store.SavedCard
 import com.hipay.card.store.SavedCardOutcome
+import com.hipay.card.recovery.PendingPaymentStore
+import com.hipay.card.recovery.indeterminateOrRethrow
 import com.hipay.card.store.SecureCardStore
 import com.hipay.card.store.cardNoLongerValidOrNull
 import com.hipay.card.store.coerceSavedCardsDisplayCount
@@ -140,6 +142,41 @@ public class CmpCardController(
     // Android never instantiates this controller.
     private val storeDispatcher = Dispatchers.Default.limitedParallelism(1)
     private var store: SecureCardStore? = null
+
+    private var recoveryStore: PendingPaymentStore? = null
+
+    /** Recovery is a convenience: a store that cannot be opened or written must never fail a payment. */
+    private suspend fun withRecovery(block: (PendingPaymentStore) -> Unit) {
+        runCatching {
+            withContext(storeDispatcher) {
+                block(recoveryStore ?: createCmpPendingPaymentStore(config).also { recoveryStore = it })
+            }
+        }
+    }
+
+    /**
+     * Submits the order, leaving a trace a crash cannot take away: recorded before the round-trip,
+     * completed by the answer.
+     */
+    private suspend fun submitOrder(order: OrderRequest, signature: String?): Transaction {
+        withRecovery { it.record(order.orderId, order.amount, order.currency) }
+        val transaction = try {
+            orderResolver?.invoke(order, signature) ?: gateway.requestNewOrder(order, signature)
+        } catch (e: HiPayException) {
+            indeterminateOrRethrow(e)
+        }
+        recordOutcome(order.orderId, transaction)
+        return transaction
+    }
+
+    /**
+     * Writes back the outcome the live instance observed, once 3DS has resolved. Without it the store
+     * would keep the order's own answer — `forwarding` for a challenge — and a later list would report
+     * a payment as unfinished when this instance already saw it settle.
+     */
+    private suspend fun recordOutcome(orderId: String, transaction: Transaction) {
+        withRecovery { it.complete(orderId, transaction.transactionReference, transaction.state) }
+    }
 
     private suspend fun <T> withStore(block: (SecureCardStore) -> T): T =
         withContext(storeDispatcher) {
@@ -792,8 +829,9 @@ public class CmpCardController(
             oneClick = effectiveSave,
         )
         options?.let { order.withOptions(it) }
-        val transaction = (orderResolver?.invoke(order, signature) ?: gateway.requestNewOrder(order, signature))
+        val transaction = submitOrder(order, signature)
         val final = resolve3DS(transaction, redirectScheme, signature, threeDS)
+        recordOutcome(order.orderId, final)
         if (effectiveSave) {
             persistSavedCard(token, final, product)
             if (final.state == TransactionState.COMPLETED) {
@@ -866,7 +904,7 @@ public class CmpCardController(
             )
             val transaction = try {
                 options?.let { order.withOptions(it) }
-                (orderResolver?.invoke(order, signature) ?: gateway.requestNewOrder(order, signature))
+                submitOrder(order, signature)
             } catch (e: HiPayException) {
                 val cnlv = cardNoLongerValidOrNull(e)
                 if (cnlv != null) {
@@ -895,6 +933,7 @@ public class CmpCardController(
                 lastOneClickError = OneClickError(card, OneClickErrorReason.GENERIC)
                 throw e
             }
+            recordOutcome(order.orderId, final)
             oneClickReasonForOutcome(
                 finalState = final.state,
                 challenged = challenged,

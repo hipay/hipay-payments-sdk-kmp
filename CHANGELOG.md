@@ -11,6 +11,11 @@ the iOS XCFramework/SPM package.
 
 ### Added
 
+- **An interrupted payment can be found again.** The SDK remembers what it launched, keyed on your own
+  order id, and tells you at launch what is still unresolved — after a background, a crash, or a kill.
+  Even an order whose response was lost: the gateway finds it back from that same order id.
+- **Lifetimes for those entries are settable** where you read them: seven days for a payment left
+  unanswered, forty-eight hours after a final state. Shorten them to test the flow without waiting.
 - **The SDK now reports its own identity and version with each transaction**, so HiPay can see which
   integration and which release produced a payment. No card data, no payer identity, nothing to configure.
 - **Optional gateway parameters on an order**, for the fields the SDK does not model as its own: a
@@ -28,6 +33,11 @@ the iOS XCFramework/SPM package.
   system reduce-motion setting.
 
 ### Changed
+
+- **A connection lost during a payment no longer reports a failure.** The outcome comes back as
+  pending instead: the SDK cannot know whether the gateway took the payment, and a failure would be
+  the one way it could make you refuse an order that was charged. Check the outcome rather than
+  assuming it failed.
 
 - **BREAKING — the shared card style takes one more value.** Swift code that builds it directly must
   pass it; Kotlin code compiles unchanged but must be recompiled against this version.
