@@ -36,6 +36,8 @@ import com.hipay.core.HiPayErrorCode
 import com.hipay.core.HiPayException
 import com.hipay.core.callback.CallbackUrlParser
 import com.hipay.core.gateway.GatewayClient
+import com.hipay.core.monitoring.HiPayCheckoutMonitor
+import com.hipay.core.monitoring.HiPayInternalApi
 import com.hipay.core.gateway.model.CustomerInfo
 import com.hipay.core.gateway.model.OrderOptions
 import com.hipay.core.gateway.model.OrderRequest
@@ -120,6 +122,13 @@ public class CmpCardController(
 
     private val tokenizer = CardTokenizer(config)
     private val gateway = GatewayClient(config)
+
+    @OptIn(HiPayInternalApi::class)
+    private val monitor = HiPayCheckoutMonitor(config).also { it.paymentSurfaceCreated() }
+
+    /** Raised by the component once it has rendered; the monitor reports only the first render. */
+    @OptIn(HiPayInternalApi::class)
+    internal fun reportDisplayed(): Unit = monitor.paymentSurfaceDisplayed()
 
     /** SDK-wide forced locale from [HiPayConfig.settings], or a constant null flow when unset.
      *  Always non-null so the component can `collectAsState()` it unconditionally (Compose rule). */

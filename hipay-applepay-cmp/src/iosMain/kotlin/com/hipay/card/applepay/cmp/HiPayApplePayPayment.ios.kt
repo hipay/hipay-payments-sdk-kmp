@@ -10,6 +10,8 @@ import com.hipay.card.applepay.defaultApplePayDeviceCapability
 import com.hipay.card.applepay.resolveApplePayEligibility
 import com.hipay.card.applepay.runApplePayPayment
 import com.hipay.core.HiPayConfig
+import com.hipay.core.monitoring.HiPayIntegrationSurface
+import com.hipay.core.monitoring.HiPayInternalApi
 
 /** Delegates to the shared iOS implementation — the same entry point the Swift facade calls. */
 public actual suspend fun runHiPayApplePayPayment(
@@ -18,10 +20,11 @@ public actual suspend fun runHiPayApplePayPayment(
     order: ApplePayOrder,
     customerCountry: String?,
 ): ApplePayPaymentResult {
-    // The routable set is resolved here rather than taken from the host, so the sheet can never offer
-    // a network the account stopped accepting since the button was drawn. The merchant restriction and
-    // the customer country are the same inputs the availability check uses, so the button and the sheet
-    // cannot disagree.
+    // A wallet-only host must not be reported as native.
+    @OptIn(HiPayInternalApi::class)
+    HiPayIntegrationSurface.declareComposeMultiplatform()
+    // Resolved here, not taken from the host: the sheet can never offer a network the account has
+    // stopped accepting, and it reads the same inputs as the button, so the two cannot disagree.
     val eligibility = resolveHiPayApplePayAvailability(
         config = config,
         currency = order.currency,
@@ -31,9 +34,8 @@ public actual suspend fun runHiPayApplePayPayment(
     return runApplePayPayment(
         config = config,
         applePayConfig = applePayConfig,
-        // An unavailable result must not open a sheet. An empty set makes the shared implementation
-        // raise its own validation error, so both channels fail identically instead of surfacing a
-        // PassKit presentation failure that looks like a transport error.
+        // An empty set makes the shared implementation raise its own validation error, rather than
+        // opening a sheet that fails as a PassKit error looking like a transport one.
         resolvedNetworks = if (eligibility.state == ApplePayEligibilityState.AVAILABLE) {
             eligibility.resolvedNetworks
         } else {
@@ -48,13 +50,19 @@ public actual suspend fun resolveHiPayApplePayAvailability(
     currency: String,
     customerCountry: String?,
     allowedNetworks: List<CardNetwork>,
-): ApplePayEligibilityResult =
-    resolveApplePayEligibility(
+): ApplePayEligibilityResult {
+    // Declared HERE too, not only on the payment path: a favourable answer raises the funnel's first
+    // event, and a host asks this before showing the button — so without it a wallet-only CMP host
+    // reports that event as native and its own journey disagrees with itself.
+    @OptIn(HiPayInternalApi::class)
+    HiPayIntegrationSurface.declareComposeMultiplatform()
+    return resolveApplePayEligibility(
         config = config,
         device = defaultApplePayDeviceCapability(),
         currency = currency,
         customerCountry = customerCountry,
         allowedNetworks = allowedNetworks,
     )
+}
 
 public actual fun hiPayApplePaySupported(): Boolean = true

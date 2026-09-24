@@ -16,6 +16,8 @@ the iOS XCFramework/SPM package.
   Even an order whose response was lost: the gateway finds it back from that same order id.
 - **Lifetimes for those entries are settable** where you read them: seven days for a payment left
   unanswered, forty-eight hours after a final state. Shorten them to test the flow without waiting.
+- **The SDK now reports its own identity and version with each transaction**, so HiPay can see which
+  integration and which release produced a payment. No card data, no payer identity, nothing to configure.
 - **Optional gateway parameters on an order**, for the fields the SDK does not model as its own: a
   per-order notification URL, the bank-statement descriptor, the basket, your own data shown on the
   transaction in the back office, and any other parameter the gateway accepts. Nothing changes for an

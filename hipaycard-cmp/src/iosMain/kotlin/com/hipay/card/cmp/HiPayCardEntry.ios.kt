@@ -11,15 +11,13 @@ import com.hipay.core.gateway.model.CustomerInfo
 import com.hipay.card.PaymentPhase
 import com.hipay.core.gateway.model.OrderOptions
 import com.hipay.core.gateway.model.Transaction
+import com.hipay.core.monitoring.HiPayIntegrationSurface
+import com.hipay.core.monitoring.HiPayInternalApi
 
 /**
- * iOS actual (story 10.2, slice A) — renders the shared Compose-Multiplatform card UI (Skia),
- * driven by the commonMain [CmpCardController]. Design (i): iOS cannot wrap the Swift
- * `HiPayCard`, so the card is rendered in Compose-MP. (The native SwiftUI `HiPayCard` stays
- * for native iOS merchants.)
- *
- * Entry + tokenize/pay over the headless core; strings follow the device locale or
- * `localeOverride` (fr/en/it). PAN/token never leave the controller (PCI boundary).
+ * iOS actual — renders the shared Compose-Multiplatform card UI (Skia) over [CmpCardController];
+ * wrapping the SwiftUI `HiPayCard` is not possible from here, and it stays for native merchants.
+ * Strings follow the device locale or `localeOverride`; PAN and token never leave the controller.
  */
 actual class HiPayCardController actual constructor(
     config: HiPayConfig,
@@ -29,6 +27,12 @@ actual class HiPayCardController actual constructor(
     confirmCardDeletion: Boolean,
     currency: String,
 ) {
+    init {
+        // The shared Compose card UI, not the native SwiftUI one.
+        @OptIn(HiPayInternalApi::class)
+        HiPayIntegrationSurface.declareComposeMultiplatform()
+    }
+
     internal val impl = CmpCardController(
         config = config,
         allowed = allowedNetworks,
@@ -117,7 +121,7 @@ actual class HiPayCardController actual constructor(
 
     actual val lastSaveOutcome: SavedCardOutcome? get() = impl.lastSaveOutcome
 
-    // iOS 3DS = in-app ASWebAuthenticationSession (self-captures the callback); no host wiring.
+    // ASWebAuthenticationSession captures the callback itself, so the host wires nothing.
     actual fun resume3DS(url: String) = impl.resume3DS(url)
 
     actual fun dispose() = impl.dispose()

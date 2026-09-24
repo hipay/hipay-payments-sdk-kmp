@@ -10,6 +10,12 @@ import com.hipay.core.gateway.model.OrderRequest
 import com.hipay.core.gateway.model.Transaction
 import com.hipay.core.http.HipayHttpClient
 import com.hipay.core.http.defaultHttpClientEngine
+import com.hipay.core.monitoring.CheckoutData
+import com.hipay.core.monitoring.CheckoutDataSender
+import com.hipay.core.monitoring.CheckoutEvent
+import com.hipay.core.monitoring.CheckoutSession
+import com.hipay.core.monitoring.Monitoring
+import com.hipay.core.monitoring.utcTimestamp
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.http.Parameters
 import io.ktor.http.formUrlEncode
@@ -31,9 +37,11 @@ import kotlinx.serialization.json.JsonPrimitive
 public class GatewayClient internal constructor(
     private val config: HiPayConfig,
     engine: HttpClientEngine,
+    private val monitoring: CheckoutDataSender,
     private val recovery: PendingPaymentStore? = null,
 ) {
-    public constructor(config: HiPayConfig) : this(config, defaultHttpClientEngine(), null)
+    public constructor(config: HiPayConfig) :
+        this(config, defaultHttpClientEngine(), CheckoutDataSender(config.environment))
 
     /**
      * With a [recovery] store, every order this client submits leaves a trace keyed on its order id,
@@ -41,13 +49,23 @@ public class GatewayClient internal constructor(
      * only ever be read from — no path re-submits an order.
      */
     public constructor(config: HiPayConfig, recovery: PendingPaymentStore) :
-        this(config, defaultHttpClientEngine(), recovery)
+        this(config, defaultHttpClientEngine(), CheckoutDataSender(config.environment), recovery)
+
+    // An injected engine also carries the analytics, so no integration path reports less than the
+    // default one does — and a test intercepts the event instead of reaching the network.
+    internal constructor(config: HiPayConfig, engine: HttpClientEngine) :
+        this(config, engine, CheckoutDataSender(config.environment, engine))
+
+    // The recovery store with an injected engine: what the resolver's tests drive.
+    internal constructor(config: HiPayConfig, engine: HttpClientEngine, recovery: PendingPaymentStore) :
+        this(config, engine, CheckoutDataSender(config.environment, engine), recovery)
 
     private val http = HipayHttpClient(config, engine)
 
     /** Creates an order (POST `{gateway-v1}/order`) and returns the resulting transaction. */
     @Throws(HiPayException::class, CancellationException::class)
     public suspend fun requestNewOrder(order: OrderRequest, signature: String? = null): Transaction {
+        val requestedAt = utcTimestamp()
         // Recorded BEFORE the round-trip: an interruption in this window is precisely the case where
         // nothing else would be left, since the HiPay reference does not exist yet.
         recovery?.record(order.orderId, order.amount, order.currency)
@@ -57,8 +75,35 @@ public class GatewayClient internal constructor(
             signature = signature,
         )
         val transaction = parseTransaction(body)
+        // The store write first: it is the payment-critical one. Reporting is best effort.
         recovery?.complete(order.orderId, transaction.transactionReference, transaction.state)
+        reportOrder(order, transaction, requestedAt)
         return transaction
+    }
+
+    /**
+     * Reports which SDK build produced this transaction, best effort and after the fact. A refused
+     * order is reported like any other; one that never reached the gateway has nothing to attribute.
+     */
+    private fun reportOrder(order: OrderRequest, transaction: Transaction, requestedAt: String) {
+        val session = CheckoutSession.current()
+        monitoring.send(
+            CheckoutData(
+                event = CheckoutEvent.REQUEST,
+                id = session.id,
+                status = transaction.status,
+                paymentMethod = transaction.paymentProduct ?: order.paymentProduct,
+                cardCountry = transaction.paymentMethod?.country,
+                // The merchant's own order id and HiPay's reference: this is the one event that can
+                // tie the journey to the transaction it produced.
+                orderId = order.orderId,
+                transactionId = transaction.transactionReference,
+                // A JSON number, as the ingestion expects; an unparseable amount is simply omitted.
+                amount = order.amount.toDoubleOrNull(),
+                currency = order.currency,
+                monitoring = Monitoring(dateRequest = requestedAt, dateResponse = utcTimestamp()),
+            ),
+        )
     }
 
     /**

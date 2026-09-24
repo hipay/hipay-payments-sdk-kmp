@@ -11,6 +11,7 @@ import com.hipay.golden.GOLDEN_ORDER_RESPONSE
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.toByteArray
+import kotlinx.coroutines.CompletableDeferred
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
@@ -38,13 +39,21 @@ class GatewayClientTest {
 
     private fun goldenEngine(check: suspend (io.ktor.client.request.HttpRequestData) -> Unit = {}) =
         MockEngine { request ->
-            check(request)
-            respond(
-                GOLDEN_ORDER_RESPONSE,
-                HttpStatusCode.OK,
-                headersOf(HttpHeaders.ContentType, "application/json"),
-            )
+            // The analytics event rides the same engine; it is asserted in its own tests, not here.
+            if (request.url.host.endsWith("data.hipay.com")) {
+                respond("", HttpStatusCode.OK)
+            } else {
+                check(request)
+                respond(
+                    GOLDEN_ORDER_RESPONSE,
+                    HttpStatusCode.OK,
+                    headersOf(HttpHeaders.ContentType, "application/json"),
+                )
+            }
         }
+
+    private fun MockEngine.gatewayRequests() =
+        requestHistory.filterNot { it.url.host.endsWith("data.hipay.com") }
 
     @Test
     fun nominalCardOrderPostsFieldsAndMapsTransaction() = runTest {
@@ -74,7 +83,41 @@ class GatewayClientTest {
         val client = GatewayClient(config, engine)
         client.requestNewOrder(order(), signature = "sig-123")
         client.getTransaction("ref-1", signature = "sig-123")
-        assertEquals(2, engine.requestHistory.size)
+        assertEquals(2, engine.gatewayRequests().size)
+    }
+
+    @Test
+    fun reportsTheSdkIdentityOnceTheOrderIsAnswered() = runTest {
+        val analytics = CompletableDeferred<String>()
+        val engine = MockEngine { request ->
+            if (request.url.host.endsWith("data.hipay.com")) {
+                analytics.complete(request.body.toByteArray().decodeToString())
+                respond("", HttpStatusCode.OK)
+            } else {
+                respond(
+                    GOLDEN_ORDER_RESPONSE,
+                    HttpStatusCode.OK,
+                    headersOf(HttpHeaders.ContentType, "application/json"),
+                )
+            }
+        }
+
+        GatewayClient(config, engine).requestNewOrder(order())
+
+        val body = analytics.await()
+        assertTrue(body.contains("\"cms\":\"sdk_kmp_"), body)
+        assertTrue(body.contains("\"status\":\"118\""), body)
+        // The order event names the transaction it reports, on both sides of the reconciliation.
+        // `domain` is not asserted here: it resolves from the host application, and a unit-test
+        // process has none — it is emitted on a device and omitted when it cannot be read.
+        listOf("order_id", "transaction_id", "amount", "currency").forEach { field ->
+            assertTrue(body.contains(field), "$field missing from checkout-data: $body")
+        }
+        assertTrue(body.contains("\"card_country\":\"PL\""), body)
+        // The golden response carries a token, a PAN and a holder name; none may follow it here.
+        listOf("f0e1d2c3", "411111", "TEST\"", "cardHolder").forEach { secret ->
+            assertTrue(!body.contains(secret), "$secret reached checkout-data: $body")
+        }
     }
 
     @Test

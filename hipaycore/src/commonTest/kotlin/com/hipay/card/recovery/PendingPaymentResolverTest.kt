@@ -42,10 +42,16 @@ class PendingPaymentResolverTest {
 
     private fun resolver(engine: MockEngine) = PendingPaymentResolver(store, GatewayClient(config, engine, store))
 
-    /** A gateway that answers the order as pending, then the transaction read with [thenState]. */
+    /**
+     * A gateway that answers the order as pending, then the transaction read with [thenState].
+     *
+     * The client this engine is given also carries the checkout-data sender, so the analytics posts
+     * ride the same engine — [seen] keeps the gateway calls only, or an assertion on "the last
+     * request" would race a fire-and-forget event.
+     */
     private fun twoStepEngine(thenState: String, seen: MutableList<HttpRequestData> = mutableListOf()) =
         MockEngine { request ->
-            seen += request
+            if (!request.url.host.endsWith("data.hipay.com")) seen += request
             val body = if (request.url.encodedPath.contains("/transaction/")) {
                 """{"transaction":{"state":"$thenState","status":"116","transactionReference":"800000000001"}}"""
             } else {
