@@ -34,6 +34,9 @@ the iOS XCFramework/SPM package.
 
 ### Changed
 
+- **The iOS framework is now dynamic, and ships its debug symbols.** Xcode embeds and signs it as
+  before and files its `.dSYM` alongside your own, so a crash inside the SDK can be symbolicated and
+  App Store Connect no longer flags a symbol file as missing. Nothing to change in your integration.
 - **A connection lost during a payment no longer reports a failure.** The outcome comes back as
   pending instead: the SDK cannot know whether the gateway took the payment, and a failure would be
   the one way it could make you refuse an order that was charged. Check the outcome rather than
