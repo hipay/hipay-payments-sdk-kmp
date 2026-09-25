@@ -405,6 +405,24 @@ import HiPayCore
 
 A complete, runnable example is the demo at `src/HiPay-SDK-ios-Demo` (`PaymentScreen.swift`).
 
+## Crash reports and symbols
+
+`HiPayPayments.xcframework` ships a `.dSYM` next to the framework in every slice. Xcode embeds and
+signs the framework, and files its `.dSYM` in the `dSYMs/` folder of your archive, beside your own.
+
+**Nothing to do.** The usual upload paths — Crashlytics' `upload-symbols`, Sentry's Fastlane action,
+a build phase — take the whole folder, so ours goes up with yours. Keep the archive: a report cannot
+be symbolicated without the `.dSYM` of the exact build the payer was running.
+
+A HiPay frame reads `kfun:com.hipay.card.…`, sometimes suffixed `COROUTINE$0` or `#internal`. That is
+the normal shape of a Kotlin/Native symbol, not a corrupted trace.
+
+**Reporting a crash inside the SDK.** Open an [issue](https://github.com/hipay/hipay-payments-sdk-kmp/issues)
+with the crash report — symbolicated if you have it, the raw `.ips` otherwise — and the SDK version.
+HiPay archives a `.dSYM` per published version and symbolicates its own frames from it; your
+application's `.dSYM` is never needed and must not be sent. The SDK embeds no crash reporter and
+collects nothing on its own.
+
 ## Upgrading from 1.0.0
 
 **One required change: the return deep link changed host.** It is now
