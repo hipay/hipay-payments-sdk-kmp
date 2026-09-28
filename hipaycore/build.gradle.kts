@@ -41,7 +41,7 @@ val generateSdkVersion by tasks.registering {
 
 kotlin {
     androidLibrary {
-        namespace = "com.hipay.fullservice"
+        namespace = "com.hipay.core"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
 
@@ -65,7 +65,7 @@ kotlin {
             baseName = "HiPayPayments"
             // The default bundle ID is derived from the module name and is a
             // known App Store validation/collision source for shipped SDKs.
-            binaryOption("bundleId", "com.hipay.fullservice")
+            binaryOption("bundleId", "com.hipay.core")
             // Without these the framework ships Kotlin/Native's defaults (1.0 / 1), so an
             // inspected binary never says which SDK it is. The short string follows the
             // project version; a pre-release suffix is stripped because Apple only accepts
