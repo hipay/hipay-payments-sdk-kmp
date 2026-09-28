@@ -17,6 +17,11 @@
 # Override only to test against a fork:
 #   REPO_SLUG=owner/repo ./scripts/build-release.sh
 #
+# The zip is ALSO HiPay's symbol archive for that version: the XCFramework carries a `.dSYM`
+# per slice, so the published asset and the binary an integrator runs share their UUIDs by
+# construction. That is what lets us symbolicate a crash report someone sends us, and it is
+# why the check below refuses to publish a slice without symbols.
+#
 # Output: build-output-local/spm/
 #   HiPayPayments.xcframework.zip, checksum.txt, Package.swift (remote)
 #
@@ -67,6 +72,22 @@ echo "==> Zipping XCFramework for SPM (ditto --keepParent)…"
 ditto -c -k --sequesterRsrc --keepParent \
   "$ROOT/HiPay_Payments_SDK_iOS/HiPayPayments.xcframework" \
   "$OUT/$ASSET"
+
+# --- 2b. The symbols must be IN the asset ------------------------------------
+# Not cosmetic: the asset doubles as the symbol archive for this version, and a framework built
+# static produces no dSYM at all. That regression is silent — the zip is still valid, SPM still
+# installs it, and it only surfaces the day a crash report arrives and cannot be read. Checked on
+# the zip rather than the build tree, because the zip is what actually ships.
+echo "==> Checking every slice ships its dSYM…"
+SLICES=$(unzip -Z1 "$OUT/$ASSET" | sed -n 's|^HiPayPayments\.xcframework/\([^/]*\)/HiPayPayments\.framework/HiPayPayments$|\1|p')
+[ -n "$SLICES" ] || { echo "ERROR: $ASSET carries no framework slice at all" >&2; exit 1; }
+for SLICE in $SLICES; do
+  unzip -Z1 "$OUT/$ASSET" \
+    "HiPayPayments.xcframework/$SLICE/dSYMs/HiPayPayments.framework.dSYM/Contents/Resources/DWARF/HiPayPayments" \
+    > /dev/null 2>&1 \
+    || { echo "ERROR: slice '$SLICE' ships no dSYM — is the framework static again?" >&2; exit 1; }
+  echo "    $SLICE: dSYM present"
+done
 
 # --- 3. SwiftPM checksum -----------------------------------------------------
 echo "==> Computing SwiftPM checksum…"

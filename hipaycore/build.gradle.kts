@@ -72,7 +72,13 @@ kotlin {
             // one to three dot-separated integers there.
             binaryOption("bundleShortVersionString", version.toString().substringBefore('-'))
             binaryOption("bundleVersion", "1")
-            isStatic = true
+            // DYNAMIC, so the framework carries its own `.dSYM`. A static framework produces none:
+            // its code is merged into the host app, and HiPay can then symbolicate nothing from a
+            // crash report an integrator sends — the symbols would live only in the merchant's own
+            // dSYM. Xcode also embedded the static bundle anyway, leaving an orphan UUID that App
+            // Store Connect flagged on every upload. Measured: the demo bundle SHRANK, 11 616 Ko to
+            // 11 084 Ko, and a card-only app 9 580 Ko to 8 984 Ko.
+            isStatic = false
             xcf.add(this)
         }
     }

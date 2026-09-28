@@ -395,6 +395,22 @@ internal actual fun sha1Hex(input: String): String {
 }
 ```
 
+## Crash reports and symbols
+
+On this channel the SDK is a Maven klib: it is compiled into **your** `Shared.framework`, so its
+symbols live in **your** `.dSYM` and nowhere else. Keep the archive's `dSYMs/` folder and upload it to
+your crash tool as usual — there is no separate HiPay symbol file to fetch, and HiPay holds none for
+your build.
+
+A HiPay frame reads `kfun:com.hipay.…`, sometimes suffixed `COROUTINE$0` or `#internal`. Your own
+shared Kotlin produces `kfun:` frames too; the `com.hipay` package prefix is what tells ours apart.
+Neither shape is a corrupted trace.
+
+**Reporting a crash inside the SDK.** Symbolicate it first — you are the only one who can — then open
+an [issue](https://github.com/hipay/hipay-payments-sdk-kmp/issues) with the symbolicated frames and
+the SDK version. Send the trace, not your `.dSYM`. The SDK embeds no crash reporter and collects
+nothing on its own.
+
 ## Upgrading from 1.0.0
 
 **Required, and silent if you miss it: the return deep link changed host.** It is now
