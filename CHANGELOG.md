@@ -7,7 +7,7 @@ the iOS XCFramework/SPM package.
      A version heading must be EXACTLY "## x.y.z" — no date, no title. The release pipeline matches
      that line verbatim, so any suffix produces empty release notes. Put the date on the line below. -->
 
-## Unreleased
+## 1.2.0
 
 ### Added
 

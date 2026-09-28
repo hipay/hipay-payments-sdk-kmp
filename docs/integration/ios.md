@@ -19,13 +19,13 @@ SwiftUI card-entry + headless payment over a binary KMP `XCFramework`, exposed b
 
 In Xcode: **File ▸ Add Package Dependencies…**, enter
 `https://github.com/hipay/hipay-payments-sdk-ios`, choose **Up to Next Major Version** from
-**1.1.0**, then add the **`HiPayCore`** and **`HiPayCard`** products to your target.
+**1.2.0**, then add the **`HiPayCore`** and **`HiPayCard`** products to your target.
 
 From a `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/hipay/hipay-payments-sdk-ios.git", from: "1.1.0")
+    .package(url: "https://github.com/hipay/hipay-payments-sdk-ios.git", from: "1.2.0")
 ],
 targets: [
     .target(name: "YourApp", dependencies: [
@@ -423,6 +423,34 @@ HiPay archives a `.dSYM` per published version and symbolicates its own frames f
 application's `.dSYM` is never needed and must not be sent. The SDK embeds no crash reporter and
 collects nothing on its own.
 
+## Upgrading to 1.2.0
+
+**BREAKING, Swift only: `HiPayCardEntryStyle` gained `fieldSpacing`.** Swift code building the style with its memberwise initializer must pass it; building it by mutation needs no change. See [Styling](#styling).
+
+**The framework is now dynamic and ships its debug symbols** — see [Crash reports and symbols](#crash-reports-and-symbols). Xcode embeds and signs it as before; nothing to change.
+
+**A lost connection no longer reports a failure.** The outcome comes back as pending: the SDK cannot
+know whether the gateway took the payment, and reporting a failure would be the one way it could make
+you refuse an order that was charged. If your code treats "not completed" as "not paid", change it to
+read the outcome — a pending payment is reconciled, not refused.
+
+**The entered card is cleared when a payment ends, whatever the outcome.** A payer retrying after a
+refusal now re-enters the card; previously the fields stayed filled.
+
+**Deleting the selected saved card now selects the most recent card left**, instead of dropping to the
+card-entry fields while other cards are still saved.
+
+**New: an interrupted payment can be found again** — see [Interrupted payments](#interrupted-payments).
+Nothing to do to keep the old behaviour, but a payment left unresolved by a crash or a kill is now
+recoverable on your own order id.
+
+**New: the SDK reports each payment journey to HiPay**, carrying your order id, HiPay's transaction
+reference, the amount and your application's identifier. Nothing to configure — but you have to
+declare it when you publish. See [Privacy and store declarations](../privacy.md).
+
+The card fields now look locked while a payment is running, greyed out as they already were on
+the other platforms.
+
 ## Upgrading from 1.0.0
 
 **One required change: the return deep link changed host.** It is now
@@ -440,6 +468,7 @@ Apple Pay is new — see [Apple Pay](apple-pay.md).
 - **Localization**: FR/EN/IT (default EN) ship in the `HiPayCard` resource bundle; **device locale** (no per-view `localeOverride` on iOS — that knob is Android-only).
 - **Accessibility**: VoiceOver labels/traits, relative sort priority (opt-out `setsAccessibilityOrder: false`), inline errors announced politely, CVV tooltip.
 - **PCI**: the raw PAN and the vault token never leave the controller; never log card data.
+- **Privacy**: card data leaves the device to be tokenized, and the SDK reports each journey to HiPay with your order id, transaction reference and amount. Both have to be declared when you publish — see [Privacy and store declarations](../privacy.md).
 - **Facade only (D4)**: integrate via `HiPayCore`/`HiPayCard` — do not `import HiPayPayments` (the raw KMP) directly.
 
 ---

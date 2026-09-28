@@ -34,7 +34,7 @@ kotlin {
     androidTarget(); iosArm64(); iosSimulatorArm64()
     sourceSets {
         commonMain.dependencies {
-            implementation("com.hipay.payments:card-cmp:1.1.0")   // card UI (+ core, transitively)
+            implementation("com.hipay.payments:card-cmp:1.2.0")   // card UI (+ core, transitively)
             // Needed to LAUNCH the suspend API (coroutines are `implementation` in the SDK).
             implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
         }
@@ -411,6 +411,30 @@ an [issue](https://github.com/hipay/hipay-payments-sdk-kmp/issues) with the symb
 the SDK version. Send the trace, not your `.dSYM`. The SDK embeds no crash reporter and collects
 nothing on its own.
 
+## Upgrading to 1.2.0
+
+**The card component no longer adds its own outer margin**, matching iOS. Add your own padding around
+it if you were relying on the one it used to insert — otherwise your layout tightens by that amount.
+
+**A lost connection no longer reports a failure.** The outcome comes back as pending: the SDK cannot
+know whether the gateway took the payment, and reporting a failure would be the one way it could make
+you refuse an order that was charged. If your code treats "not completed" as "not paid", change it to
+read the outcome — a pending payment is reconciled, not refused.
+
+**The entered card is cleared when a payment ends, whatever the outcome.** A payer retrying after a
+refusal now re-enters the card; previously the fields stayed filled.
+
+**Deleting the selected saved card now selects the most recent card left**, instead of dropping to the
+card-entry fields while other cards are still saved.
+
+**New: an interrupted payment can be found again** — see [Interrupted payments](#interrupted-payments).
+Nothing to do to keep the old behaviour, but a payment left unresolved by a crash or a kill is now
+recoverable on your own order id.
+
+**New: the SDK reports each payment journey to HiPay**, carrying your order id, HiPay's transaction
+reference, the amount and your application's identifier. Nothing to configure — but you have to
+declare it when you publish. See [Privacy and store declarations](../privacy.md).
+
 ## Upgrading from 1.0.0
 
 **Required, and silent if you miss it: the return deep link changed host.** It is now
@@ -435,7 +459,8 @@ existing call sites compile unchanged.
 - **Signature** — `controller.pay(…, signature)` takes a **backend-computed** HS signature; the SDK
   never computes it (see the stage-only helper above for a first test).
 - **PCI** — the raw PAN never leaves the controller; never log card data.
-- **Version** — `1.1.0`; pin the same number as the iOS SPM tag / Android AARs (single-version policy across platforms).
+- **Privacy** — card data leaves the device to be tokenized, and the SDK reports each journey to HiPay with your order id, transaction reference and amount. Both have to be declared when you publish — see [Privacy and store declarations](../privacy.md).
+- **Version** — `1.2.0`; pin the same number as the iOS SPM tag / Android AARs (single-version policy across platforms).
 
 ---
 
@@ -449,7 +474,7 @@ Add the headless artifact instead of (or alongside) the card UI:
 
 ```kotlin
 // commonMain — headless only
-implementation("com.hipay.payments:core:1.1.0")
+implementation("com.hipay.payments:core:1.2.0")
 implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
 ```
 

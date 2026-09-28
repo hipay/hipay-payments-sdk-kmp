@@ -21,13 +21,13 @@ dependencyResolutionManagement {
 
 // app/build.gradle.kts
 dependencies {
-    implementation("com.hipay.payments:card:1.1.0")
+    implementation("com.hipay.payments:card:1.2.0")
 }
 ```
 
 That single line is enough: the POM pulls the headless core, Ktor, Compose UI/Foundation/Material 3,
 `androidx.browser` (3DS Custom Tabs) and DataStore transitively. Add
-`com.hipay.payments:core:1.1.0` on its own only if you want the headless core without the UI.
+`com.hipay.payments:core:1.2.0` on its own only if you want the headless core without the UI.
 
 ## Use the component
 
@@ -410,6 +410,44 @@ override fun onNewIntent(intent: Intent) {
 
 A complete, runnable example is the demo at `src/HiPay-SDK-android-Demo` (`PaymentViewModel` + `MainActivity`).
 
+## Crash reports and symbols
+
+The SDK ships unobfuscated, so your own R8 pass renames its classes along with yours and **your**
+`mapping.txt` is the only thing that can read a stack trace back — HiPay holds nothing for your build.
+Keep the mapping of every release you ship, and upload it to your crash tool as usual.
+
+**Reporting a crash inside the SDK.** Deobfuscate it first — you are the only one who can — then open
+an [issue](https://github.com/hipay/hipay-payments-sdk-kmp/issues) with the readable stack trace and
+the SDK version. Send the trace, not your `mapping.txt`. The SDK embeds no crash reporter and collects
+nothing on its own.
+
+Our frames sit under the `com.hipay` package. The SDK ships no consumer R8 rules and needs none: the
+one class that must survive, `HiPayInitProvider`, is kept from the merged manifest.
+
+## Upgrading to 1.2.0
+
+**The card component no longer adds its own outer margin**, matching iOS. Add your own padding around
+it if you were relying on the one it used to insert — otherwise your layout tightens by that amount.
+
+**A lost connection no longer reports a failure.** The outcome comes back as pending: the SDK cannot
+know whether the gateway took the payment, and reporting a failure would be the one way it could make
+you refuse an order that was charged. If your code treats "not completed" as "not paid", change it to
+read the outcome — a pending payment is reconciled, not refused.
+
+**The entered card is cleared when a payment ends, whatever the outcome.** A payer retrying after a
+refusal now re-enters the card; previously the fields stayed filled.
+
+**Deleting the selected saved card now selects the most recent card left**, instead of dropping to the
+card-entry fields while other cards are still saved.
+
+**New: an interrupted payment can be found again** — see [Interrupted payments](#interrupted-payments).
+Nothing to do to keep the old behaviour, but a payment left unresolved by a crash or a kill is now
+recoverable on your own order id.
+
+**New: the SDK reports each payment journey to HiPay**, carrying your order id, HiPay's transaction
+reference, the amount and your application's identifier. Nothing to configure — but you have to
+declare it when you publish. See [Privacy and store declarations](../privacy.md).
+
 ## Upgrading from 1.0.0
 
 **Required, and silent if you miss it: the return deep link changed host.** It is now
@@ -436,6 +474,7 @@ Behaviour to expect: opening the new-card form no longer collapses the saved-car
 - **Localization**: FR/EN/IT (default EN) ship in the card module's `strings.xml`; device locale by default, overridable SDK-wide via `HiPaySettings` on the config or per component via `HiPayCardEntry(..., localeOverride = "fr")` (which wins).
 - **Accessibility**: TalkBack labels/state, relative traversal order (opt-out `setsAccessibilityOrder = false`), inline errors announced politely.
 - **PCI**: the raw PAN and the vault token never leave the controller; never log card data.
+- **Privacy**: card data leaves the device to be tokenized, and the SDK reports each journey to HiPay with your order id, transaction reference and amount. Both have to be declared when you publish — see [Privacy and store declarations](../privacy.md).
 - **Merged manifest**: the card module declares one `ContentProvider`, `com.hipay.card.HiPayInitProvider` (authority `${applicationId}.hipaycardinit`, not exported). It captures the application context the secure stores need and does nothing else — no work, no I/O, never queried. The authority comes from your `applicationId`, so build variants and other apps never collide, and R8 keeps the class from the merged manifest with no rule of yours.
   You can drop it if your startup budget demands it:
   ```xml
