@@ -230,6 +230,16 @@ val order = ApplePayOrder(/* … */).withOptions(options)
 The field rules are the same as on the card path, including that `notifyUrl` is **not covered by the
 order signature** — see the "Optional gateway parameters" section of your platform's card guide.
 
+## Privacy
+
+No card data reaches your application: Apple hands over a payload encrypted for HiPay's certificate.
+Apple exempts payment information entered outside your app when you never have access to it, so an
+Apple-Pay-only integration declares no payment info — the exemption does **not** extend to the card
+field.
+
+The SDK reports the journey to HiPay all the same, with your order id, HiPay's transaction reference
+and the amount, and that has to be declared. See [Privacy and store declarations](../privacy.md).
+
 ## Troubleshooting
 
 | Symptom | Cause |
