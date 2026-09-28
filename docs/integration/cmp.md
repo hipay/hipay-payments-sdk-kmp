@@ -413,7 +413,7 @@ nothing on its own.
 
 ## Upgrading to 1.2.0
 
-**The card component no longer adds its own outer margin**, matching iOS. Add your own padding around
+**BREAKING: the card component no longer adds its own outer margin**, matching iOS. Add your own padding around
 it if you were relying on the one it used to insert — otherwise your layout tightens by that amount.
 
 **A lost connection no longer reports a failure.** The outcome comes back as pending: the SDK cannot

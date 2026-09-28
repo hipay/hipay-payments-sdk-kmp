@@ -13,11 +13,12 @@ the iOS XCFramework/SPM package.
 
 - **An interrupted payment can be found again.** The SDK remembers what it launched, keyed on your own
   order id, and tells you at launch what is still unresolved — after a background, a crash, or a kill.
-  Even an order whose response was lost: the gateway finds it back from that same order id.
-- **Lifetimes for those entries are settable** where you read them: seven days for a payment left
-  unanswered, forty-eight hours after a final state. Shorten them to test the flow without waiting.
-- **The SDK now reports its own identity and version with each transaction**, so HiPay can see which
-  integration and which release produced a payment. No card data, no payer identity, nothing to configure.
+  Even an order whose response was lost: the gateway finds it back from that same order id. How long
+  those entries live is settable where you read them, so you can test the flow without waiting.
+- **The SDK now reports each payment journey to HiPay**, carrying its own identity and version, your
+  order id, HiPay's transaction reference, the amount and your application's identifier — no card data
+  and no payer identity. Nothing to configure, but you have to declare it when you publish: see the
+  Privacy page of the documentation.
 - **Optional gateway parameters on an order**, for the fields the SDK does not model as its own: a
   per-order notification URL, the bank-statement descriptor, the basket, your own data shown on the
   transaction in the back office, and any other parameter the gateway accepts. Nothing changes for an
@@ -27,34 +28,23 @@ the iOS XCFramework/SPM package.
 - **The card controller reports which step of a payment it is on** — tokenizing, creating the order,
   authenticating, confirming — so a host can show its own progress wording instead of one opaque
   spinner. Read-only, and `null` when idle.
-- **The "new card" row now closes again.** Tapping it while it is open goes back to the card that was
-  showing before, instead of doing nothing. Typed values are hidden, not lost.
-- **Saved cards animate in and out**, and so does the saved-cards section itself. Suppressed under the
-  system reduce-motion setting.
 
 ### Changed
 
-- **The iOS framework is now dynamic, and ships its debug symbols.** Xcode embeds and signs it as
-  before and files its `.dSYM` alongside your own, so a crash inside the SDK can be symbolicated and
-  App Store Connect no longer flags a symbol file as missing. Nothing to change in your integration.
+- **BREAKING — the shared card style takes one more value.** Swift code that builds it directly must
+  pass it; Kotlin code compiles unchanged but must be recompiled against this version.
 - **A connection lost during a payment no longer reports a failure.** The outcome comes back as
   pending instead: the SDK cannot know whether the gateway took the payment, and a failure would be
   the one way it could make you refuse an order that was charged. Check the outcome rather than
   assuming it failed.
-
-- **BREAKING — the shared card style takes one more value.** Swift code that builds it directly must
-  pass it; Kotlin code compiles unchanged but must be recompiled against this version.
+- **BREAKING — the card component no longer adds its own outer margin on Android and Compose
+  Multiplatform**, matching iOS. Nothing fails to build: your layout simply tightens by that amount
+  wherever you relied on it. Add your own padding around the component.
 - **The entered card is now cleared when a payment ends, whatever the outcome.** Previously a refused
   order left the fields filled; a payer retrying after a refusal now re-enters the card.
-- **Deleting the selected saved card now selects the most recent card left**, instead of dropping to
-  the card-entry fields while other cards are still saved.
-- **The card component no longer adds its own outer margin on Android and Compose Multiplatform**,
-  matching iOS. Add your own padding around it if you were relying on the one it used to insert.
-
-### Fixed
-
-- **On iOS the card fields now look locked while a payment is running**, greyed out as they already
-  were on the other platforms instead of staying at full contrast.
+- **The iOS framework is now dynamic, and ships its debug symbols.** Xcode embeds and signs it as
+  before and files its `.dSYM` alongside your own, so a crash inside the SDK can be symbolicated and
+  App Store Connect no longer flags a symbol file as missing. Nothing to change in your integration.
 
 ## 1.1.0
 
