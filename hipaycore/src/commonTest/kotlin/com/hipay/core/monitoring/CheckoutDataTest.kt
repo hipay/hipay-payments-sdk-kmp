@@ -76,13 +76,15 @@ class CheckoutDataTest {
     }
 
     @Test
-    fun noEventCanNameAPayerOrAMerchant() {
+    fun noEventCarriesCardOrPayerData() {
+        // Order id, transaction reference, amount, currency and the app identifier are sent on
+        // purpose; card data and the payer's identity never are.
         val json = checkoutDataJson.encodeToString(
             CheckoutData(event = CheckoutEvent.REQUEST, id = "hash", status = "116"),
         )
 
-        listOf("order_id", "transaction_id", "domain", "amount", "currency").forEach { field ->
-            assertFalse(json.contains(field), "$field is back on the wire: $json")
+        listOf("pan", "card_number", "cvc", "cvv", "expiry", "holder", "email", "name", "phone").forEach { field ->
+            assertFalse(json.contains("\"$field\""), "$field is on the wire: $json")
         }
     }
 
